@@ -5,7 +5,7 @@ import { RiMotorbikeLine, RiServiceLine } from "react-icons/ri";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MdOutlineLocalGroceryStore, MdSell } from "react-icons/md";
 import { TbBrandBooking } from "react-icons/tb";
-import { FaWrench, FaCogs } from "react-icons/fa";
+import { FaWrench, FaCogs, FaMoneyBillWave } from "react-icons/fa"; // ✅ Added FaMoneyBillWave for Late Charges
 import Header from "./Header";
 import fonts from "../styles/fonts";
 import colors from "../styles/colors";
@@ -98,7 +98,8 @@ const Sidebar = () => {
       icon: IoLayersOutline,
       submenu: [
         { id: 41, path: "/dashboard/priceMaster/deliveryAtLocationPrices", name: "Delivery" },
-        { id: 42, path: "/dashboard/priceMaster/PickUpTariffPlan", name: "Pick Up" },
+        { id: 42, path: "/dashboard/priceMaster/pickUpTariffPlan", name: "Pick Up" },
+        { id: 43, path: "/dashboard/priceMaster/lateCharges", name: "Late Charges" }, // ✅ NEW SUBMENU ITEM
       ],
     },
     {

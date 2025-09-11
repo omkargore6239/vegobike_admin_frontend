@@ -8,13 +8,14 @@ const Bikes = () => {
   const navigate = useNavigate();
 
   // State management
-  const [bikes, setBikes] = useState([]);
+  const [rawBikes, setRawBikes] = useState([]); // ✅ Raw bike data from API
+  const [processedBikes, setProcessedBikes] = useState([]); // ✅ Bikes with resolved names
   const [filteredBikes, setFilteredBikes] = useState([]);
   const [brands, setBrands] = useState([]);
   const [categories, setCategories] = useState([]);
   const [models, setModels] = useState([]);
-  const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [referencesLoaded, setReferencesLoaded] = useState(false); // ✅ Track if references are ready
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   
@@ -27,6 +28,19 @@ const Bikes = () => {
   // Backend base URL for images
   const BACKEND_URL = "http://localhost:8081";
 
+  // ✅ FIXED: Helper function to match IDs properly (handles string/number mismatch)
+  const getNameById = (array, id, fieldName, defaultValue) => {
+    if (!array || !Array.isArray(array) || !id) {
+      return defaultValue;
+    }
+    
+    // Convert both IDs to strings for comparison
+    const targetId = String(id).trim();
+    const found = array.find(item => String(item.id).trim() === targetId);
+    
+    return found ? (found[fieldName] || defaultValue) : defaultValue;
+  };
+
   // Helper function to get full image URL
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
@@ -36,12 +50,10 @@ const Bikes = () => {
     }
     
     let cleanPath = imagePath.trim();
-    // Handle the bikes/ prefix that comes from backend
-    if (cleanPath.startsWith('bikes/')) {
-      return `${BACKEND_URL}/uploads/${cleanPath}`;
+    if (cleanPath.startsWith('uploads/')) {
+      return `${BACKEND_URL}/${cleanPath}`;
     } else {
       cleanPath = cleanPath.replace(/^\/+/, '');
-      cleanPath = cleanPath.replace(/^uploads\/+/, '');
       return `${BACKEND_URL}/uploads/${cleanPath}`;
     }
   };
@@ -60,172 +72,205 @@ const Bikes = () => {
   // Handle search
   useEffect(() => {
     if (searchQuery.trim() === "") {
-      setFilteredBikes(bikes);
+      setFilteredBikes(processedBikes);
     } else {
-      const filtered = bikes.filter((bike) => {
+      const filtered = processedBikes.filter((bike) => {
         const searchTerm = searchQuery.toLowerCase();
         return (
-          bike.brand?.toLowerCase().includes(searchTerm) ||
-          bike.model?.toLowerCase().includes(searchTerm) ||
+          bike.brandName?.toLowerCase().includes(searchTerm) ||
+          bike.modelName?.toLowerCase().includes(searchTerm) ||
           bike.registrationNumber?.toLowerCase().includes(searchTerm) ||
-          bike.vehicleRegistrationNumber?.toLowerCase().includes(searchTerm) ||
           bike.categoryName?.toLowerCase().includes(searchTerm)
         );
       });
       setFilteredBikes(filtered);
     }
-  }, [searchQuery, bikes]);
+    setCurrentPage(1);
+  }, [searchQuery, processedBikes]);
 
-  // Fetch reference data (brands, categories, models, stores)
+  // ✅ STEP 1: Fetch reference data FIRST
   const fetchReferenceData = async () => {
     try {
-      const [brandsRes, categoriesRes, modelsRes, storesRes] = await Promise.allSettled([
-        apiClient.get("/brands/all"),
-        apiClient.get("/category/all"), 
-        apiClient.get("/models/all"),
-        apiClient.get("/stores/active")
+      console.log("🔄 Fetching reference data...");
+      
+      const [brandsRes, categoriesRes, modelsRes] = await Promise.allSettled([
+        apiClient.get('/brands/active'),
+        apiClient.get('/categories/active'), 
+        apiClient.get('/models/active')
       ]);
 
-      if (brandsRes.status === 'fulfilled' && brandsRes.value.data) {
-        setBrands(brandsRes.value.data.content || brandsRes.value.data.data || brandsRes.value.data || []);
-      }
-
-      if (categoriesRes.status === 'fulfilled' && categoriesRes.value.data) {
-        setCategories(categoriesRes.value.data.content || categoriesRes.value.data.data || categoriesRes.value.data || []);
-      }
-
-      if (modelsRes.status === 'fulfilled' && modelsRes.value.data) {
-        setModels(modelsRes.value.data.content || modelsRes.value.data.data || modelsRes.value.data || []);
-      }
-
-      if (storesRes.status === 'fulfilled' && storesRes.value.data) {
-        const storeData = storesRes.value.data.data || storesRes.value.data.content || storesRes.value.data || [];
-        setStores(storeData);
-      }
-    } catch (error) {
-      console.error("Error fetching reference data:", error);
-    }
-  };
-
-  // Get brand name by ID
-  const getBrandName = (brandId) => {
-    const brand = brands.find(b => b.id === brandId);
-    return brand ? brand.name : null;
-  };
-
-  // Get category name by ID  
-  const getCategoryName = (categoryId) => {
-    const category = categories.find(c => c.id === categoryId);
-    return category ? category.name : null;
-  };
-
-  // Get model name by ID
-  const getModelName = (modelId) => {
-    const model = models.find(m => m.id === modelId);
-    return model ? model.name : null;
-  };
-
-  // Get store name by ID
-  const getStoreName = (storeId) => {
-    const store = stores.find(s => s.id === storeId);
-    return store ? (store.storeName || store.name) : null;
-  };
-
-  // Fetch all bikes from backend
-  const fetchBikes = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      console.log("Fetching bikes from /bikes/all");
-      
-      const response = await apiClient.get("/bikes/all");
-      
-      console.log("Raw bikes response:", response.data);
-      
-      if (response.data && Array.isArray(response.data)) {
-        // Process bikes with the exact data structure from your backend
-        const processedBikes = response.data.map((bike, index) => {
-          console.log(`Processing bike ${index}:`, bike);
-          
-          // Get the primary image (prefer documentImageUrl, then pucImageUrl, then insuranceImageUrl)
-          let primaryImage = null;
-          if (bike.documentImageUrl) {
-            primaryImage = getImageUrl(bike.documentImageUrl);
-          } else if (bike.pucImageUrl) {
-            primaryImage = getImageUrl(bike.pucImageUrl);
-          } else if (bike.insuranceImageUrl) {
-            primaryImage = getImageUrl(bike.insuranceImageUrl);
-          }
-
-          // Resolve names using IDs if the names are "Unknown"
-          const resolvedBrand = (bike.brand === "Unknown Brand" || !bike.brand) 
-            ? getBrandName(bike.brandId) || "Unknown Brand"
-            : bike.brand;
-
-          const resolvedModel = (bike.model === "Unknown Model" || !bike.model)
-            ? getModelName(bike.modelId) || "Unknown Model"  
-            : bike.model;
-
-          const resolvedCategory = (bike.categoryName === "Unknown Category" || !bike.categoryName)
-            ? getCategoryName(bike.categoryId) || "Unknown Category"
-            : bike.categoryName;
-
-          const resolvedStore = bike.storeName || getStoreName(bike.storeId) || "Unknown Store";
-          
-          return {
-            // Keep all original properties
-            ...bike,
-            
-            // Use the correct field names from your backend
-            id: bike.id,
-            brand: resolvedBrand,
-            model: resolvedModel,
-            categoryName: resolvedCategory,
-            registrationNumber: bike.registrationNumber || bike.vehicleRegistrationNumber,
-            vehicleStatus: bike.vehicleStatus || "UNKNOWN",
-            storeName: resolvedStore,
-            
-            // Set the primary image
-            bikeImage: primaryImage,
-            
-            // Additional computed fields
-            displayName: `${resolvedBrand} ${resolvedModel}`.trim(),
-            hasImages: !!(bike.pucImageUrl || bike.insuranceImageUrl || bike.documentImageUrl),
-            totalImages: [bike.pucImageUrl, bike.insuranceImageUrl, bike.documentImageUrl].filter(Boolean).length
-          };
-        });
-        
-        console.log("Processed bikes:", processedBikes);
-        
-        setBikes(processedBikes);
-        setFilteredBikes(processedBikes);
-        setSuccess(`Successfully loaded ${processedBikes.length} bikes`);
-        
-        // Clear success message after showing briefly
-        setTimeout(() => setSuccess(""), 3000);
+      // Process brands
+      if (brandsRes.status === 'fulfilled' && brandsRes.value.data?.success) {
+        const brandsData = brandsRes.value.data.data || [];
+        console.log("✅ Brands loaded:", brandsData.length, "items");
+        setBrands(brandsData);
       } else {
-        console.error("Invalid response format:", response.data);
-        setError("Invalid response format from server");
-        setBikes([]);
-        setFilteredBikes([]);
+        console.error("❌ Failed to fetch brands");
+        setBrands([]);
       }
+
+      // Process categories
+      if (categoriesRes.status === 'fulfilled' && categoriesRes.value.data?.success) {
+        const categoriesData = categoriesRes.value.data.data || [];
+        console.log("✅ Categories loaded:", categoriesData.length, "items");
+        setCategories(categoriesData);
+      } else {
+        console.error("❌ Failed to fetch categories");
+        setCategories([]);
+      }
+
+      // Process models
+      if (modelsRes.status === 'fulfilled' && modelsRes.value.data?.success) {
+        const modelsData = modelsRes.value.data.data || [];
+        console.log("✅ Models loaded:", modelsData.length, "items");
+        setModels(modelsData);
+      } else {
+        console.error("❌ Failed to fetch models");
+        setModels([]);
+      }
+
+      // ✅ Mark references as loaded
+      setReferencesLoaded(true);
+      console.log("✅ All reference data loaded successfully");
+
     } catch (error) {
-      console.error("Error fetching bikes:", error);
-      setError(error.response?.data?.message || error.message || "Failed to fetch bikes");
-      toast.error("Failed to fetch bikes");
-      setBikes([]);
-      setFilteredBikes([]);
-    } finally {
-      setLoading(false);
+      console.error("❌ Error fetching reference data:", error);
+      setError("Failed to load reference data");
+      setReferencesLoaded(true); // Still mark as loaded to proceed
     }
   };
 
-  // Initial data fetch
+  // ✅ STEP 2: Fetch raw bikes data
+  const fetchRawBikes = async () => {
+    try {
+      console.log("🚲 Fetching raw bikes data...");
+      
+      const response = await apiClient.get('/bikes/all');
+      const bikesData = Array.isArray(response.data) ? response.data : [];
+      
+      console.log("✅ Raw bikes loaded:", bikesData.length, "items");
+      setRawBikes(bikesData);
+      
+    } catch (error) {
+      console.error("❌ Error fetching bikes:", error);
+      setError("Failed to fetch bikes");
+      toast.error("Failed to fetch bikes");
+      setRawBikes([]);
+    }
+  };
+
+  // ✅ STEP 3: Process bikes ONLY when both raw bikes and references are available
+  useEffect(() => {
+    if (!referencesLoaded || rawBikes.length === 0) {
+      console.log("⏳ Waiting for data:", { referencesLoaded, rawBikesCount: rawBikes.length });
+      if (referencesLoaded && rawBikes.length === 0) {
+        setProcessedBikes([]);
+        setFilteredBikes([]);
+        setLoading(false);
+      }
+      return;
+    }
+
+    console.log("🔄 Processing bikes with reference data...");
+    console.log("Available references:", {
+      brands: brands.length,
+      categories: categories.length,
+      models: models.length
+    });
+
+    const processed = rawBikes.map((bike, index) => {
+      // Get images
+      let primaryImage = null;
+      if (bike.documentImageUrl) {
+        primaryImage = getImageUrl(bike.documentImageUrl);
+      } else if (bike.pucImageUrl) {
+        primaryImage = getImageUrl(bike.pucImageUrl);
+      } else if (bike.insuranceImageUrl) {
+        primaryImage = getImageUrl(bike.insuranceImageUrl);
+      } else if (bike.bikeImage) {
+        primaryImage = getImageUrl(bike.bikeImage);
+      }
+
+      // ✅ Resolve names using the fixed helper function
+      const brandName = getNameById(brands, bike.brandId, 'brandName', 'Unknown Brand');
+      const modelName = getNameById(models, bike.modelId, 'modelName', 'Unknown Model');
+      const categoryName = getNameById(categories, bike.categoryId, 'categoryName', 'Unknown Category');
+
+      // Handle status
+      let bikeStatus = "UNKNOWN";
+      if (bike.vehicleStatus) {
+        bikeStatus = bike.vehicleStatus;
+      } else if (bike.status) {
+        bikeStatus = bike.status;
+      } else if (bike.bikeStatus) {
+        bikeStatus = bike.bikeStatus;
+      } else if (bike.state) {
+        bikeStatus = bike.state;
+      } else if (bike.condition) {
+        bikeStatus = bike.condition;
+      } else if (bike.active !== undefined) {
+        bikeStatus = bike.active ? "ACTIVE" : "INACTIVE";
+      } else if (bike.isActive !== undefined) {
+        bikeStatus = (typeof bike.isActive === 'number') 
+          ? (bike.isActive === 1 ? "ACTIVE" : "INACTIVE")
+          : (bike.isActive ? "ACTIVE" : "INACTIVE");
+      } else {
+        bikeStatus = "AVAILABLE";
+      }
+
+      const processedBike = {
+        ...bike,
+        brandName: brandName,
+        modelName: modelName,
+        categoryName: categoryName,
+        registrationNumber: bike.registrationNumber || bike.vehicleRegistrationNumber || "N/A",
+        vehicleStatus: bikeStatus,
+        bikeImage: primaryImage,
+        displayName: `${brandName} ${modelName}`.trim(),
+        hasImages: !!(bike.pucImageUrl || bike.insuranceImageUrl || bike.documentImageUrl || bike.bikeImage),
+        totalImages: [bike.pucImageUrl, bike.insuranceImageUrl, bike.documentImageUrl, bike.bikeImage].filter(Boolean).length
+      };
+
+      console.log(`✅ Processed bike ${index + 1}:`, {
+        id: processedBike.id,
+        brandName: processedBike.brandName,
+        categoryName: processedBike.categoryName,
+        modelName: processedBike.modelName
+      });
+
+      return processedBike;
+    });
+
+    console.log(`✅ Successfully processed ${processed.length} bikes`);
+    
+    setProcessedBikes(processed);
+    setFilteredBikes(processed);
+    setLoading(false);
+    setSuccess(`Successfully loaded ${processed.length} bikes`);
+    setTimeout(() => setSuccess(""), 3000);
+
+  }, [rawBikes, brands, categories, models, referencesLoaded]);
+
+  // ✅ STEP 4: Load data in proper sequence
   useEffect(() => {
     const loadData = async () => {
-      await fetchReferenceData();
-      await fetchBikes();
+      try {
+        console.log("🚀 Starting data load sequence...");
+        setLoading(true);
+        
+        // First load all reference data
+        await fetchReferenceData();
+        
+        // Then load bikes
+        await fetchRawBikes();
+        
+      } catch (error) {
+        console.error("❌ Error in data load sequence:", error);
+        setError("Failed to load data");
+        setLoading(false);
+      }
     };
+    
     loadData();
     window.scrollTo(0, 0);
   }, []);
@@ -241,7 +286,7 @@ const Bikes = () => {
     setError("");
     setSuccess("");
     try {
-      console.log(`Deleting bike with ID: ${id}`);
+      console.log(`🗑️ Deleting bike with ID: ${id}`);
       
       await apiClient.delete(`/bikes/${id}`);
       
@@ -249,10 +294,11 @@ const Bikes = () => {
       toast.success("Bike deleted successfully!");
       setConfirmDeleteId(null);
       
-      // Refresh the bikes list
-      await fetchBikes();
+      // Refresh data
+      await fetchRawBikes();
+      
     } catch (error) {
-      console.error("Error deleting bike:", error);
+      console.error("❌ Error deleting bike:", error);
       setError(error.response?.data?.message || "Failed to delete bike");
       toast.error("Failed to delete bike");
       setConfirmDeleteId(null);
@@ -272,33 +318,89 @@ const Bikes = () => {
     navigate(`/dashboard/bikes/view/${bikeId}`);
   };
 
-  // Get status display
+  // Enhanced status display function
   const getStatusDisplay = (status) => {
-    if (!status) {
+    if (!status || status === null || status === undefined) {
       return { text: 'Unknown', class: 'bg-gray-100 text-gray-800' };
     }
     
-    const normalizedStatus = status.toString().toUpperCase();
+    if (typeof status === 'number') {
+      switch (status) {
+        case 1:
+          return { text: 'Available', class: 'bg-green-100 text-green-800' };
+        case 0:
+          return { text: 'Inactive', class: 'bg-red-100 text-red-800' };
+        case 2:
+          return { text: 'Maintenance', class: 'bg-yellow-100 text-yellow-800' };
+        case 3:
+          return { text: 'Rented', class: 'bg-blue-100 text-blue-800' };
+        default:
+          return { text: `Status ${status}`, class: 'bg-gray-100 text-gray-800' };
+      }
+    }
+    
+    if (typeof status === 'boolean') {
+      return status 
+        ? { text: 'Available', class: 'bg-green-100 text-green-800' }
+        : { text: 'Inactive', class: 'bg-red-100 text-red-800' };
+    }
+    
+    const normalizedStatus = status.toString().toUpperCase().trim();
     
     switch (normalizedStatus) {
       case 'AVAILABLE':
+      case 'ACTIVE':
+      case 'READY':
+      case 'FREE':
+      case 'ONLINE':
+      case '1':
+      case 'TRUE':
+      case 'YES':
         return { text: 'Available', class: 'bg-green-100 text-green-800' };
+      
       case 'DISABLED':
       case 'MAINTENANCE':
+      case 'INACTIVE':
+      case 'REPAIR':
+      case 'SERVICE':
+      case 'DAMAGED':
+      case 'BROKEN':
+      case 'OFFLINE':
+      case '0':
+      case 'FALSE':
+      case 'NO':
         return { text: 'Maintenance', class: 'bg-red-100 text-red-800' };
+      
       case 'RENTED':
       case 'BOOKED':
+      case 'OCCUPIED':
+      case 'BUSY':
+      case 'IN_USE':
+      case 'RESERVED':
+      case 'ASSIGNED':
         return { text: 'Rented', class: 'bg-blue-100 text-blue-800' };
+      
       case 'OUT_OF_SERVICE':
+      case 'RETIRED':
+      case 'DECOMMISSIONED':
+      case 'SCRAPPED':
         return { text: 'Out of Service', class: 'bg-gray-100 text-gray-800' };
-      case 'ACTIVE':
-        return { text: 'Available', class: 'bg-green-100 text-green-800' };
-      case 'INACTIVE':
-        return { text: 'Inactive', class: 'bg-yellow-100 text-yellow-800' };
+      
+      case 'PENDING':
+      case 'PROCESSING':
+      case 'CHECKING':
+      case 'VERIFYING':
+      case 'REVIEW':
+        return { text: 'Pending', class: 'bg-yellow-100 text-yellow-800' };
+      
       case 'UNKNOWN':
+      case 'NULL':
+      case '':
+      case 'UNDEFINED':
         return { text: 'Unknown', class: 'bg-gray-100 text-gray-800' };
+      
       default:
-        return { text: normalizedStatus, class: 'bg-gray-100 text-gray-800' };
+        return { text: normalizedStatus, class: 'bg-purple-100 text-purple-800' };
     }
   };
 
@@ -335,7 +437,6 @@ const Bikes = () => {
 
   // Image error handler
   const handleImageError = (e, bikeName) => {
-    console.error(`Bike image failed to load for "${bikeName}":`, e.target.src);
     e.target.style.display = 'none';
     const fallbackDiv = e.target.nextElementSibling;
     if (fallbackDiv) {
@@ -359,7 +460,7 @@ const Bikes = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">All Bikes</h1>
           <p className="text-gray-600 mt-1">
-            Manage your bike inventory ({filteredBikes.length} bikes{searchQuery && `, filtered from ${bikes.length} total`})
+            Manage your bike inventory ({filteredBikes.length} bikes{searchQuery && `, filtered from ${processedBikes.length} total`})
           </p>
         </div>
         <button
@@ -443,7 +544,9 @@ const Bikes = () => {
                   <td colSpan="8" className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                      <p className="text-gray-500">Loading bikes...</p>
+                      <p className="text-gray-500">
+                        {!referencesLoaded ? "Loading reference data..." : "Processing bikes..."}
+                      </p>
                     </div>
                   </td>
                 </tr>
@@ -462,7 +565,7 @@ const Bikes = () => {
               ) : (
                 currentBikes.map((bike, index) => {
                   const statusInfo = getStatusDisplay(bike.vehicleStatus);
-                  const displayName = bike.displayName || bike.model || bike.brand || "Unknown";
+                  const displayName = bike.displayName || bike.modelName || bike.brandName || "Unknown";
                   
                   return (
                     <tr 
@@ -505,7 +608,7 @@ const Bikes = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {bike.brand}
+                          {bike.brandName}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -515,7 +618,7 @@ const Bikes = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {bike.model}
+                          {bike.modelName}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

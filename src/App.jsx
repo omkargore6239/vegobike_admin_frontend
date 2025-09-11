@@ -5,6 +5,7 @@ import Home from "./pages/Home";
 import Bikes from "./pages/Bikes";
 import DeliveryAtLocationPrices from "./pages/PriceMaster/DeliveryAtLocationPrices";
 import PickUpTariffPlan from "./pages/PriceMaster/PickUpTariffPlan";
+import LateCharges from "./pages/PriceMaster/LateCharges"; // ✅ NEW IMPORT
 import AllCategories from "./pages/MasterRecords/AllCategories";
 import AllBrands from "./pages/MasterRecords/AllBrands";
 import AllModels from "./pages/MasterRecords/AllModels";
@@ -24,7 +25,6 @@ import ServiceOrders from "./components/ServiceOrders";
 import TrackVehicle from "./pages/TrackVehicle";
 import StoreManagers from "./pages/StoreManagers";
 import AddBikeForm from "./pages/Addbikeform";
-
 
 // Authentication Context Component
 const AuthWrapper = ({ children }) => {
@@ -66,7 +66,6 @@ const AuthWrapper = ({ children }) => {
   return children;
 };
 
-
 // Simple Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const isLoggedIn = localStorage.getItem("isLoggedIn");
@@ -80,9 +79,7 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-
   return (
-    
     <AuthWrapper>
       <BrowserRouter
         future={{
@@ -106,7 +103,7 @@ function App() {
           >
             <Route index element={<Home />} />
             <Route path="allBikes" element={<Bikes />} />
-            <Route path="addBike" element={<AddBikeForm />} /> {/* ✅ NEW ROUTE */}
+            <Route path="addBike" element={<AddBikeForm />} />
             <Route path="allBookings" element={<AllBookings />} />
             <Route path="storeMaster" element={<StoreMaster />} />
             <Route path="allUsers" element={<AllUsers />} />
@@ -116,7 +113,7 @@ function App() {
             <Route path="spareParts" element={<SpareParts />} />
             <Route path="serviceOrders" element={<ServiceOrders />} />
 
-            {/* Submenu Routes */}
+            {/* Price Master Submenu Routes */}
             <Route
               path="priceMaster/deliveryAtLocationPrices"
               element={<DeliveryAtLocationPrices />}
@@ -126,11 +123,18 @@ function App() {
               element={<PickUpTariffPlan />}
             />
             <Route
+              path="priceMaster/lateCharges" 
+              element={<LateCharges />} 
+            /> {/* ✅ NEW ROUTE */}
+
+            {/* Master Records Submenu Routes */}
+            <Route
               path="masterRecords/allCategories"
               element={<AllCategories />}
             />
             <Route path="masterRecords/allBrands" element={<AllBrands />} />
             <Route path="masterRecords/allModels" element={<AllModels />} />
+            
             <Route
               path="allRegisterCustomers"
               element={<AllRegisterCustomers />}
@@ -149,7 +153,6 @@ function App() {
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      
       </BrowserRouter>
     </AuthWrapper>
   );

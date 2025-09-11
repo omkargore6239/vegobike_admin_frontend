@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Named exports
-export const BASE_URL = import.meta.env.VITE_BASE_URL;
+export const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:8081';
 
 const isTokenValid = (token) => {
   try {
@@ -12,12 +12,14 @@ const isTokenValid = (token) => {
   }
 };
 
-// Create axios instance
+// ✅ Updated: Create axios instance with correct backend URL
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_BASE_URL + '/api', // Added /api to match your backend
+  baseURL: 'http://localhost:8081/api', // ✅ Direct backend URL with /api
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false, // ✅ Set to false if backend doesn't require credentials
+  timeout: 10000, // ✅ Add timeout
 });
 
 // Configure interceptors
@@ -61,7 +63,6 @@ apiClient.interceptors.response.use(
     // Handle unauthorized access
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      // Redirect to login page instead of reload if you have routing
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
@@ -69,7 +70,7 @@ apiClient.interceptors.response.use(
 
     // Handle other common errors
     if (error.response?.status === 403) {
-      console.error('Access forbidden');
+      console.error('Access forbidden - Check backend security configuration');
     }
     
     if (error.response?.status >= 500) {
@@ -101,22 +102,15 @@ export const createFormData = (data) => {
 
 // Category API helper functions
 export const categoryAPI = {
-  // Get all categories with pagination
   getAll: (params = {}) => {
     return apiClient.get('/categories/all', { params });
   },
-
-  // Get category by ID
   getById: (id) => {
     return apiClient.get(`/categories/${id}`);
   },
-
-  // Get active categories
   getActive: () => {
     return apiClient.get('/categories/active');
   },
-
-  // Create new category
   create: (categoryData, image = null) => {
     const formData = new FormData();
     formData.append('categoryName', categoryData.categoryName);
@@ -125,8 +119,6 @@ export const categoryAPI = {
     }
     return apiClient.post('/categories/add', formData);
   },
-
-  // Update category
   update: (id, categoryData, image = null) => {
     const formData = new FormData();
     formData.append('categoryName', categoryData.categoryName);
@@ -135,22 +127,41 @@ export const categoryAPI = {
     }
     return apiClient.post(`/categories/edit/${id}`, formData);
   },
-
-  // Toggle category status
   toggleStatus: (id) => {
     return apiClient.get(`/categories/status/${id}`);
   },
-
-  // Delete category
   delete: (id) => {
     return apiClient.delete(`/categories/delete/${id}`);
   },
-
-  // Search categories
   search: (name, params = {}) => {
     return apiClient.get('/categories/search', { 
       params: { name, ...params } 
     });
+  }
+};
+
+// ✅ Added: Late Charges API helper functions
+export const lateChargesAPI = {
+  getAll: () => {
+    return apiClient.get('/late-charges/all');
+  },
+  getById: (id) => {
+    return apiClient.get(`/late-charges/${id}`);
+  },
+  getActive: () => {
+    return apiClient.get('/late-charges/active');
+  },
+  create: (data) => {
+    return apiClient.post('/late-charges/add', data);
+  },
+  update: (id, data) => {
+    return apiClient.put(`/late-charges/update/${id}`, data);
+  },
+  toggleStatus: (id, isActive) => {
+    return apiClient.put(`/late-charges/${id}/status?isActive=${isActive}`);
+  },
+  delete: (id) => {
+    return apiClient.delete(`/late-charges/${id}`);
   }
 };
 
