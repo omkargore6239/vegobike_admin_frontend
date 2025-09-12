@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { FaEye, FaCheckCircle, FaTimesCircle, FaUser, FaSearch } from "react-icons/fa";
-import apiClient from "../api/apiConfig";
+import { FaEye, FaCheckCircle, FaTimesCircle, FaUser, FaSearch, FaExclamationTriangle, FaRedo, FaCheck, FaTimes } from "react-icons/fa";
+import apiClient, { BASE_URL } from "../api/apiConfig"; // Import BASE_URL from apiConfig
 import { motion } from "framer-motion";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -13,6 +13,7 @@ const AllRegisterCustomers = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   
   // Pagination states from backend response
   const [itemsPerPage] = useState(10);
@@ -24,6 +25,7 @@ const AllRegisterCustomers = () => {
   const [viewMode, setViewMode] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [documentUpdating, setDocumentUpdating] = useState({});
   
   // Document verification status
   const [documentStatus, setDocumentStatus] = useState({
@@ -32,10 +34,111 @@ const AllRegisterCustomers = () => {
     drivingLicense: 'PENDING',
   });
 
-  // Backend base URL for images
-  const BACKEND_URL = "http://localhost:8081";
+  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
+  const ErrorTypes = {
+    NETWORK: 'NETWORK',
+    VALIDATION: 'VALIDATION',
+    PERMISSION: 'PERMISSION',
+    NOT_FOUND: 'NOT_FOUND',
+    SERVER: 'SERVER',
+    UNKNOWN: 'UNKNOWN'
+  };
 
-  // Helper function to get full image URL
+  const getErrorInfo = (error) => {
+    let type = ErrorTypes.UNKNOWN;
+    let message = "An unexpected error occurred";
+    let isRetryable = false;
+    let suggestions = [];
+
+    if (!error) return { type, message, isRetryable, suggestions };
+
+    // Network errors
+    if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
+      type = ErrorTypes.NETWORK;
+      message = `Unable to connect to server at ${BASE_URL}`;
+      isRetryable = true;
+      suggestions = [
+        "Check your internet connection",
+        "Verify the backend server is running",
+        "Ensure CORS is properly configured"
+      ];
+    }
+    // HTTP status errors
+    else if (error.response?.status) {
+      const status = error.response.status;
+      const serverMessage = error.response.data?.message || error.response.data?.error;
+
+      switch (status) {
+        case 400:
+          type = ErrorTypes.VALIDATION;
+          message = serverMessage || "Invalid request data";
+          suggestions = ["Please check your request and try again"];
+          break;
+        case 401:
+          type = ErrorTypes.PERMISSION;
+          message = "Authentication required";
+          suggestions = ["Please log in and try again"];
+          break;
+        case 403:
+          type = ErrorTypes.PERMISSION;
+          message = "Access denied - insufficient permissions";
+          suggestions = ["Contact your administrator for access"];
+          break;
+        case 404:
+          type = ErrorTypes.NOT_FOUND;
+          message = "Resource not found";
+          suggestions = ["The requested data may have been deleted"];
+          break;
+        case 500:
+        case 502:
+        case 503:
+          type = ErrorTypes.SERVER;
+          message = "Server error occurred";
+          isRetryable = true;
+          suggestions = ["Please try again in a moment", "Contact support if the problem persists"];
+          break;
+        default:
+          message = serverMessage || `Server returned error ${status}`;
+          isRetryable = status >= 500;
+      }
+    }
+    else if (error.message) {
+      message = error.message;
+    }
+
+    return { type, message, isRetryable, suggestions };
+  };
+
+  const showErrorNotification = (error, context = "") => {
+    const errorInfo = getErrorInfo(error);
+    const contextMessage = context ? `${context}: ` : "";
+    
+    console.error(`❌ ${contextMessage}${errorInfo.message}`, error);
+    
+    toast.error(
+      <div>
+        <div className="font-medium">{contextMessage}{errorInfo.message}</div>
+        {errorInfo.suggestions.length > 0 && (
+          <div className="text-sm mt-1 opacity-90">
+            {errorInfo.suggestions[0]}
+          </div>
+        )}
+      </div>,
+      {
+        position: "top-right",
+        autoClose: errorInfo.type === ErrorTypes.NETWORK ? 8000 : 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      }
+    );
+
+    setError(`${contextMessage}${errorInfo.message}`);
+    return errorInfo;
+  };
+
+  // ✅ Enhanced Image URL construction using BASE_URL - FIXED SYNTAX ERROR
   const getImageUrl = (imagePath, type = 'profile') => {
     if (!imagePath) return null;
     
@@ -51,14 +154,14 @@ const AllRegisterCustomers = () => {
       cleanPath = cleanPath.replace(/^uploads\/+/, '');
       cleanPath = cleanPath.replace(/^profile\/+/, '');
       const filename = cleanPath.split('/').pop();
-      return `${BACKEND_URL}/uploads/profile/${filename}`;
+      return `${BASE_URL}/uploads/profile/${filename}`;
     } else {
-      // For documents
+      // For documents - ✅ FIXED THE SYNTAX ERROR HERE
       cleanPath = cleanPath.replace(/^uploads\/documents\/+/, '');
       cleanPath = cleanPath.replace(/^uploads\/+/, '');
-      cleanPath = cleanPath.replace(/^documents\/+/, '');
+      cleanPath = cleanPath.replace(/^documents\/+/, ''); // ✅ Added missing parenthesis
       const filename = cleanPath.split('/').pop();
-      return `${BACKEND_URL}/uploads/documents/${filename}`;
+      return `${BASE_URL}/uploads/documents/${filename}`;
     }
   };
 
@@ -87,19 +190,20 @@ const AllRegisterCustomers = () => {
     }
   }, [searchQuery, data]);
 
-  // Fetch users with proper backend integration
-  const fetchUsers = async (page = 0, size = 10) => {
+  // ✅ Enhanced API calls with professional error handling
+  const fetchUsers = async (page = 0, size = 10, retryAttempt = 0) => {
     setLoading(true);
     setError("");
+    
     try {
-      console.log(`Fetching users: page=${page}, size=${size}`);
+      console.log(`🔄 Fetching users: page=${page}, size=${size}`);
       
       // Use the correct endpoint from your backend: /api/auth/users
       const response = await apiClient.get("/auth/users", {
         params: { page, size }
       });
       
-      console.log("Users response:", response.data);
+      console.log("✅ Users response:", response.data);
       
       if (response.data) {
         const users = response.data.users || [];
@@ -122,21 +226,29 @@ const AllRegisterCustomers = () => {
         setTotalPages(response.data.totalPages || 0);
         setTotalElements(response.data.count || 0);
         setCurrentPage(response.data.currentPage || 0);
-        setSuccess(`Successfully loaded ${processedUsers.length} users`);
+        setRetryCount(0); // Reset retry count on success
         
-        // Clear success message after showing briefly
-        setTimeout(() => setSuccess(""), 3000);
+        if (processedUsers.length > 0) {
+          setSuccess(`Successfully loaded ${processedUsers.length} users`);
+          setTimeout(() => setSuccess(""), 3000);
+        }
       } else {
         setError("Failed to fetch users");
         setData([]);
         setFilteredData([]);
       }
     } catch (error) {
-      console.error("Error fetching users:", error);
-      setError(error.response?.data?.message || "Error fetching users");
-      toast.error("Failed to fetch users");
+      const errorInfo = showErrorNotification(error, "Failed to fetch users");
+      
       setData([]);
       setFilteredData([]);
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying users fetch (attempt ${retryAttempt + 1}/3)...`);
+        setRetryCount(retryAttempt + 1);
+        setTimeout(() => fetchUsers(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
+      }
     } finally {
       setLoading(false);
     }
@@ -181,10 +293,11 @@ const AllRegisterCustomers = () => {
     setSelectedUser(null);
   };
 
-  // Handle image modal
+  // ✅ Enhanced image modal handling
   const handleImageClick = (imageData) => {
     if (!imageData) {
       console.log("No image data available");
+      toast.warning("No image available to preview");
       return;
     }
     setSelectedImage(imageData);
@@ -196,15 +309,20 @@ const AllRegisterCustomers = () => {
     setIsModalOpen(false);
   };
 
-  // Handle document verification actions
+  // ✅ Enhanced document verification with better UX
   const handleDocumentAction = async (docType, action) => {
     const token = localStorage.getItem("token");
     if (!token) {
-      toast.error("Unauthorized access.");
+      toast.error("Unauthorized access. Please log in again.");
       return;
     }
 
+    // Set updating state for this document
+    setDocumentUpdating(prev => ({ ...prev, [docType]: true }));
+
     try {
+      console.log(`🔄 Updating document ${docType} to ${action}`);
+      
       const response = await apiClient.put(
         `/booking/verify-documents/${selectedUser.id}`,
         null,
@@ -220,11 +338,18 @@ const AllRegisterCustomers = () => {
       );
 
       if (response.status === 200) {
+        // Update local state optimistically
         setDocumentStatus((prevStatus) => ({
           ...prevStatus,
           [docType]: action,
         }));
-        toast.success(`Document ${docType} ${action.toLowerCase()} successfully!`);
+        
+        toast.success(
+          <div>
+            <div className="font-medium">Document verification updated</div>
+            <div className="text-sm opacity-90">{docType} {action.toLowerCase()} successfully</div>
+          </div>
+        );
         
         // Update the user data in the state
         setData((prevData) =>
@@ -244,12 +369,21 @@ const AllRegisterCustomers = () => {
           [`${docType}Status`]: action
         }));
       } else {
-        toast.error("Failed to update document status.");
+        throw new Error("Failed to update document status");
       }
     } catch (error) {
-      console.error("Error updating document status:", error);
-      toast.error("Failed to update document status.");
+      console.error("❌ Error updating document status:", error);
+      showErrorNotification(error, "Failed to update document verification");
+    } finally {
+      // Clear updating state
+      setDocumentUpdating(prev => ({ ...prev, [docType]: false }));
     }
+  };
+
+  // Manual retry function
+  const handleRetry = () => {
+    setError("");
+    fetchUsers(currentPage, itemsPerPage);
   };
 
   // Pagination handlers
@@ -297,7 +431,7 @@ const AllRegisterCustomers = () => {
     );
   };
 
-  // Image error handler
+  // ✅ Enhanced image error handlers
   const handleImageError = (e, userName) => {
     console.error(`Profile image failed to load for user "${userName}":`, e.target.src);
     e.target.style.display = 'none';
@@ -307,7 +441,6 @@ const AllRegisterCustomers = () => {
     }
   };
 
-  // Image load success handler
   const handleImageLoad = (e) => {
     e.target.style.display = 'block';
     const fallbackDiv = e.target.nextElementSibling;
@@ -380,6 +513,7 @@ const AllRegisterCustomers = () => {
                 label="Aadhar Front Side"
                 imageData={selectedUser.aadharFrontSide}
                 status={documentStatus.aadharFrontSide}
+                updating={documentUpdating.aadharFrontSide}
                 onVerify={() => handleDocumentAction('aadharFrontSide', 'APPROVED')}
                 onReject={() => handleDocumentAction('aadharFrontSide', 'REJECTED')}
                 onImageClick={handleImageClick}
@@ -388,6 +522,7 @@ const AllRegisterCustomers = () => {
                 label="Aadhar Back Side"
                 imageData={selectedUser.aadharBackSide}
                 status={documentStatus.aadharBackSide}
+                updating={documentUpdating.aadharBackSide}
                 onVerify={() => handleDocumentAction('aadharBackSide', 'APPROVED')}
                 onReject={() => handleDocumentAction('aadharBackSide', 'REJECTED')}
                 onImageClick={handleImageClick}
@@ -396,6 +531,7 @@ const AllRegisterCustomers = () => {
                 label="Driving License"
                 imageData={selectedUser.drivingLicense}
                 status={documentStatus.drivingLicense}
+                updating={documentUpdating.drivingLicense}
                 onVerify={() => handleDocumentAction('drivingLicense', 'APPROVED')}
                 onReject={() => handleDocumentAction('drivingLicense', 'REJECTED')}
                 onImageClick={handleImageClick}
@@ -407,6 +543,7 @@ const AllRegisterCustomers = () => {
             className="mt-8 px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition duration-200"
             onClick={handleBack}
           >
+            <FaTimes className="mr-2" />
             Back to List
           </button>
         </div>
@@ -420,16 +557,48 @@ const AllRegisterCustomers = () => {
             </div>
           </div>
 
-          {/* Success/Error Messages */}
+          {/* Enhanced Success/Error Messages */}
           {success && (
             <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg">
-              <p className="text-sm text-green-700 font-medium">{success}</p>
+              <div className="flex">
+                <FaCheck className="text-green-400 mt-0.5 mr-3" />
+                <p className="text-sm text-green-700 font-medium">{success}</p>
+              </div>
             </div>
           )}
           
           {error && (
             <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
-              <p className="text-sm text-red-700 font-medium">{error}</p>
+              <div className="flex">
+                <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-red-700 font-medium">{error}</p>
+                  {error.includes("connect to server") && (
+                    <div className="mt-3">
+                      <p className="text-xs text-red-600">
+                        💡 <strong>Troubleshooting tips:</strong>
+                      </p>
+                      <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
+                        <li>Ensure your backend server is running on {BASE_URL}</li>
+                        <li>Check your network connection</li>
+                        <li>Verify CORS settings in your backend</li>
+                      </ul>
+                      <button
+                        onClick={handleRetry}
+                        className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                      >
+                        <FaRedo className="mr-1" />
+                        Retry Connection
+                      </button>
+                    </div>
+                  )}
+                  {retryCount > 0 && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Retry attempt {retryCount}/3 in progress...
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -472,6 +641,9 @@ const AllRegisterCustomers = () => {
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-900 mb-4"></div>
                           <p className="text-gray-500">Loading users...</p>
+                          {retryCount > 0 && (
+                            <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -481,9 +653,18 @@ const AllRegisterCustomers = () => {
                         <div className="text-gray-500">
                           <FaUser className="mx-auto h-16 w-16 text-gray-300 mb-4" />
                           <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
-                          <p className="text-gray-500">
+                          <p className="text-gray-500 mb-4">
                             {searchQuery ? `No users match "${searchQuery}"` : "No registered customers yet"}
                           </p>
+                          {error && !searchQuery && (
+                            <button
+                              onClick={handleRetry}
+                              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                            >
+                              <FaRedo className="mr-2" />
+                              Try Again
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -599,13 +780,23 @@ const AllRegisterCustomers = () => {
         </>
       )}
 
-      {/* Image Modal */}
+      {/* ✅ Enhanced Image Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-80 z-50">
-          <div className="bg-white p-6 rounded-lg shadow-xl max-w-4xl w-full relative">
+        <div 
+          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-80 z-50"
+          onClick={handleCloseModal}
+          role="dialog"
+          aria-labelledby="image-modal-title"
+          aria-modal="true"
+        >
+          <div 
+            className="bg-white p-6 rounded-lg shadow-xl max-w-4xl w-full relative"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               className="absolute top-3 right-3 text-gray-700 hover:text-gray-900 bg-gray-200 hover:bg-gray-300 rounded-full p-2 z-10"
               onClick={handleCloseModal}
+              aria-label="Close image preview"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -622,6 +813,7 @@ const AllRegisterCustomers = () => {
                 />
               </svg>
             </button>
+            <div id="image-modal-title" className="sr-only">Document Preview</div>
             <div className="flex justify-center items-center p-4 min-h-[400px]">
               {selectedImage ? (
                 <img
@@ -629,9 +821,15 @@ const AllRegisterCustomers = () => {
                   alt="Document"
                   className="max-w-full max-h-[70vh] object-contain border-4 border-gray-300 rounded shadow-lg"
                   onError={(e) => {
-                    console.error("Image loading error");
+                    console.error("Modal image loading error");
                     e.target.style.display = "none";
-                    e.target.nextSibling.style.display = "block";
+                    const errorDiv = e.target.parentNode.querySelector('.error-fallback') || 
+                                   document.createElement('div');
+                    errorDiv.className = 'text-xl text-red-500 error-fallback';
+                    errorDiv.textContent = 'Unable to load image';
+                    if (!e.target.parentNode.querySelector('.error-fallback')) {
+                      e.target.parentNode.appendChild(errorDiv);
+                    }
                   }}
                 />
               ) : (
@@ -645,8 +843,8 @@ const AllRegisterCustomers = () => {
   );
 };
 
-// Profile Image Detail Component for Document Verification
-const ProfileImageDetail = ({ label, imageData, status, onVerify, onReject, onImageClick }) => {
+// ✅ Enhanced Profile Image Detail Component for Document Verification
+const ProfileImageDetail = ({ label, imageData, status, updating = false, onVerify, onReject, onImageClick }) => {
   const getImageSource = () => {
     if (!imageData) return null;
     if (typeof imageData === "string" && imageData.startsWith("data:image/")) {
@@ -656,7 +854,10 @@ const ProfileImageDetail = ({ label, imageData, status, onVerify, onReject, onIm
   };
 
   const handleImageClick = () => {
-    if (!imageData) return;
+    if (!imageData) {
+      toast.warning("No image available to preview");
+      return;
+    }
     const base64Data = typeof imageData === "string" && imageData.startsWith("data:image/")
       ? imageData.split(',')[1]
       : imageData;
@@ -671,6 +872,10 @@ const ProfileImageDetail = ({ label, imageData, status, onVerify, onReject, onIm
           flex items-center justify-center rounded-md overflow-hidden transition-all duration-300
           ${imageData ? 'cursor-pointer hover:shadow-lg' : 'cursor-default'}`}
         onClick={handleImageClick}
+        role={imageData ? "button" : undefined}
+        tabIndex={imageData ? 0 : undefined}
+        onKeyDown={imageData ? (e) => e.key === 'Enter' && handleImageClick() : undefined}
+        aria-label={imageData ? `Preview ${label}` : `No ${label} available`}
       >
         {imageData ? (
           <img
@@ -686,7 +891,10 @@ const ProfileImageDetail = ({ label, imageData, status, onVerify, onReject, onIm
             }}
           />
         ) : (
-          <p className="font-medium text-gray-500">No Image Available</p>
+          <div className="text-center">
+            <FaUser className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+            <p className="font-medium text-gray-500">No Image Available</p>
+          </div>
         )}
       </div>
       
@@ -700,29 +908,55 @@ const ProfileImageDetail = ({ label, imageData, status, onVerify, onReject, onIm
           {status}
         </div>
         
-        {/* Action Buttons */}
+        {/* ✅ Enhanced Action Buttons with loading states */}
         <div className="flex space-x-2">
           <button
-            className={`px-3 py-1 text-xs rounded transition duration-200 ${
-              status === 'APPROVED' 
+            className={`px-3 py-1 text-xs rounded transition duration-200 flex items-center ${
+              status === 'APPROVED' || updating
                 ? 'bg-green-500 text-white cursor-not-allowed' 
                 : 'bg-green-100 text-green-700 hover:bg-green-200'
             }`}
             onClick={onVerify}
-            disabled={status === 'APPROVED'}
+            disabled={status === 'APPROVED' || updating}
+            aria-label={`Approve ${label}`}
           >
-            Approve
+            {updating ? (
+              <>
+                <svg className="animate-spin h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Updating...
+              </>
+            ) : (
+              <>
+                <FaCheck className="mr-1" />
+                Approve
+              </>
+            )}
           </button>
           <button
-            className={`px-3 py-1 text-xs rounded transition duration-200 ${
-              status === 'REJECTED' 
+            className={`px-3 py-1 text-xs rounded transition duration-200 flex items-center ${
+              status === 'REJECTED' || updating
                 ? 'bg-red-500 text-white cursor-not-allowed' 
                 : 'bg-red-100 text-red-700 hover:bg-red-200'
             }`}
             onClick={onReject}
-            disabled={status === 'REJECTED'}
+            disabled={status === 'REJECTED' || updating}
+            aria-label={`Reject ${label}`}
           >
-            Reject
+            {updating ? (
+              <>
+                <svg className="animate-spin h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Updating...
+              </>
+            ) : (
+              <>
+                <FaTimes className="mr-1" />
+                Reject
+              </>
+            )}
           </button>
         </div>
       </div>

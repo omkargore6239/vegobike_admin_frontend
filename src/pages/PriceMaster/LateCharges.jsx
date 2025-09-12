@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { FaEdit, FaTrash, FaSearch, FaPlus, FaToggleOn, FaToggleOff, FaSave, FaTimes, FaCheck } from "react-icons/fa";
+import { FaEdit, FaTrash, FaSearch, FaPlus, FaToggleOn, FaToggleOff, FaSave, FaTimes, FaCheck, FaExclamationTriangle, FaRedo } from "react-icons/fa";
 import { toast } from "react-toastify";
-import { lateChargesAPI, categoryAPI } from "../../api/apiConfig";
+import { lateChargesAPI, categoryAPI, BASE_URL } from "../../api/apiConfig"; // Import BASE_URL
 
 const LateCharges = () => {
   // State management
@@ -22,6 +22,8 @@ const LateCharges = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [validationErrors, setValidationErrors] = useState({});
   
   const [formData, setFormData] = useState({
     categoryId: "",
@@ -34,6 +36,171 @@ const LateCharges = () => {
     { value: "HOURS", label: "Hours", unit: "hour" },
     { value: "KM", label: "Kilometers", unit: "km" }
   ];
+
+  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
+  const ErrorTypes = {
+    NETWORK: 'NETWORK',
+    VALIDATION: 'VALIDATION',
+    PERMISSION: 'PERMISSION',
+    NOT_FOUND: 'NOT_FOUND',
+    SERVER: 'SERVER',
+    DUPLICATE: 'DUPLICATE',
+    UNKNOWN: 'UNKNOWN'
+  };
+
+  const getErrorInfo = (error) => {
+    let type = ErrorTypes.UNKNOWN;
+    let message = "An unexpected error occurred";
+    let isRetryable = false;
+    let suggestions = [];
+
+    if (!error) return { type, message, isRetryable, suggestions };
+
+    // Network errors
+    if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
+      type = ErrorTypes.NETWORK;
+      message = `Unable to connect to the server at ${BASE_URL}`;
+      isRetryable = true;
+      suggestions = [
+        "Check your internet connection",
+        "Verify the backend server is running",
+        "Ensure CORS is properly configured"
+      ];
+    }
+    // HTTP status errors
+    else if (error.response?.status) {
+      const status = error.response.status;
+      const serverMessage = error.response.data?.message || error.response.data?.error;
+
+      switch (status) {
+        case 400:
+          type = ErrorTypes.VALIDATION;
+          message = serverMessage || "Invalid request data";
+          suggestions = ["Please check your input and try again"];
+          break;
+        case 401:
+          type = ErrorTypes.PERMISSION;
+          message = "Authentication required";
+          suggestions = ["Please log in and try again"];
+          break;
+        case 403:
+          type = ErrorTypes.PERMISSION;
+          message = "Access denied - insufficient permissions";
+          suggestions = ["Contact your administrator for access"];
+          break;
+        case 404:
+          type = ErrorTypes.NOT_FOUND;
+          message = "Resource not found";
+          suggestions = ["The requested item may have been deleted"];
+          break;
+        case 409:
+          type = ErrorTypes.DUPLICATE;
+          message = serverMessage || "This combination already exists";
+          suggestions = ["Try with different values"];
+          break;
+        case 500:
+        case 502:
+        case 503:
+          type = ErrorTypes.SERVER;
+          message = "Server error occurred";
+          isRetryable = true;
+          suggestions = ["Please try again in a moment", "Contact support if the problem persists"];
+          break;
+        default:
+          message = serverMessage || `Server returned error ${status}`;
+          isRetryable = status >= 500;
+      }
+    }
+    // Custom error messages
+    else if (error.message) {
+      message = error.message;
+      if (error.message.toLowerCase().includes('duplicate')) {
+        type = ErrorTypes.DUPLICATE;
+      }
+    }
+
+    return { type, message, isRetryable, suggestions };
+  };
+
+  const showErrorNotification = (error, context = "") => {
+    const errorInfo = getErrorInfo(error);
+    const contextMessage = context ? `${context}: ` : "";
+    
+    console.error(`❌ ${contextMessage}${errorInfo.message}`, error);
+    
+    toast.error(
+      <div>
+        <div className="font-medium">{contextMessage}{errorInfo.message}</div>
+        {errorInfo.suggestions.length > 0 && (
+          <div className="text-sm mt-1 opacity-90">
+            {errorInfo.suggestions[0]}
+          </div>
+        )}
+      </div>,
+      {
+        position: "top-right",
+        autoClose: errorInfo.type === ErrorTypes.NETWORK ? 8000 : 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      }
+    );
+
+    setError(`${contextMessage}${errorInfo.message}`);
+    return errorInfo;
+  };
+
+  // ✅ ENHANCED VALIDATION with detailed field-level errors
+  const validateForm = () => {
+    const errors = {};
+    const fieldErrors = [];
+    
+    // Category validation
+    if (!formData.categoryId || formData.categoryId === "") {
+      errors.categoryId = "Category is required";
+      fieldErrors.push("Please select a category");
+    }
+    
+    // Charge type validation
+    if (!formData.chargeType || formData.chargeType === "") {
+      errors.chargeType = "Charge type is required";
+      fieldErrors.push("Please select a charge type");
+    }
+    
+    // Charge amount validation
+    if (!formData.charge || formData.charge === "") {
+      errors.charge = "Charge amount is required";
+      fieldErrors.push("Please enter a charge amount");
+    } else {
+      const chargeValue = parseFloat(formData.charge);
+      if (isNaN(chargeValue)) {
+        errors.charge = "Charge amount must be a valid number";
+        fieldErrors.push("Charge amount must be a valid number");
+      } else if (chargeValue <= 0) {
+        errors.charge = "Charge amount must be greater than 0";
+        fieldErrors.push("Charge amount must be greater than 0");
+      } else if (chargeValue > 999999.99) {
+        errors.charge = "Charge amount is too large";
+        fieldErrors.push("Charge amount must be less than ₹10,00,000");
+      }
+    }
+
+    // Duplicate validation (when adding)
+    if (!editingId && formData.categoryId && formData.chargeType) {
+      const duplicate = lateCharges.find(charge => 
+        String(charge.categoryId) === String(formData.categoryId) && 
+        charge.chargeType === formData.chargeType
+      );
+      if (duplicate) {
+        errors.duplicate = "This combination already exists";
+        fieldErrors.push(`A late charge for ${getCategoryName(formData.categoryId)} - ${getChargeTypeLabel(formData.chargeType)} already exists`);
+      }
+    }
+
+    setValidationErrors(errors);
+    return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
+  };
 
   // Helper function to get charge type label
   const getChargeTypeLabel = (chargeType) => {
@@ -85,10 +252,10 @@ const LateCharges = () => {
     return category ? (category.categoryName || "Unknown Category") : "Unknown Category";
   };
 
-  // ✅ IMPROVED API CALLS using helper functions
+  // ✅ ENHANCED API CALLS with professional error handling
 
   // Fetch categories for dropdown
-  const fetchCategories = async () => {
+  const fetchCategories = async (retryAttempt = 0) => {
     try {
       console.log("🔄 Fetching categories...");
       const response = await categoryAPI.getActive();
@@ -103,14 +270,24 @@ const LateCharges = () => {
       
       setCategories(categoriesData);
       console.log("✅ Categories loaded:", categoriesData.length);
+      
+      if (categoriesData.length === 0) {
+        setError("No active categories found. Please add categories first.");
+      }
+      
     } catch (error) {
-      console.error("❌ Error fetching categories:", error);
-      toast.error("Failed to load categories");
+      const errorInfo = showErrorNotification(error, "Failed to load categories");
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying categories fetch (attempt ${retryAttempt + 1}/3)...`);
+        setTimeout(() => fetchCategories(retryAttempt + 1), 2000 * (retryAttempt + 1));
+      }
     }
   };
 
   // ✅ Fetch late charges using helper function
-  const fetchLateCharges = async () => {
+  const fetchLateCharges = async (retryAttempt = 0) => {
     setLoading(true);
     setError("");
     
@@ -133,6 +310,7 @@ const LateCharges = () => {
       
       setLateCharges(chargesData);
       setFilteredCharges(chargesData);
+      setRetryCount(0); // Reset retry count on success
       
       if (chargesData.length > 0) {
         setSuccess(`Successfully loaded ${chargesData.length} late charges`);
@@ -140,24 +318,17 @@ const LateCharges = () => {
       }
       
     } catch (error) {
-      console.error("❌ Error fetching late charges:", error);
+      const errorInfo = showErrorNotification(error, "Failed to fetch late charges");
       
-      let errorMessage = "Failed to fetch late charges";
-      
-      if (error.response?.status === 403) {
-        errorMessage = "Access denied. Please check your permissions.";
-      } else if (error.response?.status === 404) {
-        errorMessage = "Late charges endpoint not found.";
-      } else if (error.code === 'ERR_NETWORK') {
-        errorMessage = "Network error. Please check if the backend server is running on http://localhost:8081";
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-      
-      setError(errorMessage);
-      toast.error(errorMessage);
       setLateCharges([]);
       setFilteredCharges([]);
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying late charges fetch (attempt ${retryAttempt + 1}/3)...`);
+        setRetryCount(retryAttempt + 1);
+        setTimeout(() => fetchLateCharges(retryAttempt + 1), 3000 * (retryAttempt + 1));
+      }
     } finally {
       setLoading(false);
     }
@@ -166,6 +337,8 @@ const LateCharges = () => {
   // ✅ Add late charge using helper function
   const addLateCharge = async (data) => {
     setSubmitting(true);
+    setValidationErrors({});
+    
     try {
       console.log("🔄 Adding late charge:", data);
       const response = await lateChargesAPI.create(data);
@@ -176,10 +349,7 @@ const LateCharges = () => {
       await fetchLateCharges();
       return response.data;
     } catch (error) {
-      console.error("❌ Error adding late charge:", error);
-      const errorMsg = error.response?.data?.message || "Failed to add late charge";
-      setError(errorMsg);
-      toast.error(errorMsg);
+      showErrorNotification(error, "Failed to add late charge");
       throw error;
     } finally {
       setSubmitting(false);
@@ -189,6 +359,8 @@ const LateCharges = () => {
   // ✅ Update late charge using helper function
   const updateLateCharge = async (id, data) => {
     setSubmitting(true);
+    setValidationErrors({});
+    
     try {
       console.log("🔄 Updating late charge:", id, data);
       const response = await lateChargesAPI.update(id, data);
@@ -199,10 +371,7 @@ const LateCharges = () => {
       await fetchLateCharges();
       return response.data;
     } catch (error) {
-      console.error("❌ Error updating late charge:", error);
-      const errorMsg = error.response?.data?.message || "Failed to update late charge";
-      setError(errorMsg);
-      toast.error(errorMsg);
+      showErrorNotification(error, "Failed to update late charge");
       throw error;
     } finally {
       setSubmitting(false);
@@ -219,14 +388,11 @@ const LateCharges = () => {
       console.log("✅ Toggle status response:", response.data);
       
       setSuccess("Status updated successfully");
-      toast.success("Status updated successfully");
+      toast.success(`Late charge ${newStatus === 1 ? 'activated' : 'deactivated'} successfully`);
       await fetchLateCharges();
       return response.data;
     } catch (error) {
-      console.error("❌ Error toggling status:", error);
-      const errorMsg = error.response?.data?.message || "Failed to update status";
-      setError(errorMsg);
-      toast.error(errorMsg);
+      showErrorNotification(error, "Failed to update status");
     }
   };
 
@@ -242,10 +408,7 @@ const LateCharges = () => {
       setConfirmDeleteId(null);
       await fetchLateCharges();
     } catch (error) {
-      console.error("❌ Error deleting late charge:", error);
-      const errorMsg = error.response?.data?.message || "Failed to delete late charge";
-      setError(errorMsg);
-      toast.error(errorMsg);
+      showErrorNotification(error, "Failed to delete late charge");
       setConfirmDeleteId(null);
     }
   };
@@ -261,40 +424,6 @@ const LateCharges = () => {
     loadData();
   }, []);
 
-  // ✅ IMPROVED VALIDATION
-  const validateForm = () => {
-    const errors = [];
-    
-    if (!formData.categoryId || formData.categoryId === "") {
-      errors.push("Please select a category");
-    }
-    
-    if (!formData.chargeType || formData.chargeType === "") {
-      errors.push("Please select a charge type");
-    }
-    
-    if (!formData.charge || formData.charge === "" || isNaN(formData.charge)) {
-      errors.push("Please enter a valid charge amount");
-    }
-    
-    if (parseFloat(formData.charge) <= 0) {
-      errors.push("Charge amount must be greater than 0");
-    }
-
-    // Check for duplicate combination (category + chargeType) when adding
-    if (!editingId) {
-      const duplicate = lateCharges.find(charge => 
-        String(charge.categoryId) === String(formData.categoryId) && 
-        charge.chargeType === formData.chargeType
-      );
-      if (duplicate) {
-        errors.push(`A late charge for ${getCategoryName(formData.categoryId)} - ${getChargeTypeLabel(formData.chargeType)} already exists`);
-      }
-    }
-
-    return errors;
-  };
-
   // Handle form input changes
   const handleInputChange = (e) => {
     const { name, value, type } = e.target;
@@ -303,7 +432,15 @@ const LateCharges = () => {
       [name]: type === 'number' ? value : value
     }));
     
-    // Clear error when user starts typing
+    // Clear validation errors for this field
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+    
+    // Clear general error when user starts typing
     if (error) {
       setError("");
     }
@@ -319,6 +456,7 @@ const LateCharges = () => {
     setEditingId(null);
     setShowAddForm(false);
     setError("");
+    setValidationErrors({});
   };
 
   // Handle add new charge
@@ -337,6 +475,7 @@ const LateCharges = () => {
     setEditingId(charge.id);
     setShowAddForm(false);
     setError("");
+    setValidationErrors({});
   };
 
   // Handle form submit
@@ -344,9 +483,9 @@ const LateCharges = () => {
     e.preventDefault();
     
     // Validation
-    const validationErrors = validateForm();
-    if (validationErrors.length > 0) {
-      setError(validationErrors[0]);
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setError(validation.fieldErrors[0]);
       return;
     }
 
@@ -377,6 +516,12 @@ const LateCharges = () => {
     return isActive === 1 
       ? { text: 'Active', class: 'bg-green-100 text-green-800' }
       : { text: 'Inactive', class: 'bg-red-100 text-red-800' };
+  };
+
+  // Manual retry function
+  const handleRetry = () => {
+    setError("");
+    fetchLateCharges();
   };
 
   // Pagination calculations
@@ -413,7 +558,7 @@ const LateCharges = () => {
         </button>
       </div>
 
-      {/* Success/Error Messages */}
+      {/* Enhanced Success/Error Messages */}
       {success && (
         <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg">
           <div className="flex">
@@ -426,12 +571,31 @@ const LateCharges = () => {
       {error && (
         <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
           <div className="flex">
-            <FaTimes className="text-red-400 mt-0.5 mr-3" />
-            <div>
+            <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+            <div className="flex-1">
               <p className="text-sm text-red-700 font-medium">{error}</p>
-              {error.includes("Network error") && (
+              {error.includes("connect to the server") && (
+                <div className="mt-3">
+                  <p className="text-xs text-red-600">
+                    💡 <strong>Troubleshooting tips:</strong>
+                  </p>
+                  <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
+                    <li>Ensure your backend server is running on {BASE_URL}</li>
+                    <li>Check your network connection</li>
+                    <li>Verify CORS settings in your backend</li>
+                  </ul>
+                  <button
+                    onClick={handleRetry}
+                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                  >
+                    <FaRedo className="mr-1" />
+                    Retry Connection
+                  </button>
+                </div>
+              )}
+              {retryCount > 0 && (
                 <p className="text-xs text-red-600 mt-2">
-                  💡 Tip: Make sure your backend server is running on port 8081 and CORS is properly configured.
+                  Retry attempt {retryCount}/3 in progress...
                 </p>
               )}
             </div>
@@ -461,7 +625,7 @@ const LateCharges = () => {
           </div>
         </div>
 
-        {/* ✅ IMPROVED INLINE ADD FORM */}
+        {/* ✅ ENHANCED INLINE ADD FORM with validation errors */}
         {showAddForm && (
           <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
             <h4 className="text-lg font-medium text-gray-900 mb-4">Add New Late Charge</h4>
@@ -475,7 +639,9 @@ const LateCharges = () => {
                   value={formData.categoryId}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                    validationErrors.categoryId ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                 >
                   <option value="">Select Category</option>
                   {categories.map(category => (
@@ -484,6 +650,9 @@ const LateCharges = () => {
                     </option>
                   ))}
                 </select>
+                {validationErrors.categoryId && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.categoryId}</p>
+                )}
               </div>
 
               <div>
@@ -495,7 +664,9 @@ const LateCharges = () => {
                   value={formData.chargeType}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                    validationErrors.chargeType ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                 >
                   {CHARGE_TYPES.map(type => (
                     <option key={type.value} value={type.value}>
@@ -503,6 +674,9 @@ const LateCharges = () => {
                     </option>
                   ))}
                 </select>
+                {validationErrors.chargeType && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.chargeType}</p>
+                )}
               </div>
 
               <div>
@@ -516,10 +690,16 @@ const LateCharges = () => {
                   onChange={handleInputChange}
                   step="0.01"
                   min="0.01"
+                  max="999999.99"
                   required
                   placeholder="0.00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                    validationErrors.charge ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                 />
+                {validationErrors.charge && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.charge}</p>
+                )}
               </div>
 
               <div className="flex items-end space-x-2">
@@ -554,7 +734,7 @@ const LateCharges = () => {
           </div>
         )}
         
-        {/* ✅ IMPROVED TABLE with better enum handling */}
+        {/* ✅ TABLE remains mostly the same but with enhanced error states */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-indigo-900 text-white">
@@ -586,6 +766,9 @@ const LateCharges = () => {
                     <div className="flex flex-col items-center justify-center">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
                       <p className="text-gray-500">Loading late charges...</p>
+                      {retryCount > 0 && (
+                        <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -594,9 +777,18 @@ const LateCharges = () => {
                   <td colSpan="6" className="px-6 py-12 text-center">
                     <div className="text-gray-500">
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No late charges found</h3>
-                      <p className="text-gray-500">
+                      <p className="text-gray-500 mb-4">
                         {searchQuery ? `No charges match "${searchQuery}"` : "Get started by adding your first late charge"}
                       </p>
+                      {error && !searchQuery && (
+                        <button
+                          onClick={handleRetry}
+                          className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                        >
+                          <FaRedo className="mr-2" />
+                          Try Again
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -615,19 +807,26 @@ const LateCharges = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {isEditing ? (
-                          <select
-                            name="categoryId"
-                            value={formData.categoryId}
-                            onChange={handleInputChange}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
-                          >
-                            <option value="">Select Category</option>
-                            {categories.map(category => (
-                              <option key={category.id} value={category.id}>
-                                {category.categoryName}
-                              </option>
-                            ))}
-                          </select>
+                          <div>
+                            <select
+                              name="categoryId"
+                              value={formData.categoryId}
+                              onChange={handleInputChange}
+                              className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-indigo-500 ${
+                                validationErrors.categoryId ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                              }`}
+                            >
+                              <option value="">Select Category</option>
+                              {categories.map(category => (
+                                <option key={category.id} value={category.id}>
+                                  {category.categoryName}
+                                </option>
+                              ))}
+                            </select>
+                            {validationErrors.categoryId && (
+                              <p className="text-xs text-red-600 mt-1">{validationErrors.categoryId}</p>
+                            )}
+                          </div>
                         ) : (
                           <div className="text-sm font-medium text-gray-900">
                             {getCategoryName(charge.categoryId)}
@@ -636,18 +835,25 @@ const LateCharges = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {isEditing ? (
-                          <select
-                            name="chargeType"
-                            value={formData.chargeType}
-                            onChange={handleInputChange}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
-                          >
-                            {CHARGE_TYPES.map(type => (
-                              <option key={type.value} value={type.value}>
-                                {type.label}
-                              </option>
-                            ))}
-                          </select>
+                          <div>
+                            <select
+                              name="chargeType"
+                              value={formData.chargeType}
+                              onChange={handleInputChange}
+                              className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-indigo-500 ${
+                                validationErrors.chargeType ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                              }`}
+                            >
+                              {CHARGE_TYPES.map(type => (
+                                <option key={type.value} value={type.value}>
+                                  {type.label}
+                                </option>
+                              ))}
+                            </select>
+                            {validationErrors.chargeType && (
+                              <p className="text-xs text-red-600 mt-1">{validationErrors.chargeType}</p>
+                            )}
+                          </div>
                         ) : (
                           <div className="text-sm text-gray-900">
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -658,15 +864,23 @@ const LateCharges = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {isEditing ? (
-                          <input
-                            type="number"
-                            name="charge"
-                            value={formData.charge}
-                            onChange={handleInputChange}
-                            step="0.01"
-                            min="0.01"
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
-                          />
+                          <div>
+                            <input
+                              type="number"
+                              name="charge"
+                              value={formData.charge}
+                              onChange={handleInputChange}
+                              step="0.01"
+                              min="0.01"
+                              max="999999.99"
+                              className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-indigo-500 ${
+                                validationErrors.charge ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                              }`}
+                            />
+                            {validationErrors.charge && (
+                              <p className="text-xs text-red-600 mt-1">{validationErrors.charge}</p>
+                            )}
+                          </div>
                         ) : (
                           <div className="text-sm font-medium text-gray-900">
                             <span className="text-lg font-semibold text-green-600">₹{parseFloat(charge.charge).toFixed(2)}</span>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { FaEdit, FaTrash, FaToggleOn, FaToggleOff, FaPlus, FaSearch, FaImage } from "react-icons/fa";
-import { categoryAPI } from "../../api/apiConfig";
+import { categoryAPI, BASE_URL } from "../../api/apiConfig"; // Import BASE_URL from apiConfig
 
 const AllCategories = () => {
   const [data, setData] = useState([]);
@@ -21,26 +21,25 @@ const AllCategories = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Base URL for images
-  const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:8081';
+  // ✅ Updated: Use BASE_URL from apiConfig instead of hardcoded fallback
+  // No need to redeclare BASE_URL since it's imported from apiConfig
 
   // Static Categories
   const staticCategories = ["Bike", "Scooter"];
 
   // Fixed Image URL construction
- const getImageUrl = (imagePath) => {
-  if (!imagePath) return null;
-  
-  // If already a full URL, use it directly
-  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-    return imagePath;
-  }
-  
-  // Since backend returns paths like "/uploads/categories/filename.jpeg"
-  // Just append to BASE_URL
-  return `${BASE_URL}${imagePath}`;
-};
-
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return null;
+    
+    // If already a full URL, use it directly
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath;
+    }
+    
+    // Since backend returns paths like "/uploads/categories/filename.jpeg"
+    // Just append to BASE_URL
+    return `${BASE_URL}${imagePath}`;
+  };
 
   // Simple Image Component
   const CategoryImage = ({ category }) => {

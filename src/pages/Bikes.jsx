@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { FaEdit, FaTrash, FaSearch, FaPlus, FaMotorcycle, FaEye } from "react-icons/fa";
+import { FaEdit, FaTrash, FaSearch, FaPlus, FaMotorcycle, FaEye, FaExclamationTriangle, FaRedo, FaCheck, FaTimes } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import apiClient from "../api/apiConfig";
+import apiClient, { BASE_URL } from "../api/apiConfig"; // Import BASE_URL from apiConfig
 
 const Bikes = () => {
   const navigate = useNavigate();
@@ -18,6 +18,7 @@ const Bikes = () => {
   const [referencesLoaded, setReferencesLoaded] = useState(false); // ✅ Track if references are ready
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   
   // Search and pagination
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,8 +26,109 @@ const Bikes = () => {
   const [itemsPerPage] = useState(10);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  // Backend base URL for images
-  const BACKEND_URL = "http://localhost:8081";
+  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
+  const ErrorTypes = {
+    NETWORK: 'NETWORK',
+    VALIDATION: 'VALIDATION',
+    PERMISSION: 'PERMISSION',
+    NOT_FOUND: 'NOT_FOUND',
+    SERVER: 'SERVER',
+    UNKNOWN: 'UNKNOWN'
+  };
+
+  const getErrorInfo = (error) => {
+    let type = ErrorTypes.UNKNOWN;
+    let message = "An unexpected error occurred";
+    let isRetryable = false;
+    let suggestions = [];
+
+    if (!error) return { type, message, isRetryable, suggestions };
+
+    // Network errors
+    if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
+      type = ErrorTypes.NETWORK;
+      message = `Unable to connect to server at ${BASE_URL}`;
+      isRetryable = true;
+      suggestions = [
+        "Check your internet connection",
+        "Verify the backend server is running",
+        "Ensure CORS is properly configured"
+      ];
+    }
+    // HTTP status errors
+    else if (error.response?.status) {
+      const status = error.response.status;
+      const serverMessage = error.response.data?.message || error.response.data?.error;
+
+      switch (status) {
+        case 400:
+          type = ErrorTypes.VALIDATION;
+          message = serverMessage || "Invalid request data";
+          suggestions = ["Please check your request and try again"];
+          break;
+        case 401:
+          type = ErrorTypes.PERMISSION;
+          message = "Authentication required";
+          suggestions = ["Please log in and try again"];
+          break;
+        case 403:
+          type = ErrorTypes.PERMISSION;
+          message = "Access denied - insufficient permissions";
+          suggestions = ["Contact your administrator for access"];
+          break;
+        case 404:
+          type = ErrorTypes.NOT_FOUND;
+          message = "Resource not found";
+          suggestions = ["The requested data may have been deleted"];
+          break;
+        case 500:
+        case 502:
+        case 503:
+          type = ErrorTypes.SERVER;
+          message = "Server error occurred";
+          isRetryable = true;
+          suggestions = ["Please try again in a moment", "Contact support if the problem persists"];
+          break;
+        default:
+          message = serverMessage || `Server returned error ${status}`;
+          isRetryable = status >= 500;
+      }
+    }
+    else if (error.message) {
+      message = error.message;
+    }
+
+    return { type, message, isRetryable, suggestions };
+  };
+
+  const showErrorNotification = (error, context = "") => {
+    const errorInfo = getErrorInfo(error);
+    const contextMessage = context ? `${context}: ` : "";
+    
+    console.error(`❌ ${contextMessage}${errorInfo.message}`, error);
+    
+    toast.error(
+      <div>
+        <div className="font-medium">{contextMessage}{errorInfo.message}</div>
+        {errorInfo.suggestions.length > 0 && (
+          <div className="text-sm mt-1 opacity-90">
+            {errorInfo.suggestions[0]}
+          </div>
+        )}
+      </div>,
+      {
+        position: "top-right",
+        autoClose: errorInfo.type === ErrorTypes.NETWORK ? 8000 : 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      }
+    );
+
+    setError(`${contextMessage}${errorInfo.message}`);
+    return errorInfo;
+  };
 
   // ✅ FIXED: Helper function to match IDs properly (handles string/number mismatch)
   const getNameById = (array, id, fieldName, defaultValue) => {
@@ -41,7 +143,7 @@ const Bikes = () => {
     return found ? (found[fieldName] || defaultValue) : defaultValue;
   };
 
-  // Helper function to get full image URL
+  // ✅ Enhanced Helper function to get full image URL using BASE_URL
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
     
@@ -51,10 +153,10 @@ const Bikes = () => {
     
     let cleanPath = imagePath.trim();
     if (cleanPath.startsWith('uploads/')) {
-      return `${BACKEND_URL}/${cleanPath}`;
+      return `${BASE_URL}/${cleanPath}`;
     } else {
       cleanPath = cleanPath.replace(/^\/+/, '');
-      return `${BACKEND_URL}/uploads/${cleanPath}`;
+      return `${BASE_URL}/uploads/${cleanPath}`;
     }
   };
 
@@ -88,8 +190,8 @@ const Bikes = () => {
     setCurrentPage(1);
   }, [searchQuery, processedBikes]);
 
-  // ✅ STEP 1: Fetch reference data FIRST
-  const fetchReferenceData = async () => {
+  // ✅ ENHANCED STEP 1: Fetch reference data FIRST with retry logic
+  const fetchReferenceData = async (retryAttempt = 0) => {
     try {
       console.log("🔄 Fetching reference data...");
       
@@ -131,17 +233,26 @@ const Bikes = () => {
 
       // ✅ Mark references as loaded
       setReferencesLoaded(true);
+      setRetryCount(0); // Reset retry count on success
       console.log("✅ All reference data loaded successfully");
 
     } catch (error) {
       console.error("❌ Error fetching reference data:", error);
-      setError("Failed to load reference data");
-      setReferencesLoaded(true); // Still mark as loaded to proceed
+      const errorInfo = showErrorNotification(error, "Failed to load reference data");
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying reference data fetch (attempt ${retryAttempt + 1}/3)...`);
+        setRetryCount(retryAttempt + 1);
+        setTimeout(() => fetchReferenceData(retryAttempt + 1), 3000 * (retryAttempt + 1));
+      } else {
+        setReferencesLoaded(true); // Still mark as loaded to proceed
+      }
     }
   };
 
-  // ✅ STEP 2: Fetch raw bikes data
-  const fetchRawBikes = async () => {
+  // ✅ ENHANCED STEP 2: Fetch raw bikes data with retry logic
+  const fetchRawBikes = async (retryAttempt = 0) => {
     try {
       console.log("🚲 Fetching raw bikes data...");
       
@@ -150,12 +261,20 @@ const Bikes = () => {
       
       console.log("✅ Raw bikes loaded:", bikesData.length, "items");
       setRawBikes(bikesData);
+      setRetryCount(0); // Reset retry count on success
       
     } catch (error) {
       console.error("❌ Error fetching bikes:", error);
-      setError("Failed to fetch bikes");
-      toast.error("Failed to fetch bikes");
+      const errorInfo = showErrorNotification(error, "Failed to fetch bikes");
+      
       setRawBikes([]);
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying bikes fetch (attempt ${retryAttempt + 1}/3)...`);
+        setRetryCount(retryAttempt + 1);
+        setTimeout(() => fetchRawBikes(retryAttempt + 1), 3000 * (retryAttempt + 1));
+      }
     }
   };
 
@@ -275,7 +394,7 @@ const Bikes = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  // Delete bike
+  // ✅ Enhanced Delete bike with better error handling
   const handleDeleteBike = async (id) => {
     if (!id) {
       setError("Invalid bike ID");
@@ -299,10 +418,21 @@ const Bikes = () => {
       
     } catch (error) {
       console.error("❌ Error deleting bike:", error);
-      setError(error.response?.data?.message || "Failed to delete bike");
-      toast.error("Failed to delete bike");
+      showErrorNotification(error, "Failed to delete bike");
       setConfirmDeleteId(null);
     }
+  };
+
+  // Manual retry function
+  const handleRetry = () => {
+    setError("");
+    setRetryCount(0);
+    const loadData = async () => {
+      setLoading(true);
+      await fetchReferenceData();
+      await fetchRawBikes();
+    };
+    loadData();
   };
 
   // Handle navigation
@@ -435,8 +565,9 @@ const Bikes = () => {
     return pages;
   };
 
-  // Image error handler
+  // ✅ Enhanced image error handlers
   const handleImageError = (e, bikeName) => {
+    console.error(`Bike image failed to load for "${bikeName}":`, e.target.src);
     e.target.style.display = 'none';
     const fallbackDiv = e.target.nextElementSibling;
     if (fallbackDiv) {
@@ -444,7 +575,6 @@ const Bikes = () => {
     }
   };
 
-  // Image load success handler
   const handleImageLoad = (e) => {
     e.target.style.display = 'block';
     const fallbackDiv = e.target.nextElementSibling;
@@ -472,16 +602,48 @@ const Bikes = () => {
         </button>
       </div>
 
-      {/* Success/Error Messages */}
+      {/* Enhanced Success/Error Messages */}
       {success && (
         <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg">
-          <p className="text-sm text-green-700 font-medium">{success}</p>
+          <div className="flex">
+            <FaCheck className="text-green-400 mt-0.5 mr-3" />
+            <p className="text-sm text-green-700 font-medium">{success}</p>
+          </div>
         </div>
       )}
       
       {error && (
         <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
-          <p className="text-sm text-red-700 font-medium">{error}</p>
+          <div className="flex">
+            <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-red-700 font-medium">{error}</p>
+              {error.includes("connect to server") && (
+                <div className="mt-3">
+                  <p className="text-xs text-red-600">
+                    💡 <strong>Troubleshooting tips:</strong>
+                  </p>
+                  <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
+                    <li>Ensure your backend server is running on {BASE_URL}</li>
+                    <li>Check your network connection</li>
+                    <li>Verify CORS settings in your backend</li>
+                  </ul>
+                  <button
+                    onClick={handleRetry}
+                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                  >
+                    <FaRedo className="mr-1" />
+                    Retry Connection
+                  </button>
+                </div>
+              )}
+              {retryCount > 0 && (
+                <p className="text-xs text-red-600 mt-2">
+                  Retry attempt {retryCount}/3 in progress...
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -547,6 +709,9 @@ const Bikes = () => {
                       <p className="text-gray-500">
                         {!referencesLoaded ? "Loading reference data..." : "Processing bikes..."}
                       </p>
+                      {retryCount > 0 && (
+                        <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -556,9 +721,18 @@ const Bikes = () => {
                     <div className="text-gray-500">
                       <FaMotorcycle className="mx-auto h-16 w-16 text-gray-300 mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No bikes found</h3>
-                      <p className="text-gray-500">
+                      <p className="text-gray-500 mb-4">
                         {searchQuery ? `No bikes match "${searchQuery}"` : "Get started by adding your first bike"}
                       </p>
+                      {error && !searchQuery && (
+                        <button
+                          onClick={handleRetry}
+                          className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                        >
+                          <FaRedo className="mr-2" />
+                          Try Again
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

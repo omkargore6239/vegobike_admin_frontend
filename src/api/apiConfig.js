@@ -12,14 +12,14 @@ const isTokenValid = (token) => {
   }
 };
 
-// ✅ Updated: Create axios instance with correct backend URL
+// ✅ Updated: Create axios instance with dynamic backend URL from BASE_URL env
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8081/api', // ✅ Direct backend URL with /api
+  baseURL: `${BASE_URL}/api`, // Use BASE_URL env variable for backend prefix + /api
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: false, // ✅ Set to false if backend doesn't require credentials
-  timeout: 10000, // ✅ Add timeout
+  withCredentials: false,
+  timeout: 10000,
 });
 
 // Configure interceptors
@@ -48,19 +48,16 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response) => {
-    // Log successful responses in development
     if (import.meta.env.DEV) {
       console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url}:`, response.data);
     }
     return response;
   },
   (error) => {
-    // Log errors in development
     if (import.meta.env.DEV) {
       console.error(`❌ ${error.config?.method?.toUpperCase()} ${error.config?.url}:`, error.response?.data || error.message);
     }
 
-    // Handle unauthorized access
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       if (window.location.pathname !== '/login') {
@@ -68,11 +65,10 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // Handle other common errors
     if (error.response?.status === 403) {
       console.error('Access forbidden - Check backend security configuration');
     }
-    
+
     if (error.response?.status >= 500) {
       console.error('Server error occurred');
     }
@@ -84,7 +80,7 @@ apiClient.interceptors.response.use(
 // Helper function to create FormData for file uploads
 export const createFormData = (data) => {
   const formData = new FormData();
-  
+
   Object.keys(data).forEach(key => {
     if (data[key] !== null && data[key] !== undefined) {
       if (data[key] instanceof File) {
@@ -96,21 +92,15 @@ export const createFormData = (data) => {
       }
     }
   });
-  
+
   return formData;
 };
 
 // Category API helper functions
 export const categoryAPI = {
-  getAll: (params = {}) => {
-    return apiClient.get('/categories/all', { params });
-  },
-  getById: (id) => {
-    return apiClient.get(`/categories/${id}`);
-  },
-  getActive: () => {
-    return apiClient.get('/categories/active');
-  },
+  getAll: (params = {}) => apiClient.get('/categories/all', { params }),
+  getById: (id) => apiClient.get(`/categories/${id}`),
+  getActive: () => apiClient.get('/categories/active'),
   create: (categoryData, image = null) => {
     const formData = new FormData();
     formData.append('categoryName', categoryData.categoryName);
@@ -127,43 +117,20 @@ export const categoryAPI = {
     }
     return apiClient.post(`/categories/edit/${id}`, formData);
   },
-  toggleStatus: (id) => {
-    return apiClient.get(`/categories/status/${id}`);
-  },
-  delete: (id) => {
-    return apiClient.delete(`/categories/delete/${id}`);
-  },
-  search: (name, params = {}) => {
-    return apiClient.get('/categories/search', { 
-      params: { name, ...params } 
-    });
-  }
+  toggleStatus: (id) => apiClient.get(`/categories/status/${id}`),
+  delete: (id) => apiClient.delete(`/categories/delete/${id}`),
+  search: (name, params = {}) => apiClient.get('/categories/search', { params: { name, ...params } }),
 };
 
-// ✅ Added: Late Charges API helper functions
+// Late Charges API helper functions
 export const lateChargesAPI = {
-  getAll: () => {
-    return apiClient.get('/late-charges/all');
-  },
-  getById: (id) => {
-    return apiClient.get(`/late-charges/${id}`);
-  },
-  getActive: () => {
-    return apiClient.get('/late-charges/active');
-  },
-  create: (data) => {
-    return apiClient.post('/late-charges/add', data);
-  },
-  update: (id, data) => {
-    return apiClient.put(`/late-charges/update/${id}`, data);
-  },
-  toggleStatus: (id, isActive) => {
-    return apiClient.put(`/late-charges/${id}/status?isActive=${isActive}`);
-  },
-  delete: (id) => {
-    return apiClient.delete(`/late-charges/${id}`);
-  }
+  getAll: () => apiClient.get('/late-charges/all'),
+  getById: (id) => apiClient.get(`/late-charges/${id}`),
+  getActive: () => apiClient.get('/late-charges/active'),
+  create: (data) => apiClient.post('/late-charges/add', data),
+  update: (id, data) => apiClient.put(`/late-charges/update/${id}`, data),
+  toggleStatus: (id, isActive) => apiClient.put(`/late-charges/${id}/status?isActive=${isActive}`),
+  delete: (id) => apiClient.delete(`/late-charges/${id}`),
 };
 
-// Export as both named and default
 export default apiClient;

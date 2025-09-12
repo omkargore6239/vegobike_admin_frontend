@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { FaEdit, FaTrash, FaPlus, FaSearch, FaToggleOn, FaToggleOff } from "react-icons/fa";
+import { FaEdit, FaTrash, FaPlus, FaSearch, FaToggleOn, FaToggleOff, FaExclamationTriangle, FaRedo, FaCheck, FaTimes } from "react-icons/fa";
 import { toast } from "react-toastify";
-import apiClient from "../../api/apiConfig";
+import apiClient, { BASE_URL } from "../../api/apiConfig"; // Import BASE_URL from apiConfig
 
 const PriceManagement = () => {
   const [data, setData] = useState([]);
@@ -24,6 +24,8 @@ const PriceManagement = () => {
   const [editingId, setEditingId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [validationErrors, setValidationErrors] = useState({});
 
   const [formData, setFormData] = useState({
     categoryId: "",
@@ -34,6 +36,198 @@ const PriceManagement = () => {
   });
 
   const [categories, setCategories] = useState([]);
+
+  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
+  const ErrorTypes = {
+    NETWORK: 'NETWORK',
+    VALIDATION: 'VALIDATION',
+    PERMISSION: 'PERMISSION',
+    NOT_FOUND: 'NOT_FOUND',
+    SERVER: 'SERVER',
+    DUPLICATE: 'DUPLICATE',
+    UNKNOWN: 'UNKNOWN'
+  };
+
+  const getErrorInfo = (error) => {
+    let type = ErrorTypes.UNKNOWN;
+    let message = "An unexpected error occurred";
+    let isRetryable = false;
+    let suggestions = [];
+
+    if (!error) return { type, message, isRetryable, suggestions };
+
+    // Network errors
+    if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
+      type = ErrorTypes.NETWORK;
+      message = `Unable to connect to the server at ${BASE_URL}`;
+      isRetryable = true;
+      suggestions = [
+        "Check your internet connection",
+        "Verify the backend server is running",
+        "Ensure CORS is properly configured"
+      ];
+    }
+    // HTTP status errors
+    else if (error.response?.status) {
+      const status = error.response.status;
+      const serverMessage = error.response.data?.message || error.response.data?.error;
+
+      switch (status) {
+        case 400:
+          type = ErrorTypes.VALIDATION;
+          message = serverMessage || "Invalid request data";
+          suggestions = ["Please check your input and try again"];
+          break;
+        case 401:
+          type = ErrorTypes.PERMISSION;
+          message = "Authentication required";
+          suggestions = ["Please log in and try again"];
+          break;
+        case 403:
+          type = ErrorTypes.PERMISSION;
+          message = "Access denied - insufficient permissions";
+          suggestions = ["Contact your administrator for access"];
+          break;
+        case 404:
+          type = ErrorTypes.NOT_FOUND;
+          message = "Resource not found";
+          suggestions = ["The requested item may have been deleted"];
+          break;
+        case 409:
+          type = ErrorTypes.DUPLICATE;
+          message = serverMessage || "This combination already exists";
+          suggestions = ["Try with different values"];
+          break;
+        case 500:
+        case 502:
+        case 503:
+          type = ErrorTypes.SERVER;
+          message = "Server error occurred";
+          isRetryable = true;
+          suggestions = ["Please try again in a moment", "Contact support if the problem persists"];
+          break;
+        default:
+          message = serverMessage || `Server returned error ${status}`;
+          isRetryable = status >= 500;
+      }
+    }
+    // Custom error messages
+    else if (error.message) {
+      message = error.message;
+      if (error.message.toLowerCase().includes('duplicate')) {
+        type = ErrorTypes.DUPLICATE;
+      }
+    }
+
+    return { type, message, isRetryable, suggestions };
+  };
+
+  const showErrorNotification = (error, context = "") => {
+    const errorInfo = getErrorInfo(error);
+    const contextMessage = context ? `${context}: ` : "";
+    
+    console.error(`❌ ${contextMessage}${errorInfo.message}`, error);
+    
+    toast.error(
+      <div>
+        <div className="font-medium">{contextMessage}{errorInfo.message}</div>
+        {errorInfo.suggestions.length > 0 && (
+          <div className="text-sm mt-1 opacity-90">
+            {errorInfo.suggestions[0]}
+          </div>
+        )}
+      </div>,
+      {
+        position: "top-right",
+        autoClose: errorInfo.type === ErrorTypes.NETWORK ? 8000 : 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      }
+    );
+
+    setError(`${contextMessage}${errorInfo.message}`);
+    return errorInfo;
+  };
+
+  // ✅ ENHANCED VALIDATION with detailed field-level errors
+  const validateForm = () => {
+    const errors = {};
+    const fieldErrors = [];
+    
+    // Category validation
+    if (!formData.categoryId || formData.categoryId === "") {
+      errors.categoryId = "Category is required";
+      fieldErrors.push("Please select a category");
+    }
+    
+    // Days validation
+    if (!formData.days || formData.days === "") {
+      errors.days = "Number of days is required";
+      fieldErrors.push("Please enter number of days");
+    } else {
+      const daysValue = parseInt(formData.days);
+      if (isNaN(daysValue)) {
+        errors.days = "Days must be a valid number";
+        fieldErrors.push("Days must be a valid number");
+      } else if (daysValue <= 0) {
+        errors.days = "Days must be greater than 0";
+        fieldErrors.push("Days must be greater than 0");
+      } else if (daysValue > 365) {
+        errors.days = "Days cannot exceed 365";
+        fieldErrors.push("Days cannot exceed 365");
+      }
+    }
+    
+    // Price validation
+    if (!formData.price || formData.price === "") {
+      errors.price = "Price is required";
+      fieldErrors.push("Please enter a price");
+    } else {
+      const priceValue = parseFloat(formData.price);
+      if (isNaN(priceValue)) {
+        errors.price = "Price must be a valid number";
+        fieldErrors.push("Price must be a valid number");
+      } else if (priceValue <= 0) {
+        errors.price = "Price must be greater than 0";
+        fieldErrors.push("Price must be greater than 0");
+      } else if (priceValue > 999999.99) {
+        errors.price = "Price is too large";
+        fieldErrors.push("Price must be less than ₹10,00,000");
+      }
+    }
+
+    // Deposit validation (optional field)
+    if (formData.deposit && formData.deposit !== "") {
+      const depositValue = parseFloat(formData.deposit);
+      if (isNaN(depositValue)) {
+        errors.deposit = "Deposit must be a valid number";
+        fieldErrors.push("Deposit must be a valid number");
+      } else if (depositValue < 0) {
+        errors.deposit = "Deposit cannot be negative";
+        fieldErrors.push("Deposit cannot be negative");
+      } else if (depositValue > 999999.99) {
+        errors.deposit = "Deposit is too large";
+        fieldErrors.push("Deposit must be less than ₹10,00,000");
+      }
+    }
+
+    // Duplicate validation (when adding)
+    if (!editingId && formData.categoryId && formData.days) {
+      const duplicate = data.find(item => 
+        String(item.categoryId) === String(formData.categoryId) && 
+        parseInt(item.days) === parseInt(formData.days)
+      );
+      if (duplicate) {
+        errors.duplicate = "This combination already exists";
+        fieldErrors.push(`A price for ${getCategoryName(formData.categoryId)} - ${formData.days} days already exists`);
+      }
+    }
+
+    setValidationErrors(errors);
+    return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
+  };
 
   // Clear messages after 5 seconds
   useEffect(() => {
@@ -60,21 +254,25 @@ const PriceManagement = () => {
     }
   }, [searchQuery, data]);
 
+  // ✅ ENHANCED API CALLS with professional error handling
+
   // Fetch Price Lists with pagination
-  const fetchPriceLists = async (page = 0, size = 10, sortBy = "id", sortDir = "desc") => {
+  const fetchPriceLists = async (page = 0, size = 10, sortBy = "id", sortDir = "desc", retryAttempt = 0) => {
     setLoading(true);
     setError("");
+    
     try {
       const response = await apiClient.get("/prices", {
         params: { page, size, sortBy, sortDir }
       });
       
-      console.log("Fetched price lists:", response.data);
+      console.log("✅ Fetched price lists:", response.data);
       
       if (response.data && response.data.success) {
         const priceData = response.data.data || [];
         setData(priceData);
         setFilteredData(priceData);
+        setRetryCount(0); // Reset retry count on success
         
         if (response.data.pagination) {
           setCurrentPage(response.data.pagination.currentPage);
@@ -83,39 +281,104 @@ const PriceManagement = () => {
           setHasNext(response.data.pagination.hasNext);
           setHasPrevious(response.data.pagination.hasPrevious);
         }
+
+        if (priceData.length > 0) {
+          setSuccess(`Successfully loaded ${priceData.length} price lists`);
+          setTimeout(() => setSuccess(""), 3000);
+        }
       } else {
         setError("Failed to fetch price lists");
         setData([]);
         setFilteredData([]);
       }
     } catch (error) {
-      console.error("Error fetching price lists:", error);
-      setError(error.response?.data?.message || "Error fetching price data");
+      const errorInfo = showErrorNotification(error, "Failed to fetch price lists");
+      
       setData([]);
       setFilteredData([]);
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying price lists fetch (attempt ${retryAttempt + 1}/3)...`);
+        setRetryCount(retryAttempt + 1);
+        setTimeout(() => fetchPriceLists(page, size, sortBy, sortDir, retryAttempt + 1), 3000 * (retryAttempt + 1));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   // Fetch Categories
-  const fetchCategories = async () => {
+  const fetchCategories = async (retryAttempt = 0) => {
     try {
-      const response = await apiClient.get("/category/all");
-      if (response.data && response.data.success) {
-        setCategories(response.data.data || []);
-      } else if (Array.isArray(response.data.content)) {
-        setCategories(response.data.content);
+      console.log("🔄 Fetching categories...");
+      const response = await apiClient.get("/categories/active");
+      console.log("✅ Categories response:", response.data);
+      
+      let categoriesData = [];
+      if (response.data?.success && response.data.data) {
+        categoriesData = response.data.data;
+      } else if (Array.isArray(response.data)) {
+        categoriesData = response.data;
+      }
+      
+      setCategories(categoriesData);
+      console.log("✅ Categories loaded:", categoriesData.length);
+      
+      if (categoriesData.length === 0) {
+        setError("No active categories found. Please add categories first.");
       }
     } catch (error) {
-      console.error("Error fetching categories:", error);
+      const errorInfo = showErrorNotification(error, "Failed to load categories");
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying categories fetch (attempt ${retryAttempt + 1}/3)...`);
+        setTimeout(() => fetchCategories(retryAttempt + 1), 2000 * (retryAttempt + 1));
+      }
     }
   };
 
   useEffect(() => {
-    fetchPriceLists(currentPage, itemsPerPage);
-    fetchCategories();
+    const loadData = async () => {
+      await Promise.all([
+        fetchPriceLists(currentPage, itemsPerPage),
+        fetchCategories()
+      ]);
+    };
+    loadData();
   }, []);
+
+  // Handle form input changes with validation
+  const handleInputChange = (e) => {
+    const { name, value, type } = e.target;
+    
+    // Handle radio button for isActive
+    if (name === "isActive") {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value === "true"
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: type === 'number' ? value : value
+      }));
+    }
+    
+    // Clear validation errors for this field
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+    
+    // Clear general error when user starts typing
+    if (error) {
+      setError("");
+    }
+  };
 
   // Add Price List
   const handleAddPrice = async (e) => {
@@ -123,9 +386,12 @@ const PriceManagement = () => {
     setError("");
     setSuccess("");
     setSubmitting(true);
+    setValidationErrors({});
 
-    if (!formData.categoryId || !formData.days || !formData.price) {
-      setError("Category, days, and price are required");
+    // Validation
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setError(validation.fieldErrors[0]);
       setSubmitting(false);
       return;
     }
@@ -139,6 +405,7 @@ const PriceManagement = () => {
     };
 
     try {
+      console.log("🔄 Adding price list:", payload);
       const response = await apiClient.post("/prices/add", payload);
       
       if (response.data && response.data.success) {
@@ -147,13 +414,12 @@ const PriceManagement = () => {
         resetForm();
         await fetchPriceLists(currentPage, itemsPerPage);
       } else {
-        setError(response.data?.message || "Failed to add price list");
-        toast.error("Failed to add price list");
+        const errorMsg = response.data?.message || "Failed to add price list";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error adding price list:", error);
-      setError(error.response?.data?.message || "Error adding price list");
-      toast.error("Failed to add price list");
+      showErrorNotification(error, "Failed to add price list");
     } finally {
       setSubmitting(false);
     }
@@ -165,9 +431,12 @@ const PriceManagement = () => {
     setError("");
     setSuccess("");
     setSubmitting(true);
+    setValidationErrors({});
 
-    if (!formData.categoryId || !formData.days || !formData.price) {
-      setError("Category, days, and price are required");
+    // Validation
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setError(validation.fieldErrors[0]);
       setSubmitting(false);
       return;
     }
@@ -187,6 +456,7 @@ const PriceManagement = () => {
     };
 
     try {
+      console.log("🔄 Updating price list:", editingId, payload);
       const response = await apiClient.put(`/prices/${editingId}`, payload);
       
       if (response.data && response.data.success) {
@@ -195,13 +465,12 @@ const PriceManagement = () => {
         resetForm();
         await fetchPriceLists(currentPage, itemsPerPage);
       } else {
-        setError(response.data?.message || "Failed to update price list");
-        toast.error("Failed to update price list");
+        const errorMsg = response.data?.message || "Failed to update price list";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error updating price list:", error);
-      setError(error.response?.data?.message || "Error updating price list");
-      toast.error("Failed to update price list");
+      showErrorNotification(error, "Failed to update price list");
     } finally {
       setSubmitting(false);
     }
@@ -218,6 +487,7 @@ const PriceManagement = () => {
     setError("");
     setSuccess("");
     try {
+      console.log("🔄 Deleting price list:", id);
       const response = await apiClient.delete(`/prices/${id}`);
       if (response.data && response.data.success) {
         setSuccess("Price list deleted successfully!");
@@ -230,14 +500,13 @@ const PriceManagement = () => {
           await fetchPriceLists(currentPage, itemsPerPage);
         }
       } else {
-        setError(response.data?.message || "Failed to delete price list");
-        toast.error("Failed to delete price list");
+        const errorMsg = response.data?.message || "Failed to delete price list";
+        setError(errorMsg);
+        toast.error(errorMsg);
         setConfirmDeleteId(null);
       }
     } catch (error) {
-      console.error("Error deleting price list:", error);
-      setError(error.response?.data?.message || "Error deleting price list");
-      toast.error("Failed to delete price list");
+      showErrorNotification(error, "Failed to delete price list");
       setConfirmDeleteId(null);
     }
   };
@@ -252,22 +521,22 @@ const PriceManagement = () => {
     setError("");
     setSuccess("");
     try {
+      console.log("🔄 Toggling status:", id, "from", currentStatus, "to", !currentStatus);
       const response = await apiClient.put(`/prices/${id}/status`, null, {
         params: { isActive: !currentStatus }
       });
       
       if (response.data && response.data.success) {
-        setSuccess(response.data.message);
-        toast.success("Status updated successfully!");
+        setSuccess(response.data.message || "Status updated successfully!");
+        toast.success(`Price list ${!currentStatus ? 'activated' : 'deactivated'} successfully!`);
         await fetchPriceLists(currentPage, itemsPerPage);
       } else {
-        setError(response.data?.message || "Failed to update status");
-        toast.error("Failed to update status");
+        const errorMsg = response.data?.message || "Failed to update status";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error toggling status:", error);
-      setError(error.response?.data?.message || "Error updating status");
-      toast.error("Failed to update status");
+      showErrorNotification(error, "Failed to update status");
     }
   };
 
@@ -290,6 +559,7 @@ const PriceManagement = () => {
     setFormVisible(true);
     setError("");
     setSuccess("");
+    setValidationErrors({});
     
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -308,6 +578,13 @@ const PriceManagement = () => {
     setError("");
     setSuccess("");
     setSubmitting(false);
+    setValidationErrors({});
+  };
+
+  // Manual retry function
+  const handleRetry = () => {
+    setError("");
+    fetchPriceLists(currentPage, itemsPerPage);
   };
 
   // Pagination handlers
@@ -354,7 +631,7 @@ const PriceManagement = () => {
   // Get category name by ID
   const getCategoryName = (categoryId) => {
     const category = categories.find(c => c.id === categoryId);
-    return category ? category.name : `Category ${categoryId}`;
+    return category ? (category.categoryName || category.name) : `Category ${categoryId}`;
   };
 
   return (
@@ -376,18 +653,12 @@ const PriceManagement = () => {
         )}
       </div>
 
-      {/* Success/Error Messages */}
+      {/* Enhanced Success/Error Messages */}
       {success && (
         <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg animate-fade-in">
           <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-green-700 font-medium">{success}</p>
-            </div>
+            <FaCheck className="text-green-400 mt-0.5 mr-3" />
+            <p className="text-sm text-green-700 font-medium">{success}</p>
           </div>
         </div>
       )}
@@ -395,13 +666,33 @@ const PriceManagement = () => {
       {error && (
         <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg animate-fade-in">
           <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
+            <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+            <div className="flex-1">
               <p className="text-sm text-red-700 font-medium">{error}</p>
+              {error.includes("connect to the server") && (
+                <div className="mt-3">
+                  <p className="text-xs text-red-600">
+                    💡 <strong>Troubleshooting tips:</strong>
+                  </p>
+                  <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
+                    <li>Ensure your backend server is running on {BASE_URL}</li>
+                    <li>Check your network connection</li>
+                    <li>Verify CORS settings in your backend</li>
+                  </ul>
+                  <button
+                    onClick={handleRetry}
+                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                  >
+                    <FaRedo className="mr-1" />
+                    Retry Connection
+                  </button>
+                </div>
+              )}
+              {retryCount > 0 && (
+                <p className="text-xs text-red-600 mt-2">
+                  Retry attempt {retryCount}/3 in progress...
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -427,21 +718,24 @@ const PriceManagement = () => {
                 </label>
                 <select
                   name="categoryId"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.categoryId ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.categoryId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, categoryId: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   required
                   disabled={submitting}
                 >
                   <option value="">Select Category</option>
                   {categories.map((category) => (
                     <option key={category.id} value={category.id}>
-                      {category.name}
+                      {category.categoryName || category.name}
                     </option>
                   ))}
                 </select>
+                {validationErrors.categoryId && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.categoryId}</p>
+                )}
               </div>
 
               {/* Days */}
@@ -453,56 +747,68 @@ const PriceManagement = () => {
                   type="number"
                   name="days"
                   placeholder="Enter number of days"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.days ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.days}
-                  onChange={(e) =>
-                    setFormData({ ...formData, days: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   required
                   min="1"
+                  max="365"
                   disabled={submitting}
                 />
+                {validationErrors.days && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.days}</p>
+                )}
               </div>
 
               {/* Price */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  Price <span className="text-red-500">*</span>
+                  Price (₹) <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
                   name="price"
                   placeholder="Enter price amount"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.price ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.price}
-                  onChange={(e) =>
-                    setFormData({ ...formData, price: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   required
-                  min="0"
+                  min="0.01"
+                  max="999999.99"
                   step="0.01"
                   disabled={submitting}
                 />
+                {validationErrors.price && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.price}</p>
+                )}
               </div>
 
               {/* Deposit */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  Deposit Amount
+                  Deposit Amount (₹)
                 </label>
                 <input
                   type="number"
                   name="deposit"
-                  placeholder="Enter deposit amount"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  placeholder="Enter deposit amount (optional)"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.deposit ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.deposit}
-                  onChange={(e) =>
-                    setFormData({ ...formData, deposit: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   min="0"
+                  max="999999.99"
                   step="0.01"
                   disabled={submitting}
                 />
+                {validationErrors.deposit && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.deposit}</p>
+                )}
               </div>
 
               {/* Active Status */}
@@ -510,15 +816,15 @@ const PriceManagement = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   Status
                 </label>
-                <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-6">
                   <label className="flex items-center">
                     <input
                       type="radio"
                       name="isActive"
                       value="true"
                       checked={formData.isActive === true}
-                      onChange={() => setFormData({ ...formData, isActive: true })}
-                      className="form-radio h-4 w-4 text-indigo-600"
+                      onChange={handleInputChange}
+                      className="form-radio h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
                       disabled={submitting}
                     />
                     <span className="ml-2 text-sm text-gray-700">Active</span>
@@ -529,8 +835,8 @@ const PriceManagement = () => {
                       name="isActive"
                       value="false"
                       checked={formData.isActive === false}
-                      onChange={() => setFormData({ ...formData, isActive: false })}
-                      className="form-radio h-4 w-4 text-indigo-600"
+                      onChange={handleInputChange}
+                      className="form-radio h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
                       disabled={submitting}
                     />
                     <span className="ml-2 text-sm text-gray-700">Inactive</span>
@@ -539,20 +845,31 @@ const PriceManagement = () => {
               </div>
             </div>
 
+            {/* Validation Summary */}
+            {validationErrors.duplicate && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <FaExclamationTriangle className="inline mr-2" />
+                  {validationErrors.duplicate}
+                </p>
+              </div>
+            )}
+
             {/* Form Actions */}
             <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
               <button
                 type="button"
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 onClick={resetForm}
                 disabled={submitting}
               >
+                <FaTimes className="mr-2" />
                 Cancel
               </button>
               <button
                 type="submit"
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={submitting}
+                disabled={submitting || Object.keys(validationErrors).length > 0}
               >
                 {submitting ? (
                   <span className="flex items-center">
@@ -563,7 +880,10 @@ const PriceManagement = () => {
                     Processing...
                   </span>
                 ) : (
-                  editingId ? "Update Price" : "Create Price"
+                  <>
+                    <FaCheck className="mr-2" />
+                    {editingId ? "Update Price" : "Create Price"}
+                  </>
                 )}
               </button>
             </div>
@@ -627,6 +947,9 @@ const PriceManagement = () => {
                       <div className="flex flex-col items-center justify-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
                         <p className="text-gray-500">Loading price lists...</p>
+                        {retryCount > 0 && (
+                          <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -635,9 +958,18 @@ const PriceManagement = () => {
                     <td colSpan="7" className="px-6 py-12 text-center">
                       <div className="text-gray-500">
                         <h3 className="text-lg font-medium text-gray-900 mb-2">No price lists found</h3>
-                        <p className="text-gray-500">
+                        <p className="text-gray-500 mb-4">
                           {searchQuery ? `No price lists match "${searchQuery}"` : "Get started by creating your first price list"}
                         </p>
+                        {error && !searchQuery && (
+                          <button
+                            onClick={handleRetry}
+                            className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                          >
+                            <FaRedo className="mr-2" />
+                            Try Again
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -654,13 +986,21 @@ const PriceManagement = () => {
                         <div className="text-sm font-medium text-gray-900">{getCategoryName(priceItem.categoryId)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{priceItem.days} days</div>
+                        <div className="text-sm text-gray-900">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {priceItem.days} days
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">₹{priceItem.price}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          <span className="text-lg font-semibold text-green-600">₹{parseFloat(priceItem.price).toFixed(2)}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">₹{priceItem.deposit || 0}</div>
+                        <div className="text-sm text-gray-900">
+                          <span className="font-medium">₹{parseFloat(priceItem.deposit || 0).toFixed(2)}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button

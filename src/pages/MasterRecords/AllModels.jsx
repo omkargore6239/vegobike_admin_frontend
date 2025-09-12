@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { FaEdit, FaTrash, FaImage, FaSearch, FaPlus } from "react-icons/fa";
-import apiClient from "../../api/apiConfig";
+import apiClient, { BASE_URL } from "../../api/apiConfig"; // Import BASE_URL from apiConfig
 
 const AllModels = () => {
   const [data, setData] = useState([]);
@@ -21,8 +21,8 @@ const AllModels = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [imagePreview, setImagePreview] = useState("");
 
-  // Backend base URL for images
-  const BACKEND_URL = "http://localhost:8081";
+  // ✅ Updated: Backend base URL for images from env variable
+  const BACKEND_URL = BASE_URL;
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(0);

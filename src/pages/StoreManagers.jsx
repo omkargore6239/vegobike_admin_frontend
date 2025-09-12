@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { FaEdit, FaTrash, FaPlus, FaSearch, FaUser } from "react-icons/fa";
+import { FaEdit, FaTrash, FaPlus, FaSearch, FaUser, FaExclamationTriangle, FaRedo, FaCheck, FaTimes } from "react-icons/fa";
 import { toast } from "react-toastify";
-import apiClient from "../api/apiConfig";
+import apiClient, { BASE_URL } from "../api/apiConfig"; // Import BASE_URL from apiConfig
 
 const StoreManagers = () => {
   const [data, setData] = useState([]);
@@ -15,12 +15,14 @@ const StoreManagers = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   
   // Pagination states from backend response
   const [itemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
 
   const [formData, setFormData] = useState({
     name: "",
@@ -30,10 +32,120 @@ const StoreManagers = () => {
     password: "",
   });
 
-  // Backend base URL for images
-  const BACKEND_URL = "http://localhost:8081";
+  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
+  const ErrorTypes = {
+    NETWORK: 'NETWORK',
+    VALIDATION: 'VALIDATION',
+    PERMISSION: 'PERMISSION',
+    NOT_FOUND: 'NOT_FOUND',
+    SERVER: 'SERVER',
+    DUPLICATE: 'DUPLICATE',
+    UNKNOWN: 'UNKNOWN'
+  };
 
-  // Helper function to get full image URL for stores and profiles
+  const getErrorInfo = (error) => {
+    let type = ErrorTypes.UNKNOWN;
+    let message = "An unexpected error occurred";
+    let isRetryable = false;
+    let suggestions = [];
+
+    if (!error) return { type, message, isRetryable, suggestions };
+
+    // Network errors
+    if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
+      type = ErrorTypes.NETWORK;
+      message = `Unable to connect to server at ${BASE_URL}`;
+      isRetryable = true;
+      suggestions = [
+        "Check your internet connection",
+        "Verify the backend server is running",
+        "Ensure CORS is properly configured"
+      ];
+    }
+    // HTTP status errors
+    else if (error.response?.status) {
+      const status = error.response.status;
+      const serverMessage = error.response.data?.message || error.response.data?.error;
+
+      switch (status) {
+        case 400:
+          type = ErrorTypes.VALIDATION;
+          message = serverMessage || "Invalid request data";
+          suggestions = ["Please check your input and try again"];
+          break;
+        case 401:
+          type = ErrorTypes.PERMISSION;
+          message = "Authentication required";
+          suggestions = ["Please log in and try again"];
+          break;
+        case 403:
+          type = ErrorTypes.PERMISSION;
+          message = "Access denied - insufficient permissions";
+          suggestions = ["Contact your administrator for access"];
+          break;
+        case 404:
+          type = ErrorTypes.NOT_FOUND;
+          message = "Resource not found";
+          suggestions = ["The requested data may have been deleted"];
+          break;
+        case 409:
+          type = ErrorTypes.DUPLICATE;
+          message = serverMessage || "This manager already exists";
+          suggestions = ["Try with different email or phone number"];
+          break;
+        case 500:
+        case 502:
+        case 503:
+          type = ErrorTypes.SERVER;
+          message = "Server error occurred";
+          isRetryable = true;
+          suggestions = ["Please try again in a moment", "Contact support if the problem persists"];
+          break;
+        default:
+          message = serverMessage || `Server returned error ${status}`;
+          isRetryable = status >= 500;
+      }
+    }
+    else if (error.message) {
+      message = error.message;
+      if (error.message.toLowerCase().includes('duplicate')) {
+        type = ErrorTypes.DUPLICATE;
+      }
+    }
+
+    return { type, message, isRetryable, suggestions };
+  };
+
+  const showErrorNotification = (error, context = "") => {
+    const errorInfo = getErrorInfo(error);
+    const contextMessage = context ? `${context}: ` : "";
+    
+    console.error(`❌ ${contextMessage}${errorInfo.message}`, error);
+    
+    toast.error(
+      <div>
+        <div className="font-medium">{contextMessage}{errorInfo.message}</div>
+        {errorInfo.suggestions.length > 0 && (
+          <div className="text-sm mt-1 opacity-90">
+            {errorInfo.suggestions[0]}
+          </div>
+        )}
+      </div>,
+      {
+        position: "top-right",
+        autoClose: errorInfo.type === ErrorTypes.NETWORK ? 8000 : 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      }
+    );
+
+    setError(`${contextMessage}${errorInfo.message}`);
+    return errorInfo;
+  };
+
+  // ✅ Enhanced Helper function to get full image URL using BASE_URL
   const getImageUrl = (imagePath, type = 'stores') => {
     if (!imagePath) return null;
     
@@ -50,15 +162,69 @@ const StoreManagers = () => {
       cleanPath = cleanPath.replace(/^uploads\/+/, '');
       cleanPath = cleanPath.replace(/^profile\/+/, '');
       const filename = cleanPath.split('/').pop();
-      return `${BACKEND_URL}/uploads/profile/${filename}`;
+      return `${BASE_URL}/uploads/profile/${filename}`;
     } else {
       // Default to stores
       cleanPath = cleanPath.replace(/^uploads\/stores\/+/, '');
       cleanPath = cleanPath.replace(/^uploads\/+/, '');
       cleanPath = cleanPath.replace(/^stores\/+/, '');
       const filename = cleanPath.split('/').pop();
-      return `${BACKEND_URL}/uploads/stores/${filename}`;
+      return `${BASE_URL}/uploads/stores/${filename}`;
     }
+  };
+
+  // ✅ ENHANCED FORM VALIDATION
+  const validateForm = () => {
+    const errors = {};
+    const fieldErrors = [];
+    
+    // Name validation
+    if (!formData.name.trim()) {
+      errors.name = "Name is required";
+      fieldErrors.push("Please enter a name");
+    } else if (formData.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters";
+      fieldErrors.push("Name must be at least 2 characters");
+    } else if (formData.name.trim().length > 50) {
+      errors.name = "Name must be less than 50 characters";
+      fieldErrors.push("Name is too long");
+    }
+    
+    // Email validation
+    if (!formData.email.trim()) {
+      errors.email = "Email is required";
+      fieldErrors.push("Please enter an email address");
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      errors.email = "Please enter a valid email address";
+      fieldErrors.push("Email format is invalid");
+    }
+    
+    // Phone number validation
+    if (!formData.phoneNumber.trim()) {
+      errors.phoneNumber = "Phone number is required";
+      fieldErrors.push("Please enter a phone number");
+    } else if (!/^\+?[\d\s\-\(\)]{10,15}$/.test(formData.phoneNumber.trim())) {
+      errors.phoneNumber = "Please enter a valid phone number";
+      fieldErrors.push("Phone number format is invalid");
+    }
+    
+    // Store selection validation
+    if (!formData.storeId) {
+      errors.storeId = "Store selection is required";
+      fieldErrors.push("Please select a store");
+    }
+    
+    // Password validation (required for new managers, optional for updates)
+    if (!editingId && !formData.password.trim()) {
+      errors.password = "Password is required";
+      fieldErrors.push("Please enter a password");
+    } else if (formData.password.trim() && formData.password.length < 6) {
+      errors.password = "Password must be at least 6 characters";
+      fieldErrors.push("Password must be at least 6 characters");
+    }
+
+    setValidationErrors(errors);
+    return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
   };
 
   // Clear messages after 5 seconds
@@ -85,19 +251,42 @@ const StoreManagers = () => {
     }
   }, [searchQuery, data]);
 
-  // Fetch Store Managers with correct backend endpoint
-  const fetchStoreManagers = async (page = 0, size = 10) => {
+  // Handle form input changes with validation
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    
+    // Clear validation errors for this field
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+    
+    // Clear general error when user starts typing
+    if (error) {
+      setError("");
+    }
+  };
+
+  // ✅ Enhanced Fetch Store Managers with retry logic
+  const fetchStoreManagers = async (page = 0, size = 10, retryAttempt = 0) => {
     setLoading(true);
     setError("");
+    
     try {
-      console.log(`Fetching store managers: page=${page}, size=${size}`);
+      console.log(`🔄 Fetching store managers: page=${page}, size=${size}`);
       
       // Use the correct endpoint from your backend: /api/auth/store-managers
       const response = await apiClient.get("/auth/store-managers", {
         params: { page, size }
       });
       
-      console.log("Store managers response:", response.data);
+      console.log("✅ Store managers response:", response.data);
       
       if (response.data) {
         const managers = response.data.storeManagers || [];
@@ -113,25 +302,40 @@ const StoreManagers = () => {
         setTotalPages(response.data.totalPages || 0);
         setTotalElements(response.data.count || 0);
         setCurrentPage(response.data.currentPage || 0);
+        setRetryCount(0); // Reset retry count on success
+
+        if (processedManagers.length > 0) {
+          setSuccess(`Successfully loaded ${processedManagers.length} store managers`);
+          setTimeout(() => setSuccess(""), 3000);
+        }
       } else {
         setError("Failed to fetch store managers");
         setData([]);
         setFilteredData([]);
       }
     } catch (error) {
-      console.error("Error fetching store managers:", error);
-      setError(error.response?.data?.message || "Error fetching store managers");
-      toast.error("Failed to fetch store managers");
+      console.error("❌ Error fetching store managers:", error);
+      const errorInfo = showErrorNotification(error, "Failed to fetch store managers");
+      
       setData([]);
       setFilteredData([]);
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying store managers fetch (attempt ${retryAttempt + 1}/3)...`);
+        setRetryCount(retryAttempt + 1);
+        setTimeout(() => fetchStoreManagers(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch Stores for dropdown with proper image handling
-  const fetchStores = async () => {
+  // ✅ Enhanced Fetch Stores for dropdown with proper image handling and retry logic
+  const fetchStores = async (retryAttempt = 0) => {
     try {
+      console.log("🔄 Fetching stores for dropdown...");
+      
       const response = await apiClient.get("/stores/active");
       if (response.data && response.data.success) {
         const processedStores = (response.data.data || []).map(store => ({
@@ -139,6 +343,7 @@ const StoreManagers = () => {
           storeImage: store.storeImage ? getImageUrl(store.storeImage, 'stores') : null
         }));
         setStores(processedStores);
+        console.log("✅ Stores loaded:", processedStores.length);
       } else {
         // Fallback endpoint
         const fallbackResponse = await apiClient.get("/stores/all");
@@ -148,17 +353,31 @@ const StoreManagers = () => {
             storeImage: store.storeImage ? getImageUrl(store.storeImage, 'stores') : null
           }));
           setStores(processedStores);
+          console.log("✅ Stores loaded from fallback:", processedStores.length);
         }
       }
     } catch (error) {
-      console.error("Error fetching stores:", error);
+      console.error("❌ Error fetching stores:", error);
+      const errorInfo = getErrorInfo(error);
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying stores fetch (attempt ${retryAttempt + 1}/3)...`);
+        setTimeout(() => fetchStores(retryAttempt + 1), 2000 * (retryAttempt + 1));
+      }
     }
   };
 
   // Initial data fetch
   useEffect(() => {
-    fetchStoreManagers(currentPage, itemsPerPage);
-    fetchStores();
+    const loadData = async () => {
+      await Promise.all([
+        fetchStoreManagers(currentPage, itemsPerPage),
+        fetchStores()
+      ]);
+    };
+    
+    loadData();
     window.scrollTo(0, 0);
   }, []);
 
@@ -168,20 +387,24 @@ const StoreManagers = () => {
     return store ? store.storeName || store.name : "Unknown Store";
   };
 
-  // Add Store Manager
+  // ✅ Enhanced Add Store Manager with better validation and error handling
   const handleAddStoreManager = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
     setIsSubmitting(true);
+    setValidationErrors({});
 
-    if (!formData.name.trim() || !formData.email.trim() || !formData.phoneNumber.trim() || !formData.storeId) {
-      setError("All fields are required");
+    // Validation
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setError(validation.fieldErrors[0]);
       setIsSubmitting(false);
       return;
     }
 
     try {
+      console.log("🔄 Adding store manager...");
       // Use the same auth prefix for create endpoint
       const response = await apiClient.post("/auth/admin/createStoreManager", formData);
       
@@ -191,27 +414,30 @@ const StoreManagers = () => {
         resetForm();
         await fetchStoreManagers(currentPage, itemsPerPage);
       } else {
-        setError("Failed to add store manager");
-        toast.error("Failed to add store manager");
+        const errorMsg = "Failed to add store manager";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error adding store manager:", error);
-      setError(error.response?.data?.message || "Error adding store manager");
-      toast.error("Failed to add store manager");
+      console.error("❌ Error adding store manager:", error);
+      showErrorNotification(error, "Failed to add store manager");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Edit Store Manager
+  // ✅ Enhanced Edit Store Manager with better validation and error handling
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
     setIsSubmitting(true);
+    setValidationErrors({});
 
-    if (!formData.name.trim() || !formData.email.trim() || !formData.phoneNumber.trim() || !formData.storeId) {
-      setError("All fields are required");
+    // Validation
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setError(validation.fieldErrors[0]);
       setIsSubmitting(false);
       return;
     }
@@ -223,6 +449,7 @@ const StoreManagers = () => {
     }
 
     try {
+      console.log("🔄 Updating store manager:", editingId);
       const response = await apiClient.put(`/auth/admin/storeManagers/${editingId}`, formData);
       
       if (response.data) {
@@ -231,19 +458,19 @@ const StoreManagers = () => {
         resetForm();
         await fetchStoreManagers(currentPage, itemsPerPage);
       } else {
-        setError("Failed to update store manager");
-        toast.error("Failed to update store manager");
+        const errorMsg = "Failed to update store manager";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error updating store manager:", error);
-      setError(error.response?.data?.message || "Error updating store manager");
-      toast.error("Failed to update store manager");
+      console.error("❌ Error updating store manager:", error);
+      showErrorNotification(error, "Failed to update store manager");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Delete Store Manager
+  // ✅ Enhanced Delete Store Manager with better error handling
   const handleDeleteStoreManager = async (id) => {
     if (!id) {
       setError("Invalid manager ID");
@@ -254,6 +481,7 @@ const StoreManagers = () => {
     setError("");
     setSuccess("");
     try {
+      console.log("🔄 Deleting store manager:", id);
       await apiClient.delete(`/auth/admin/storeManagers/${id}`);
       setSuccess("Store Manager deleted successfully!");
       toast.success("Store Manager deleted successfully!");
@@ -266,9 +494,8 @@ const StoreManagers = () => {
         await fetchStoreManagers(currentPage, itemsPerPage);
       }
     } catch (error) {
-      console.error("Error deleting store manager:", error);
-      setError(error.response?.data?.message || "Error deleting store manager");
-      toast.error("Failed to delete store manager");
+      console.error("❌ Error deleting store manager:", error);
+      showErrorNotification(error, "Failed to delete store manager");
       setConfirmDeleteId(null);
     }
   };
@@ -291,6 +518,7 @@ const StoreManagers = () => {
     setFormVisible(true);
     setError("");
     setSuccess("");
+    setValidationErrors({});
     
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -309,6 +537,18 @@ const StoreManagers = () => {
     setError("");
     setSuccess("");
     setIsSubmitting(false);
+    setValidationErrors({});
+  };
+
+  // Manual retry function
+  const handleRetry = () => {
+    setError("");
+    setRetryCount(0);
+    const loadData = async () => {
+      setLoading(true);
+      await fetchStoreManagers(currentPage, itemsPerPage);
+    };
+    loadData();
   };
 
   // Pagination handlers
@@ -341,7 +581,7 @@ const StoreManagers = () => {
     return searchQuery.trim() !== "" ? filteredData : filteredData;
   };
 
-  // Image error handler
+  // ✅ Enhanced image error handlers
   const handleImageError = (e, managerName) => {
     console.error(`Profile image failed to load for manager "${managerName}":`, e.target.src);
     e.target.style.display = 'none';
@@ -351,7 +591,6 @@ const StoreManagers = () => {
     }
   };
 
-  // Image load success handler
   const handleImageLoad = (e, managerName) => {
     console.log(`Profile image loaded successfully for manager "${managerName}":`, e.target.src);
     e.target.style.display = 'block';
@@ -381,16 +620,48 @@ const StoreManagers = () => {
           )}
         </div>
 
-        {/* Success/Error Messages */}
+        {/* Enhanced Success/Error Messages */}
         {success && (
           <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg">
-            <p className="text-sm text-green-700 font-medium">{success}</p>
+            <div className="flex">
+              <FaCheck className="text-green-400 mt-0.5 mr-3" />
+              <p className="text-sm text-green-700 font-medium">{success}</p>
+            </div>
           </div>
         )}
         
         {error && (
           <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
-            <p className="text-sm text-red-700 font-medium">{error}</p>
+            <div className="flex">
+              <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-red-700 font-medium">{error}</p>
+                {error.includes("connect to server") && (
+                  <div className="mt-3">
+                    <p className="text-xs text-red-600">
+                      💡 <strong>Troubleshooting tips:</strong>
+                    </p>
+                    <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
+                      <li>Ensure your backend server is running on {BASE_URL}</li>
+                      <li>Check your network connection</li>
+                      <li>Verify CORS settings in your backend</li>
+                    </ul>
+                    <button
+                      onClick={handleRetry}
+                      className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                    >
+                      <FaRedo className="mr-1" />
+                      Retry Connection
+                    </button>
+                  </div>
+                )}
+                {retryCount > 0 && (
+                  <p className="text-xs text-red-600 mt-2">
+                    Retry attempt {retryCount}/3 in progress...
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -417,11 +688,17 @@ const StoreManagers = () => {
                     name="name"
                     placeholder="Enter full name"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200"
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200 ${
+                      validationErrors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
                     required
+                    maxLength={50}
                     disabled={isSubmitting}
                   />
+                  {validationErrors.name && (
+                    <p className="text-xs text-red-600 mt-1">{validationErrors.name}</p>
+                  )}
                 </div>
 
                 {/* Email */}
@@ -434,11 +711,16 @@ const StoreManagers = () => {
                     name="email"
                     placeholder="Enter email address"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200"
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200 ${
+                      validationErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
                     required
                     disabled={isSubmitting}
                   />
+                  {validationErrors.email && (
+                    <p className="text-xs text-red-600 mt-1">{validationErrors.email}</p>
+                  )}
                 </div>
 
                 {/* Phone Number */}
@@ -451,11 +733,17 @@ const StoreManagers = () => {
                     name="phoneNumber"
                     placeholder="Enter contact number"
                     value={formData.phoneNumber}
-                    onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200"
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200 ${
+                      validationErrors.phoneNumber ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
                     required
+                    maxLength={15}
                     disabled={isSubmitting}
                   />
+                  {validationErrors.phoneNumber && (
+                    <p className="text-xs text-red-600 mt-1">{validationErrors.phoneNumber}</p>
+                  )}
                 </div>
 
                 {/* Store Selection */}
@@ -466,8 +754,10 @@ const StoreManagers = () => {
                   <select
                     name="storeId"
                     value={formData.storeId}
-                    onChange={(e) => setFormData({ ...formData, storeId: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200"
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200 ${
+                      validationErrors.storeId ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
                     required
                     disabled={isSubmitting}
                   >
@@ -478,23 +768,32 @@ const StoreManagers = () => {
                       </option>
                     ))}
                   </select>
+                  {validationErrors.storeId && (
+                    <p className="text-xs text-red-600 mt-1">{validationErrors.storeId}</p>
+                  )}
                 </div>
 
                 {/* Password */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
-                    Password <span className="text-red-500">*</span>
+                    Password {!editingId && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="password"
                     name="password"
                     placeholder={editingId ? "Enter new password (optional)" : "Enter password"}
                     value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200"
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-[#2B2B80] transition duration-200 ${
+                      validationErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
                     required={!editingId}
+                    minLength={6}
                     disabled={isSubmitting}
                   />
+                  {validationErrors.password && (
+                    <p className="text-xs text-red-600 mt-1">{validationErrors.password}</p>
+                  )}
                 </div>
               </div>
 
@@ -502,16 +801,17 @@ const StoreManagers = () => {
               <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
                 <button
                   type="button"
-                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
+                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   onClick={resetForm}
                   disabled={isSubmitting}
                 >
+                  <FaTimes className="mr-2" />
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-6 py-3 bg-[#2B2B80] text-white rounded-lg hover:bg-[#24246A] transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || Object.keys(validationErrors).length > 0}
                 >
                   {isSubmitting ? (
                     <span className="flex items-center">
@@ -522,7 +822,10 @@ const StoreManagers = () => {
                       Processing...
                     </span>
                   ) : (
-                    editingId ? "Save Changes" : "Add Manager"
+                    <>
+                      <FaCheck className="mr-2" />
+                      {editingId ? "Save Changes" : "Add Manager"}
+                    </>
                   )}
                 </button>
               </div>
@@ -584,6 +887,9 @@ const StoreManagers = () => {
                         <div className="flex flex-col items-center justify-center">
                           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2B2B80] mb-4"></div>
                           <p className="text-gray-500">Loading store managers...</p>
+                          {retryCount > 0 && (
+                            <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -591,10 +897,20 @@ const StoreManagers = () => {
                     <tr>
                       <td colSpan="7" className="px-6 py-12 text-center">
                         <div className="text-gray-500">
+                          <FaUser className="mx-auto h-16 w-16 text-gray-300 mb-4" />
                           <h3 className="text-lg font-medium text-gray-900 mb-2">No store managers found</h3>
-                          <p className="text-gray-500">
+                          <p className="text-gray-500 mb-4">
                             {searchQuery ? `No managers match "${searchQuery}"` : "Get started by creating your first store manager"}
                           </p>
+                          {error && !searchQuery && (
+                            <button
+                              onClick={handleRetry}
+                              className="inline-flex items-center px-4 py-2 bg-[#2B2B80] text-white rounded-lg hover:bg-[#24246A] transition-colors"
+                            >
+                              <FaRedo className="mr-2" />
+                              Try Again
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

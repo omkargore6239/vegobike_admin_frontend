@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { FaEdit, FaImage, FaSearch, FaPlus, FaToggleOn, FaToggleOff } from "react-icons/fa";
-import apiClient from "../api/apiConfig";
+import { FaEdit, FaImage, FaSearch, FaPlus, FaToggleOn, FaToggleOff, FaExclamationTriangle, FaRedo, FaCheck, FaTimes } from "react-icons/fa";
+import { toast } from "react-toastify";
+import apiClient, { BASE_URL } from "../api/apiConfig"; // Import BASE_URL from apiConfig
 
 const StoreManagement = () => {
   const [stores, setStores] = useState([]);
@@ -9,6 +10,7 @@ const StoreManagement = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(0);
@@ -23,6 +25,7 @@ const StoreManagement = () => {
   const [editingId, setEditingId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [imagePreview, setImagePreview] = useState("");
+  const [validationErrors, setValidationErrors] = useState({});
 
   const [formData, setFormData] = useState({
     storeName: "",
@@ -32,10 +35,122 @@ const StoreManagement = () => {
     storeImage: null,
   });
 
-  // Backend base URL for images
-  const BACKEND_URL = "http://localhost:8081";
+  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
+  const ErrorTypes = {
+    NETWORK: 'NETWORK',
+    VALIDATION: 'VALIDATION',
+    PERMISSION: 'PERMISSION',
+    NOT_FOUND: 'NOT_FOUND',
+    SERVER: 'SERVER',
+    FILE_ERROR: 'FILE_ERROR',
+    UNKNOWN: 'UNKNOWN'
+  };
 
-  // Helper function to get full image URL
+  const getErrorInfo = (error) => {
+    let type = ErrorTypes.UNKNOWN;
+    let message = "An unexpected error occurred";
+    let isRetryable = false;
+    let suggestions = [];
+
+    if (!error) return { type, message, isRetryable, suggestions };
+
+    // Network errors
+    if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
+      type = ErrorTypes.NETWORK;
+      message = `Unable to connect to server at ${BASE_URL}`;
+      isRetryable = true;
+      suggestions = [
+        "Check your internet connection",
+        "Verify the backend server is running",
+        "Ensure CORS is properly configured"
+      ];
+    }
+    // HTTP status errors
+    else if (error.response?.status) {
+      const status = error.response.status;
+      const serverMessage = error.response.data?.message || error.response.data?.error;
+
+      switch (status) {
+        case 400:
+          type = ErrorTypes.VALIDATION;
+          message = serverMessage || "Invalid request data";
+          suggestions = ["Please check your input and try again"];
+          break;
+        case 401:
+          type = ErrorTypes.PERMISSION;
+          message = "Authentication required";
+          suggestions = ["Please log in and try again"];
+          break;
+        case 403:
+          type = ErrorTypes.PERMISSION;
+          message = "Access denied - insufficient permissions";
+          suggestions = ["Contact your administrator for access"];
+          break;
+        case 404:
+          type = ErrorTypes.NOT_FOUND;
+          message = "Resource not found";
+          suggestions = ["The requested data may have been deleted"];
+          break;
+        case 413:
+          type = ErrorTypes.FILE_ERROR;
+          message = "File too large - please select a smaller image";
+          suggestions = ["Try compressing your image or select a different file"];
+          break;
+        case 415:
+          type = ErrorTypes.FILE_ERROR;
+          message = "Unsupported file type";
+          suggestions = ["Please select a valid image file (JPG, PNG, GIF)"];
+          break;
+        case 500:
+        case 502:
+        case 503:
+          type = ErrorTypes.SERVER;
+          message = "Server error occurred";
+          isRetryable = true;
+          suggestions = ["Please try again in a moment", "Contact support if the problem persists"];
+          break;
+        default:
+          message = serverMessage || `Server returned error ${status}`;
+          isRetryable = status >= 500;
+      }
+    }
+    else if (error.message) {
+      message = error.message;
+    }
+
+    return { type, message, isRetryable, suggestions };
+  };
+
+  const showErrorNotification = (error, context = "") => {
+    const errorInfo = getErrorInfo(error);
+    const contextMessage = context ? `${context}: ` : "";
+    
+    console.error(`❌ ${contextMessage}${errorInfo.message}`, error);
+    
+    toast.error(
+      <div>
+        <div className="font-medium">{contextMessage}{errorInfo.message}</div>
+        {errorInfo.suggestions.length > 0 && (
+          <div className="text-sm mt-1 opacity-90">
+            {errorInfo.suggestions[0]}
+          </div>
+        )}
+      </div>,
+      {
+        position: "top-right",
+        autoClose: errorInfo.type === ErrorTypes.NETWORK ? 8000 : 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      }
+    );
+
+    setError(`${contextMessage}${errorInfo.message}`);
+    return errorInfo;
+  };
+
+  // ✅ Enhanced Helper function to get full image URL using BASE_URL
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
     
@@ -50,9 +165,57 @@ const StoreManagement = () => {
     cleanPath = cleanPath.replace(/^stores\/+/, '');
     
     const filename = cleanPath.split('/').pop();
-    const finalUrl = `${BACKEND_URL}/uploads/stores/${filename}`;
+    const finalUrl = `${BASE_URL}/uploads/stores/${filename}`;
     console.log(`Store image URL constructed: ${finalUrl} from original path: ${imagePath}`);
     return finalUrl;
+  };
+
+  // ✅ ENHANCED FORM VALIDATION
+  const validateForm = () => {
+    const errors = {};
+    const fieldErrors = [];
+    
+    // Store name validation
+    if (!formData.storeName.trim()) {
+      errors.storeName = "Store name is required";
+      fieldErrors.push("Please enter a store name");
+    } else if (formData.storeName.trim().length < 2) {
+      errors.storeName = "Store name must be at least 2 characters";
+      fieldErrors.push("Store name must be at least 2 characters");
+    } else if (formData.storeName.trim().length > 100) {
+      errors.storeName = "Store name must be less than 100 characters";
+      fieldErrors.push("Store name is too long");
+    }
+    
+    // Contact number validation
+    if (!formData.contactNumber.trim()) {
+      errors.contactNumber = "Contact number is required";
+      fieldErrors.push("Please enter a contact number");
+    } else if (!/^\+?[\d\s\-\(\)]{10,15}$/.test(formData.contactNumber.trim())) {
+      errors.contactNumber = "Please enter a valid contact number";
+      fieldErrors.push("Contact number format is invalid");
+    }
+    
+    // Address validation
+    if (!formData.address.trim()) {
+      errors.address = "Address is required";
+      fieldErrors.push("Please enter an address");
+    } else if (formData.address.trim().length < 10) {
+      errors.address = "Address must be at least 10 characters";
+      fieldErrors.push("Please provide a complete address");
+    } else if (formData.address.trim().length > 255) {
+      errors.address = "Address must be less than 255 characters";
+      fieldErrors.push("Address is too long");
+    }
+    
+    // Google Map URL validation (optional)
+    if (formData.googleMapUrl.trim() && !/^https?:\/\/.+/.test(formData.googleMapUrl.trim())) {
+      errors.googleMapUrl = "Please enter a valid URL";
+      fieldErrors.push("Google Map URL format is invalid");
+    }
+
+    setValidationErrors(errors);
+    return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
   };
 
   // Clear messages after 5 seconds
@@ -79,13 +242,14 @@ const StoreManagement = () => {
     }
   }, [searchQuery, stores]);
 
-  // Fetch Stores data with pagination
-  const fetchStores = async (page = 0, size = 10) => {
+  // ✅ Enhanced Fetch Stores data with pagination and retry logic
+  const fetchStores = async (page = 0, size = 10, retryAttempt = 0) => {
     setLoading(true);
     setError("");
+    
     try {
       const response = await apiClient.get(`/stores/all?page=${page}&size=${size}&sort=createdAt,desc`);
-      console.log("Fetched stores data:", response.data);
+      console.log("✅ Fetched stores data:", response.data);
       
       if (response.data && response.data.success) {
         const storesData = response.data.data || [];
@@ -108,6 +272,7 @@ const StoreManagement = () => {
         
         setStores(processedStores);
         setFilteredStores(processedStores);
+        setRetryCount(0); // Reset retry count on success
         
         if (response.data.pagination) {
           setCurrentPage(response.data.pagination.currentPage);
@@ -116,16 +281,29 @@ const StoreManagement = () => {
           setHasNext(response.data.pagination.hasNext);
           setHasPrevious(response.data.pagination.hasPrevious);
         }
+
+        if (processedStores.length > 0) {
+          setSuccess(`Successfully loaded ${processedStores.length} stores`);
+          setTimeout(() => setSuccess(""), 3000);
+        }
       } else {
         setError("Failed to fetch stores data");
         setStores([]);
         setFilteredStores([]);
       }
     } catch (error) {
-      console.error("Error fetching stores:", error);
-      setError(error.response?.data?.message || "Error fetching stores data");
+      console.error("❌ Error fetching stores:", error);
+      const errorInfo = showErrorNotification(error, "Failed to fetch stores");
+      
       setStores([]);
       setFilteredStores([]);
+      
+      // Retry logic for retryable errors
+      if (errorInfo.isRetryable && retryAttempt < 2) {
+        console.log(`🔄 Retrying stores fetch (attempt ${retryAttempt + 1}/3)...`);
+        setRetryCount(retryAttempt + 1);
+        setTimeout(() => fetchStores(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
+      }
     } finally {
       setLoading(false);
     }
@@ -136,18 +314,46 @@ const StoreManagement = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  // Handle image selection with preview
+  // Handle form input changes with validation
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    
+    // Clear validation errors for this field
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+    
+    // Clear general error when user starts typing
+    if (error) {
+      setError("");
+    }
+  };
+
+  // ✅ Enhanced Handle image selection with preview and validation
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Enhanced file validation
       if (!file.type.startsWith('image/')) {
-        setError("Please select a valid image file");
+        const errorMsg = "Please select a valid image file (JPG, PNG, GIF)";
+        setError(errorMsg);
+        toast.error(errorMsg);
         e.target.value = '';
         return;
       }
       
-      if (file.size > 5 * 1024 * 1024) {
-        setError("Image size should be less than 5MB");
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        const errorMsg = "Image size should be less than 5MB";
+        setError(errorMsg);
+        toast.error(errorMsg);
         e.target.value = '';
         return;
       }
@@ -158,21 +364,37 @@ const StoreManagement = () => {
       reader.onloadend = () => {
         setImagePreview(reader.result);
       };
+      reader.onerror = () => {
+        const errorMsg = "Failed to read the selected file";
+        setError(errorMsg);
+        toast.error(errorMsg);
+      };
       reader.readAsDataURL(file);
       
       setError("");
+      
+      // Clear validation error for image
+      if (validationErrors.storeImage) {
+        setValidationErrors(prev => ({
+          ...prev,
+          storeImage: undefined
+        }));
+      }
     }
   };
 
-  // Add Store
+  // ✅ Enhanced Add Store with better validation and error handling
   const handleAddStore = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
     setSubmitting(true);
+    setValidationErrors({});
 
-    if (!formData.storeName.trim() || !formData.contactNumber.trim() || !formData.address.trim()) {
-      setError("Store name, contact number, and address are required");
+    // Validation
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setError(validation.fieldErrors[0]);
       setSubmitting(false);
       return;
     }
@@ -187,6 +409,7 @@ const StoreManagement = () => {
     }
 
     try {
+      console.log("🔄 Adding store...");
       const response = await apiClient.post("/stores/add", formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -195,28 +418,34 @@ const StoreManagement = () => {
 
       if (response.data && response.data.success) {
         setSuccess("Store added successfully!");
+        toast.success("Store added successfully!");
         resetForm();
         await fetchStores(currentPage, itemsPerPage);
       } else {
-        setError(response.data?.message || "Failed to add store");
+        const errorMsg = response.data?.message || "Failed to add store";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error adding store:", error);
-      setError(error.response?.data?.message || "Error adding store");
+      console.error("❌ Error adding store:", error);
+      showErrorNotification(error, "Failed to add store");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Edit Store
+  // ✅ Enhanced Edit Store with better validation and error handling
   const handleEditStore = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
     setSubmitting(true);
+    setValidationErrors({});
 
-    if (!formData.storeName.trim() || !formData.contactNumber.trim() || !formData.address.trim()) {
-      setError("Store name, contact number, and address are required");
+    // Validation
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setError(validation.fieldErrors[0]);
       setSubmitting(false);
       return;
     }
@@ -237,6 +466,7 @@ const StoreManagement = () => {
     }
 
     try {
+      console.log("🔄 Updating store:", editingId);
       const response = await apiClient.post(`/stores/edit/${editingId}`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -245,20 +475,23 @@ const StoreManagement = () => {
 
       if (response.data && response.data.success) {
         setSuccess("Store updated successfully!");
+        toast.success("Store updated successfully!");
         resetForm();
         await fetchStores(currentPage, itemsPerPage);
       } else {
-        setError(response.data?.message || "Failed to update store");
+        const errorMsg = response.data?.message || "Failed to update store";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error updating store:", error);
-      setError(error.response?.data?.message || "Error updating store");
+      console.error("❌ Error updating store:", error);
+      showErrorNotification(error, "Failed to update store");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Toggle Store Status
+  // ✅ Enhanced Toggle Store Status with better error handling
   const handleToggleStatus = async (id) => {
     if (!id || id.toString().startsWith('fallback-')) {
       setError("Invalid store ID");
@@ -268,16 +501,20 @@ const StoreManagement = () => {
     setError("");
     setSuccess("");
     try {
+      console.log("🔄 Toggling store status:", id);
       const response = await apiClient.put(`/stores/${id}/status`);
       if (response.data && response.data.success) {
-        setSuccess(response.data.message);
+        setSuccess(response.data.message || "Status updated successfully!");
+        toast.success("Store status updated successfully!");
         await fetchStores(currentPage, itemsPerPage);
       } else {
-        setError(response.data?.message || "Failed to update status");
+        const errorMsg = response.data?.message || "Failed to update status";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
-      console.error("Error toggling status:", error);
-      setError(error.response?.data?.message || "Error updating status");
+      console.error("❌ Error toggling status:", error);
+      showErrorNotification(error, "Failed to update store status");
     }
   };
 
@@ -306,6 +543,7 @@ const StoreManagement = () => {
     setFormVisible(true);
     setError("");
     setSuccess("");
+    setValidationErrors({});
     
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -325,6 +563,14 @@ const StoreManagement = () => {
     setError("");
     setSuccess("");
     setSubmitting(false);
+    setValidationErrors({});
+  };
+
+  // Manual retry function
+  const handleRetry = () => {
+    setError("");
+    setRetryCount(0);
+    fetchStores(currentPage, itemsPerPage);
   };
 
   // Pagination handlers
@@ -368,7 +614,7 @@ const StoreManagement = () => {
     return searchQuery.trim() !== "" ? filteredStores : filteredStores;
   };
 
-  // Image error handler
+  // ✅ Enhanced image error handlers
   const handleImageError = (e, storeName) => {
     console.error(`Image failed to load for store "${storeName}":`, e.target.src);
     e.target.style.display = 'none';
@@ -378,7 +624,6 @@ const StoreManagement = () => {
     }
   };
 
-  // Image load success handler
   const handleImageLoad = (e, storeName) => {
     console.log(`Image loaded successfully for store "${storeName}":`, e.target.src);
     e.target.style.display = 'block';
@@ -407,18 +652,12 @@ const StoreManagement = () => {
         )}
       </div>
 
-      {/* Success/Error Messages */}
+      {/* Enhanced Success/Error Messages */}
       {success && (
         <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg animate-fade-in">
           <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-green-700 font-medium">{success}</p>
-            </div>
+            <FaCheck className="text-green-400 mt-0.5 mr-3" />
+            <p className="text-sm text-green-700 font-medium">{success}</p>
           </div>
         </div>
       )}
@@ -426,13 +665,33 @@ const StoreManagement = () => {
       {error && (
         <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg animate-fade-in">
           <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
+            <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+            <div className="flex-1">
               <p className="text-sm text-red-700 font-medium">{error}</p>
+              {error.includes("connect to server") && (
+                <div className="mt-3">
+                  <p className="text-xs text-red-600">
+                    💡 <strong>Troubleshooting tips:</strong>
+                  </p>
+                  <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
+                    <li>Ensure your backend server is running on {BASE_URL}</li>
+                    <li>Check your network connection</li>
+                    <li>Verify CORS settings in your backend</li>
+                  </ul>
+                  <button
+                    onClick={handleRetry}
+                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                  >
+                    <FaRedo className="mr-1" />
+                    Retry Connection
+                  </button>
+                </div>
+              )}
+              {retryCount > 0 && (
+                <p className="text-xs text-red-600 mt-2">
+                  Retry attempt {retryCount}/3 in progress...
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -460,15 +719,18 @@ const StoreManagement = () => {
                   type="text"
                   name="storeName"
                   placeholder="Enter store name"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.storeName ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.storeName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, storeName: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   required
                   maxLength={100}
                   disabled={submitting}
                 />
+                {validationErrors.storeName && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.storeName}</p>
+                )}
               </div>
 
               {/* Contact Number */}
@@ -480,15 +742,18 @@ const StoreManagement = () => {
                   type="tel"
                   name="contactNumber"
                   placeholder="Enter contact number"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.contactNumber ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.contactNumber}
-                  onChange={(e) =>
-                    setFormData({ ...formData, contactNumber: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   required
                   maxLength={15}
                   disabled={submitting}
                 />
+                {validationErrors.contactNumber && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.contactNumber}</p>
+                )}
               </div>
 
               {/* Address */}
@@ -499,16 +764,19 @@ const StoreManagement = () => {
                 <textarea
                   name="address"
                   placeholder="Enter store address"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.address ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   required
                   maxLength={255}
                   disabled={submitting}
                   rows={3}
                 />
+                {validationErrors.address && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.address}</p>
+                )}
               </div>
 
               {/* Google Map URL */}
@@ -519,15 +787,18 @@ const StoreManagement = () => {
                 <input
                   type="url"
                   name="googleMapUrl"
-                  placeholder="Enter Google Map URL"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                  placeholder="Enter Google Map URL (optional)"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                    validationErrors.googleMapUrl ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   value={formData.googleMapUrl}
-                  onChange={(e) =>
-                    setFormData({ ...formData, googleMapUrl: e.target.value })
-                  }
+                  onChange={handleInputChange}
                   maxLength={500}
                   disabled={submitting}
                 />
+                {validationErrors.googleMapUrl && (
+                  <p className="text-xs text-red-600 mt-1">{validationErrors.googleMapUrl}</p>
+                )}
               </div>
 
               {/* Store Image */}
@@ -551,7 +822,7 @@ const StoreManagement = () => {
               </div>
             </div>
 
-            {/* Image Preview */}
+            {/* Enhanced Image Preview */}
             {imagePreview && (
               <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -582,16 +853,17 @@ const StoreManagement = () => {
             <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
               <button
                 type="button"
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 onClick={resetForm}
                 disabled={submitting}
               >
+                <FaTimes className="mr-2" />
                 Cancel
               </button>
               <button
                 type="submit"
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={submitting}
+                disabled={submitting || Object.keys(validationErrors).length > 0}
               >
                 {submitting ? (
                   <span className="flex items-center">
@@ -602,7 +874,10 @@ const StoreManagement = () => {
                     Processing...
                   </span>
                 ) : (
-                  editingId ? "Update Store" : "Create Store"
+                  <>
+                    <FaCheck className="mr-2" />
+                    {editingId ? "Update Store" : "Create Store"}
+                  </>
                 )}
               </button>
             </div>
@@ -663,6 +938,9 @@ const StoreManagement = () => {
                       <div className="flex flex-col items-center justify-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
                         <p className="text-gray-500">Loading stores...</p>
+                        {retryCount > 0 && (
+                          <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -672,9 +950,18 @@ const StoreManagement = () => {
                       <div className="text-gray-500">
                         <FaImage className="mx-auto h-16 w-16 text-gray-300 mb-4" />
                         <h3 className="text-lg font-medium text-gray-900 mb-2">No stores found</h3>
-                        <p className="text-gray-500">
+                        <p className="text-gray-500 mb-4">
                           {searchQuery ? `No stores match "${searchQuery}"` : "Get started by creating your first store"}
                         </p>
+                        {error && !searchQuery && (
+                          <button
+                            onClick={handleRetry}
+                            className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                          >
+                            <FaRedo className="mr-2" />
+                            Try Again
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

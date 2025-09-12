@@ -13,10 +13,7 @@ const Layout = () => {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Fixed Header */}
-      {/* <header className="fixed top-0 w-full bg-indigo-900 text-white shadow-md z-20">
-        <Header />
-      </header> */}
+     
 
       {/* Main Content Area */}
       <div className="flex flex-col md:flex-row flex-1 md:mt-0">

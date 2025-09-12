@@ -33,7 +33,6 @@ const Header = () => {
           {/* Logo & Mobile Menu */}
          
 
-          {/* Desktop Navigation */}
           
 
           {/* Right Side Icons */}
