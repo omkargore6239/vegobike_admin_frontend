@@ -5,7 +5,7 @@ import { RiMotorbikeLine, RiServiceLine } from "react-icons/ri";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MdOutlineLocalGroceryStore, MdSell } from "react-icons/md";
 import { TbBrandBooking } from "react-icons/tb";
-import { FaWrench, FaCogs, FaMoneyBillWave } from "react-icons/fa"; // ✅ Added FaMoneyBillWave for Late Charges
+import { FaWrench, FaCogs, FaMoneyBillWave } from "react-icons/fa";
 import Header from "./Header";
 import fonts from "../styles/fonts";
 import colors from "../styles/colors";
@@ -99,7 +99,7 @@ const Sidebar = () => {
       submenu: [
         { id: 41, path: "/dashboard/priceMaster/deliveryAtLocationPrices", name: "Delivery" },
         { id: 42, path: "/dashboard/priceMaster/pickUpTariffPlan", name: "Pick Up" },
-        { id: 43, path: "/dashboard/priceMaster/lateCharges", name: "Late Charges" }, // ✅ NEW SUBMENU ITEM
+        { id: 43, path: "/dashboard/priceMaster/lateCharges", name: "Late Charges" },
       ],
     },
     {
@@ -107,10 +107,13 @@ const Sidebar = () => {
       name: "Master Records",
       icon: IoLayersOutline,
       submenu: [
+         { id: 55, path: "/dashboard/masterRecords/allVehicleTypes", name: "All Vehicle Types" }, // ✅ NEW SUBMENU ITEM
+      
         { id: 51, path: "/dashboard/masterRecords/allCategories", name: "All Categories" },
         { id: 52, path: "/dashboard/masterRecords/allBrands", name: "All Brands" },
         { id: 53, path: "/dashboard/masterRecords/allModels", name: "All Models" },
-      ],
+        { id: 54, path: "/dashboard/masterRecords/allCity", name: "All Cities" },
+       ],
     },
     { id: 6, path: "/dashboard/allOffers", name: "All Offers", icon: IoPricetagsOutline },
     { id: 9, path: "/dashboard/allRegisterCustomers", name: "All Registered Customers", icon: LuUsers },

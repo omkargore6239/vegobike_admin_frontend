@@ -1,1156 +1,1063 @@
-import React, { useEffect, useState } from "react";
-import { FaEdit, FaImage, FaSearch, FaPlus, FaToggleOn, FaToggleOff, FaExclamationTriangle, FaRedo, FaCheck, FaTimes } from "react-icons/fa";
-import { toast } from "react-toastify";
-import apiClient, { BASE_URL } from "../api/apiConfig"; // Import BASE_URL from apiConfig
+import React, { useEffect, useState } from 'react';
+import { FaEdit, FaImage, FaSearch, FaPlus, FaToggleOn, FaToggleOff, FaExclamationTriangle, FaRedo, FaCheck, FaTimes } from 'react-icons/fa';
+import { toast } from 'react-toastify';
+import { apiClient, BASE_URL, storeAPI } from '../api/apiConfig'; // ✅ Now this will work
 
 const StoreManagement = () => {
-  const [stores, setStores] = useState([]);
-  const [filteredStores, setFilteredStores] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
-  
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(0);
-  const [itemsPerPage] = useState(10);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
-  const [hasNext, setHasNext] = useState(false);
-  const [hasPrevious, setHasPrevious] = useState(false);
+    const [stores, setStores] = useState([]);
+    const [filteredStores, setFilteredStores] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [retryCount, setRetryCount] = useState(0);
 
-  // Form states
-  const [formVisible, setFormVisible] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [imagePreview, setImagePreview] = useState("");
-  const [validationErrors, setValidationErrors] = useState({});
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(0);
+    const [itemsPerPage] = useState(10);
+    const [totalPages, setTotalPages] = useState(0);
+    const [totalElements, setTotalElements] = useState(0);
+    const [hasNext, setHasNext] = useState(false);
+    const [hasPrevious, setHasPrevious] = useState(false);
 
-  const [formData, setFormData] = useState({
-    storeName: "",
-    contactNumber: "",
-    address: "",
-    googleMapUrl: "",
-    storeImage: null,
-  });
+    // Form states
+    const [formVisible, setFormVisible] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
+    const [imagePreview, setImagePreview] = useState('');
+    const [validationErrors, setValidationErrors] = useState({});
+    const [formData, setFormData] = useState({
+        storeName: '',
+        storeContactNumber: '',
+        storeAddress: '',
+        storeUrl: '',
+        storeGstinNumber: '',
+        storeLatitude: '',
+        storeLongitude: '',
+        storeImage: null,
+    });
 
-  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
-  const ErrorTypes = {
-    NETWORK: 'NETWORK',
-    VALIDATION: 'VALIDATION',
-    PERMISSION: 'PERMISSION',
-    NOT_FOUND: 'NOT_FOUND',
-    SERVER: 'SERVER',
-    FILE_ERROR: 'FILE_ERROR',
-    UNKNOWN: 'UNKNOWN'
-  };
-
-  const getErrorInfo = (error) => {
-    let type = ErrorTypes.UNKNOWN;
-    let message = "An unexpected error occurred";
-    let isRetryable = false;
-    let suggestions = [];
-
-    if (!error) return { type, message, isRetryable, suggestions };
-
-    // Network errors
-    if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
-      type = ErrorTypes.NETWORK;
-      message = `Unable to connect to server at ${BASE_URL}`;
-      isRetryable = true;
-      suggestions = [
-        "Check your internet connection",
-        "Verify the backend server is running",
-        "Ensure CORS is properly configured"
-      ];
-    }
-    // HTTP status errors
-    else if (error.response?.status) {
-      const status = error.response.status;
-      const serverMessage = error.response.data?.message || error.response.data?.error;
-
-      switch (status) {
-        case 400:
-          type = ErrorTypes.VALIDATION;
-          message = serverMessage || "Invalid request data";
-          suggestions = ["Please check your input and try again"];
-          break;
-        case 401:
-          type = ErrorTypes.PERMISSION;
-          message = "Authentication required";
-          suggestions = ["Please log in and try again"];
-          break;
-        case 403:
-          type = ErrorTypes.PERMISSION;
-          message = "Access denied - insufficient permissions";
-          suggestions = ["Contact your administrator for access"];
-          break;
-        case 404:
-          type = ErrorTypes.NOT_FOUND;
-          message = "Resource not found";
-          suggestions = ["The requested data may have been deleted"];
-          break;
-        case 413:
-          type = ErrorTypes.FILE_ERROR;
-          message = "File too large - please select a smaller image";
-          suggestions = ["Try compressing your image or select a different file"];
-          break;
-        case 415:
-          type = ErrorTypes.FILE_ERROR;
-          message = "Unsupported file type";
-          suggestions = ["Please select a valid image file (JPG, PNG, GIF)"];
-          break;
-        case 500:
-        case 502:
-        case 503:
-          type = ErrorTypes.SERVER;
-          message = "Server error occurred";
-          isRetryable = true;
-          suggestions = ["Please try again in a moment", "Contact support if the problem persists"];
-          break;
-        default:
-          message = serverMessage || `Server returned error ${status}`;
-          isRetryable = status >= 500;
-      }
-    }
-    else if (error.message) {
-      message = error.message;
-    }
-
-    return { type, message, isRetryable, suggestions };
-  };
-
-  const showErrorNotification = (error, context = "") => {
-    const errorInfo = getErrorInfo(error);
-    const contextMessage = context ? `${context}: ` : "";
-    
-    console.error(`❌ ${contextMessage}${errorInfo.message}`, error);
-    
-    toast.error(
-      <div>
-        <div className="font-medium">{contextMessage}{errorInfo.message}</div>
-        {errorInfo.suggestions.length > 0 && (
-          <div className="text-sm mt-1 opacity-90">
-            {errorInfo.suggestions[0]}
-          </div>
-        )}
-      </div>,
-      {
-        position: "top-right",
-        autoClose: errorInfo.type === ErrorTypes.NETWORK ? 8000 : 5000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true
-      }
-    );
-
-    setError(`${contextMessage}${errorInfo.message}`);
-    return errorInfo;
-  };
-
-  // ✅ Enhanced Helper function to get full image URL using BASE_URL
-  const getImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-    
-    if (imagePath.startsWith('http')) {
-      return imagePath;
-    }
-    
-    let cleanPath = imagePath.trim();
-    cleanPath = cleanPath.replace(/^\/+/, '');
-    cleanPath = cleanPath.replace(/^uploads\/stores\/+/, '');
-    cleanPath = cleanPath.replace(/^uploads\/+/, '');
-    cleanPath = cleanPath.replace(/^stores\/+/, '');
-    
-    const filename = cleanPath.split('/').pop();
-    const finalUrl = `${BASE_URL}/uploads/stores/${filename}`;
-    console.log(`Store image URL constructed: ${finalUrl} from original path: ${imagePath}`);
-    return finalUrl;
-  };
-
-  // ✅ ENHANCED FORM VALIDATION
-  const validateForm = () => {
-    const errors = {};
-    const fieldErrors = [];
-    
-    // Store name validation
-    if (!formData.storeName.trim()) {
-      errors.storeName = "Store name is required";
-      fieldErrors.push("Please enter a store name");
-    } else if (formData.storeName.trim().length < 2) {
-      errors.storeName = "Store name must be at least 2 characters";
-      fieldErrors.push("Store name must be at least 2 characters");
-    } else if (formData.storeName.trim().length > 100) {
-      errors.storeName = "Store name must be less than 100 characters";
-      fieldErrors.push("Store name is too long");
-    }
-    
-    // Contact number validation
-    if (!formData.contactNumber.trim()) {
-      errors.contactNumber = "Contact number is required";
-      fieldErrors.push("Please enter a contact number");
-    } else if (!/^\+?[\d\s\-\(\)]{10,15}$/.test(formData.contactNumber.trim())) {
-      errors.contactNumber = "Please enter a valid contact number";
-      fieldErrors.push("Contact number format is invalid");
-    }
-    
-    // Address validation
-    if (!formData.address.trim()) {
-      errors.address = "Address is required";
-      fieldErrors.push("Please enter an address");
-    } else if (formData.address.trim().length < 10) {
-      errors.address = "Address must be at least 10 characters";
-      fieldErrors.push("Please provide a complete address");
-    } else if (formData.address.trim().length > 255) {
-      errors.address = "Address must be less than 255 characters";
-      fieldErrors.push("Address is too long");
-    }
-    
-    // Google Map URL validation (optional)
-    if (formData.googleMapUrl.trim() && !/^https?:\/\/.+/.test(formData.googleMapUrl.trim())) {
-      errors.googleMapUrl = "Please enter a valid URL";
-      fieldErrors.push("Google Map URL format is invalid");
-    }
-
-    setValidationErrors(errors);
-    return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
-  };
-
-  // Clear messages after 5 seconds
-  useEffect(() => {
-    if (success || error) {
-      const timer = setTimeout(() => {
-        setSuccess("");
-        setError("");
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [success, error]);
-
-  // Handle search
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredStores(stores);
-    } else {
-      const filtered = stores.filter((store) =>
-        store.storeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        store.address?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredStores(filtered);
-    }
-  }, [searchQuery, stores]);
-
-  // ✅ Enhanced Fetch Stores data with pagination and retry logic
-  const fetchStores = async (page = 0, size = 10, retryAttempt = 0) => {
-    setLoading(true);
-    setError("");
-    
-    try {
-      const response = await apiClient.get(`/stores/all?page=${page}&size=${size}&sort=createdAt,desc`);
-      console.log("✅ Fetched stores data:", response.data);
-      
-      if (response.data && response.data.success) {
-        const storesData = response.data.data || [];
+    // Enhanced Helper function to get full image URL
+    const getImageUrl = (imagePath) => {
+        if (!imagePath) return null;
+        if (imagePath.startsWith('http')) return imagePath;
         
-        // Process each store to ensure proper image URLs
-        const processedStores = storesData.map((store, index) => {
-          const processedStore = {
-            ...store,
-            id: store.id || store.storeId || `fallback-${index}-${Date.now()}`,
-            storeImage: store.storeImage ? getImageUrl(store.storeImage) : null
-          };
-          
-          console.log(`Processed store ${store.storeName}:`, {
-            id: processedStore.id,
-            original: store.storeImage,
-            processed: processedStore.storeImage
-          });
-          return processedStore;
+        let cleanPath = imagePath.trim();
+        cleanPath = cleanPath.replace(/^\//, '');
+        cleanPath = cleanPath.replace('uploads/stores/', '');
+        cleanPath = cleanPath.replace('uploads/', '');
+        cleanPath = cleanPath.replace('stores/', '');
+        
+        const filename = cleanPath.split('/').pop();
+        const finalUrl = `${BASE_URL}/uploads/stores/${filename}`;
+        
+        console.log('Store image URL constructed:', finalUrl, 'from original path:', imagePath);
+        return finalUrl;
+    };
+
+    // ENHANCED FORM VALIDATION
+    const validateForm = () => {
+        const errors = {};
+        const fieldErrors = [];
+
+        // Store name validation
+        if (!formData.storeName.trim()) {
+            errors.storeName = 'Store name is required';
+            fieldErrors.push('Please enter a store name');
+        } else if (formData.storeName.trim().length < 2) {
+            errors.storeName = 'Store name must be at least 2 characters';
+            fieldErrors.push('Store name must be at least 2 characters');
+        } else if (formData.storeName.trim().length > 100) {
+            errors.storeName = 'Store name must be less than 100 characters';
+            fieldErrors.push('Store name is too long');
+        }
+
+        // Contact number validation
+        if (!formData.storeContactNumber.trim()) {
+            errors.storeContactNumber = 'Contact number is required';
+            fieldErrors.push('Please enter a contact number');
+        } else if (!/^[0-9]{10,15}$/.test(formData.storeContactNumber.trim())) {
+            errors.storeContactNumber = 'Please enter a valid contact number (10-15 digits)';
+            fieldErrors.push('Contact number format is invalid');
+        }
+
+        // Store address validation
+        if (!formData.storeAddress.trim()) {
+            errors.storeAddress = 'Address is required';
+            fieldErrors.push('Please enter an address');
+        } else if (formData.storeAddress.trim().length < 10) {
+            errors.storeAddress = 'Address must be at least 10 characters';
+            fieldErrors.push('Please provide a complete address');
+        } else if (formData.storeAddress.trim().length > 255) {
+            errors.storeAddress = 'Address must be less than 255 characters';
+            fieldErrors.push('Address is too long');
+        }
+
+        // Store URL validation (optional)
+        if (formData.storeUrl.trim() && !/^https?:\/\/.+/.test(formData.storeUrl.trim())) {
+            errors.storeUrl = 'Please enter a valid URL';
+            fieldErrors.push('Store URL format is invalid');
+        }
+
+        setValidationErrors(errors);
+        return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
+    };
+
+    // Clear messages after 5 seconds
+    useEffect(() => {
+        if (success || error) {
+            const timer = setTimeout(() => {
+                setSuccess('');
+                setError('');
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [success, error]);
+
+    // Handle search
+    useEffect(() => {
+        if (searchQuery.trim()) {
+            const filtered = stores.filter(store => 
+                store.storeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                store.storeAddress?.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+            setFilteredStores(filtered);
+        } else {
+            setFilteredStores(stores);
+        }
+    }, [searchQuery, stores]);
+
+    // ✅ UPDATED: Use storeAPI helper for fetching stores
+    const fetchStores = async (page = 0, size = 10, retryAttempt = 0) => {
+        setLoading(true);
+        setError('');
+        
+        try {
+            const response = await storeAPI.getAll({
+                page,
+                size,
+                sort: 'createdAt,desc'
+            });
+            
+            console.log('Fetched stores data:', response.data);
+            
+            if (response.data && response.data.success) {
+                const storesData = response.data.data;
+                
+                // Process each store to ensure proper image URLs
+                const processedStores = storesData.map((store, index) => {
+                    const processedStore = {
+                        ...store,
+                        id: store.id || store.storeId || `fallback-${index}-${Date.now()}`,
+                        storeImage: store.storeImage ? getImageUrl(store.storeImage) : null
+                    };
+                    
+                    console.log('Processed store:', store.storeName, 'id:', processedStore.id, 
+                               'original:', store.storeImage, 'processed:', processedStore.storeImage);
+                    return processedStore;
+                });
+
+                setStores(processedStores);
+                setFilteredStores(processedStores);
+                setRetryCount(0); // Reset retry count on success
+
+                if (response.data.pagination) {
+                    setCurrentPage(response.data.pagination.currentPage);
+                    setTotalPages(response.data.pagination.totalPages);
+                    setTotalElements(response.data.pagination.totalElements);
+                    setHasNext(response.data.pagination.hasNext);
+                    setHasPrevious(response.data.pagination.hasPrevious);
+                }
+
+                if (processedStores.length > 0) {
+                    setSuccess(`Successfully loaded ${processedStores.length} stores`);
+                    setTimeout(() => setSuccess(''), 3000);
+                }
+            } else {
+                setError('Failed to fetch stores data');
+                setStores([]);
+                setFilteredStores([]);
+            }
+        } catch (error) {
+            console.error('Error fetching stores:', error);
+            setError('Failed to fetch stores. Please check your connection and try again.');
+            setStores([]);
+            setFilteredStores([]);
+
+            // Retry logic for retryable errors
+            if (retryAttempt < 2) {
+                console.log(`Retrying stores fetch (attempt ${retryAttempt + 1}/3)...`);
+                setRetryCount(retryAttempt + 1);
+                setTimeout(() => fetchStores(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchStores(currentPage, itemsPerPage);
+        window.scrollTo(0, 0);
+    }, []);
+
+    // Handle form input changes with validation
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+
+        // Clear validation errors for this field
+        if (validationErrors[name]) {
+            setValidationErrors(prev => ({ ...prev, [name]: undefined }));
+        }
+
+        // Clear general error when user starts typing
+        if (error) setError('');
+    };
+
+    // Enhanced Handle image selection with preview and validation
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        
+        if (!file) {
+            setFormData({ ...formData, storeImage: null });
+            setImagePreview('');
+            return;
+        }
+
+        // Enhanced file validation
+        if (!file.type.startsWith('image/')) {
+            const errorMsg = 'Please select a valid image file (JPG, PNG, GIF)';
+            setError(errorMsg);
+            toast.error(errorMsg);
+            e.target.value = '';
+            return;
+        }
+
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            const errorMsg = 'Image size should be less than 5MB';
+            setError(errorMsg);
+            toast.error(errorMsg);
+            e.target.value = '';
+            return;
+        }
+
+        setFormData({ ...formData, storeImage: file });
+
+        const reader = new FileReader();
+        reader.onloadend = () => setImagePreview(reader.result);
+        reader.onerror = () => {
+            const errorMsg = 'Failed to read the selected file';
+            setError(errorMsg);
+            toast.error(errorMsg);
+        };
+        reader.readAsDataURL(file);
+
+        setError(''); // Clear validation error for image
+        if (validationErrors.storeImage) {
+            setValidationErrors(prev => ({ ...prev, storeImage: undefined }));
+        }
+    };
+
+    // ✅ UPDATED: Use storeAPI helper for adding store
+    const handleAddStore = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        setSubmitting(true);
+        setValidationErrors({});
+
+        // Validation
+        const validation = validateForm();
+        if (!validation.isValid) {
+            setError(validation.fieldErrors[0]);
+            setSubmitting(false);
+            return;
+        }
+
+        try {
+            console.log('Adding store...');
+            const storeData = {
+                storeName: formData.storeName.trim(),
+                storeContactNumber: formData.storeContactNumber.trim(),
+                storeAddress: formData.storeAddress.trim(),
+                storeUrl: formData.storeUrl.trim(),
+                storeGstinNumber: formData.storeGstinNumber.trim(),
+                storeLatitude: formData.storeLatitude,
+                storeLongitude: formData.storeLongitude,
+            };
+
+            const response = await storeAPI.create(storeData, formData.storeImage);
+
+            if (response.data && response.data.success) {
+                setSuccess('Store added successfully!');
+                toast.success('Store added successfully!');
+                resetForm();
+                await fetchStores(currentPage, itemsPerPage);
+            } else {
+                const errorMsg = response.data?.message || 'Failed to add store';
+                setError(errorMsg);
+                toast.error(errorMsg);
+            }
+        } catch (error) {
+            console.error('Error adding store:', error);
+            const errorMsg = error.response?.data?.message || 'Failed to add store. Please try again.';
+            setError(errorMsg);
+            toast.error(errorMsg);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // ✅ UPDATED: Use storeAPI helper for editing store
+    const handleEditStore = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        setSubmitting(true);
+        setValidationErrors({});
+
+        // Validation
+        const validation = validateForm();
+        if (!validation.isValid) {
+            setError(validation.fieldErrors[0]);
+            setSubmitting(false);
+            return;
+        }
+
+        if (!editingId) {
+            setError('Invalid store ID');
+            setSubmitting(false);
+            return;
+        }
+
+        try {
+            console.log('Updating store:', editingId);
+            const storeData = {
+                storeName: formData.storeName.trim(),
+                storeContactNumber: formData.storeContactNumber.trim(),
+                storeAddress: formData.storeAddress.trim(),
+                storeUrl: formData.storeUrl.trim(),
+                storeGstinNumber: formData.storeGstinNumber.trim(),
+                storeLatitude: formData.storeLatitude,
+                storeLongitude: formData.storeLongitude,
+            };
+
+            const response = await storeAPI.update(editingId, storeData, formData.storeImage);
+
+            if (response.data && response.data.success) {
+                setSuccess('Store updated successfully!');
+                toast.success('Store updated successfully!');
+                resetForm();
+                await fetchStores(currentPage, itemsPerPage);
+            } else {
+                const errorMsg = response.data?.message || 'Failed to update store';
+                setError(errorMsg);
+                toast.error(errorMsg);
+            }
+        } catch (error) {
+            console.error('Error updating store:', error);
+            const errorMsg = error.response?.data?.message || 'Failed to update store. Please try again.';
+            setError(errorMsg);
+            toast.error(errorMsg);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // ✅ UPDATED: Use storeAPI helper for toggling status
+    const handleToggleStatus = async (id) => {
+        if (!id || id.toString().startsWith('fallback-')) {
+            setError('Invalid store ID');
+            return;
+        }
+
+        setError('');
+        setSuccess('');
+
+        try {
+            console.log('Toggling store status:', id);
+            const response = await storeAPI.toggleStatus(id);
+
+            if (response.data && response.data.success) {
+                setSuccess(response.data.message || 'Status updated successfully!');
+                toast.success('Store status updated successfully!');
+                await fetchStores(currentPage, itemsPerPage);
+            } else {
+                const errorMsg = response.data?.message || 'Failed to update status';
+                setError(errorMsg);
+                toast.error(errorMsg);
+            }
+        } catch (error) {
+            console.error('Error toggling status:', error);
+            const errorMsg = error.response?.data?.message || 'Failed to update store status. Please try again.';
+            setError(errorMsg);
+            toast.error(errorMsg);
+        }
+    };
+
+    // Rest of your component code remains the same...
+    // (resetForm, handleEditStoreClick, pagination handlers, etc.)
+
+    // Reset Form
+    const resetForm = () => {
+        setEditingId(null);
+        setFormData({
+            storeName: '',
+            storeContactNumber: '',
+            storeAddress: '',
+            storeUrl: '',
+            storeGstinNumber: '',
+            storeLatitude: '',
+            storeLongitude: '',
+            storeImage: null,
         });
-        
-        setStores(processedStores);
-        setFilteredStores(processedStores);
-        setRetryCount(0); // Reset retry count on success
-        
-        if (response.data.pagination) {
-          setCurrentPage(response.data.pagination.currentPage);
-          setTotalPages(response.data.pagination.totalPages);
-          setTotalElements(response.data.pagination.totalElements);
-          setHasNext(response.data.pagination.hasNext);
-          setHasPrevious(response.data.pagination.hasPrevious);
+        setImagePreview('');
+        setFormVisible(false);
+        setError('');
+        setSuccess('');
+        setSubmitting(false);
+        setValidationErrors({});
+    };
+
+    // Edit form prefill
+    const handleEditStoreClick = (store) => {
+        if (!store || !store.id || store.id.toString().startsWith('fallback-')) {
+            setError('Invalid store data or missing ID');
+            return;
         }
 
-        if (processedStores.length > 0) {
-          setSuccess(`Successfully loaded ${processedStores.length} stores`);
-          setTimeout(() => setSuccess(""), 3000);
+        setEditingId(store.id);
+        setFormData({
+            storeName: store.storeName || '',
+            storeContactNumber: store.storeContactNumber || '',
+            storeAddress: store.storeAddress || '',
+            storeUrl: store.storeUrl || '',
+            storeGstinNumber: store.storeGstinNumber || '',
+            storeLatitude: store.storeLatitude || '',
+            storeLongitude: store.storeLongitude || '',
+            storeImage: null,
+        });
+
+        if (store.storeImage) {
+            setImagePreview(store.storeImage);
+        } else {
+            setImagePreview('');
         }
-      } else {
-        setError("Failed to fetch stores data");
-        setStores([]);
-        setFilteredStores([]);
-      }
-    } catch (error) {
-      console.error("❌ Error fetching stores:", error);
-      const errorInfo = showErrorNotification(error, "Failed to fetch stores");
-      
-      setStores([]);
-      setFilteredStores([]);
-      
-      // Retry logic for retryable errors
-      if (errorInfo.isRetryable && retryAttempt < 2) {
-        console.log(`🔄 Retrying stores fetch (attempt ${retryAttempt + 1}/3)...`);
-        setRetryCount(retryAttempt + 1);
-        setTimeout(() => fetchStores(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    fetchStores(currentPage, itemsPerPage);
-    window.scrollTo(0, 0);
-  }, []);
+        setFormVisible(true);
+        setError('');
+        setSuccess('');
+        setValidationErrors({});
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
-  // Handle form input changes with validation
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Clear validation errors for this field
-    if (validationErrors[name]) {
-      setValidationErrors(prev => ({
-        ...prev,
-        [name]: undefined
-      }));
-    }
-    
-    // Clear general error when user starts typing
-    if (error) {
-      setError("");
-    }
-  };
+    // Manual retry function
+    const handleRetry = () => {
+        setError('');
+        setRetryCount(0);
+        fetchStores(currentPage, itemsPerPage);
+    };
 
-  // ✅ Enhanced Handle image selection with preview and validation
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Enhanced file validation
-      if (!file.type.startsWith('image/')) {
-        const errorMsg = "Please select a valid image file (JPG, PNG, GIF)";
-        setError(errorMsg);
-        toast.error(errorMsg);
-        e.target.value = '';
-        return;
-      }
-      
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (file.size > maxSize) {
-        const errorMsg = "Image size should be less than 5MB";
-        setError(errorMsg);
-        toast.error(errorMsg);
-        e.target.value = '';
-        return;
-      }
+    // Pagination handlers
+    const handleNextPage = () => {
+        if (hasNext) {
+            const nextPage = currentPage + 1;
+            fetchStores(nextPage, itemsPerPage);
+        }
+    };
 
-      setFormData({ ...formData, storeImage: file });
-      
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.onerror = () => {
-        const errorMsg = "Failed to read the selected file";
-        setError(errorMsg);
-        toast.error(errorMsg);
-      };
-      reader.readAsDataURL(file);
-      
-      setError("");
-      
-      // Clear validation error for image
-      if (validationErrors.storeImage) {
-        setValidationErrors(prev => ({
-          ...prev,
-          storeImage: undefined
-        }));
-      }
-    }
-  };
+    const handlePrevPage = () => {
+        if (hasPrevious) {
+            const prevPage = currentPage - 1;
+            fetchStores(prevPage, itemsPerPage);
+        }
+    };
 
-  // ✅ Enhanced Add Store with better validation and error handling
-  const handleAddStore = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-    setSubmitting(true);
-    setValidationErrors({});
+    const handlePageClick = (pageNumber) => {
+        fetchStores(pageNumber, itemsPerPage);
+    };
 
-    // Validation
-    const validation = validateForm();
-    if (!validation.isValid) {
-      setError(validation.fieldErrors[0]);
-      setSubmitting(false);
-      return;
-    }
+    // Generate page numbers for pagination
+    const getPageNumbers = () => {
+        const pages = [];
+        const maxVisible = 5;
+        let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
+        let end = Math.min(totalPages - 1, start + maxVisible - 1);
+        
+        if (end - start + 1 < maxVisible) {
+            start = Math.max(0, end - maxVisible + 1);
+        }
+        
+        for (let i = start; i <= end; i++) {
+            pages.push(i);
+        }
+        return pages;
+    };
 
-    const formDataToSend = new FormData();
-    formDataToSend.append('storeName', formData.storeName.trim());
-    formDataToSend.append('contactNumber', formData.contactNumber.trim());
-    formDataToSend.append('address', formData.address.trim());
-    formDataToSend.append('googleMapUrl', formData.googleMapUrl.trim());
-    if (formData.storeImage) {
-      formDataToSend.append('storeImage', formData.storeImage);
-    }
+    // Get current page data
+    const getCurrentPageData = () => {
+        return searchQuery.trim() !== '' ? filteredStores : filteredStores;
+    };
 
-    try {
-      console.log("🔄 Adding store...");
-      const response = await apiClient.post("/stores/add", formDataToSend, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+    // Enhanced image error handlers
+    const handleImageError = (e, storeName) => {
+        console.error('Image failed to load for store:', storeName, e.target.src);
+        e.target.style.display = 'none';
+        const fallbackDiv = e.target.nextElementSibling;
+        if (fallbackDiv) fallbackDiv.style.display = 'flex';
+    };
 
-      if (response.data && response.data.success) {
-        setSuccess("Store added successfully!");
-        toast.success("Store added successfully!");
-        resetForm();
-        await fetchStores(currentPage, itemsPerPage);
-      } else {
-        const errorMsg = response.data?.message || "Failed to add store";
-        setError(errorMsg);
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      console.error("❌ Error adding store:", error);
-      showErrorNotification(error, "Failed to add store");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    const handleImageLoad = (e, storeName) => {
+        console.log('Image loaded successfully for store:', storeName, e.target.src);
+        e.target.style.display = 'block';
+        const fallbackDiv = e.target.nextElementSibling;
+        if (fallbackDiv) fallbackDiv.style.display = 'none';
+    };
 
-  // ✅ Enhanced Edit Store with better validation and error handling
-  const handleEditStore = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-    setSubmitting(true);
-    setValidationErrors({});
+    // Return your JSX here - the rest of the component remains the same
 
-    // Validation
-    const validation = validateForm();
-    if (!validation.isValid) {
-      setError(validation.fieldErrors[0]);
-      setSubmitting(false);
-      return;
-    }
 
-    if (!editingId) {
-      setError("Invalid store ID");
-      setSubmitting(false);
-      return;
-    }
 
-    const formDataToSend = new FormData();
-    formDataToSend.append('storeName', formData.storeName.trim());
-    formDataToSend.append('contactNumber', formData.contactNumber.trim());
-    formDataToSend.append('address', formData.address.trim());
-    formDataToSend.append('googleMapUrl', formData.googleMapUrl.trim());
-    if (formData.storeImage) {
-      formDataToSend.append('storeImage', formData.storeImage);
-    }
-
-    try {
-      console.log("🔄 Updating store:", editingId);
-      const response = await apiClient.post(`/stores/edit/${editingId}`, formDataToSend, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      if (response.data && response.data.success) {
-        setSuccess("Store updated successfully!");
-        toast.success("Store updated successfully!");
-        resetForm();
-        await fetchStores(currentPage, itemsPerPage);
-      } else {
-        const errorMsg = response.data?.message || "Failed to update store";
-        setError(errorMsg);
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      console.error("❌ Error updating store:", error);
-      showErrorNotification(error, "Failed to update store");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // ✅ Enhanced Toggle Store Status with better error handling
-  const handleToggleStatus = async (id) => {
-    if (!id || id.toString().startsWith('fallback-')) {
-      setError("Invalid store ID");
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-    try {
-      console.log("🔄 Toggling store status:", id);
-      const response = await apiClient.put(`/stores/${id}/status`);
-      if (response.data && response.data.success) {
-        setSuccess(response.data.message || "Status updated successfully!");
-        toast.success("Store status updated successfully!");
-        await fetchStores(currentPage, itemsPerPage);
-      } else {
-        const errorMsg = response.data?.message || "Failed to update status";
-        setError(errorMsg);
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      console.error("❌ Error toggling status:", error);
-      showErrorNotification(error, "Failed to update store status");
-    }
-  };
-
-  // Edit form prefill
-  const handleEditStoreClick = (store) => {
-    if (!store || !store.id || store.id.toString().startsWith('fallback-')) {
-      setError("Invalid store data or missing ID");
-      return;
-    }
-
-    setEditingId(store.id);
-    setFormData({
-      storeName: store.storeName || "",
-      contactNumber: store.contactNumber || "",
-      address: store.address || "",
-      googleMapUrl: store.googleMapUrl || "",
-      storeImage: null,
-    });
-    
-    if (store.storeImage) {
-      setImagePreview(store.storeImage);
-    } else {
-      setImagePreview("");
-    }
-    
-    setFormVisible(true);
-    setError("");
-    setSuccess("");
-    setValidationErrors({});
-    
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Reset Form
-  const resetForm = () => {
-    setEditingId(null);
-    setFormData({
-      storeName: "",
-      contactNumber: "",
-      address: "",
-      googleMapUrl: "",
-      storeImage: null,
-    });
-    setImagePreview("");
-    setFormVisible(false);
-    setError("");
-    setSuccess("");
-    setSubmitting(false);
-    setValidationErrors({});
-  };
-
-  // Manual retry function
-  const handleRetry = () => {
-    setError("");
-    setRetryCount(0);
-    fetchStores(currentPage, itemsPerPage);
-  };
-
-  // Pagination handlers
-  const handleNextPage = () => {
-    if (hasNext) {
-      const nextPage = currentPage + 1;
-      fetchStores(nextPage, itemsPerPage);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (hasPrevious) {
-      const prevPage = currentPage - 1;
-      fetchStores(prevPage, itemsPerPage);
-    }
-  };
-
-  const handlePageClick = (pageNumber) => {
-    fetchStores(pageNumber, itemsPerPage);
-  };
-
-  // Generate page numbers for pagination
-  const getPageNumbers = () => {
-    const pages = [];
-    const maxVisible = 5;
-    let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
-    let end = Math.min(totalPages - 1, start + maxVisible - 1);
-    
-    if (end - start + 1 < maxVisible) {
-      start = Math.max(0, end - maxVisible + 1);
-    }
-    
-    for (let i = start; i <= end; i++) {
-      pages.push(i);
-    }
-    return pages;
-  };
-
-  // Get current page data
-  const getCurrentPageData = () => {
-    return searchQuery.trim() !== "" ? filteredStores : filteredStores;
-  };
-
-  // ✅ Enhanced image error handlers
-  const handleImageError = (e, storeName) => {
-    console.error(`Image failed to load for store "${storeName}":`, e.target.src);
-    e.target.style.display = 'none';
-    const fallbackDiv = e.target.nextElementSibling;
-    if (fallbackDiv) {
-      fallbackDiv.style.display = 'flex';
-    }
-  };
-
-  const handleImageLoad = (e, storeName) => {
-    console.log(`Image loaded successfully for store "${storeName}":`, e.target.src);
-    e.target.style.display = 'block';
-    const fallbackDiv = e.target.nextElementSibling;
-    if (fallbackDiv) {
-      fallbackDiv.style.display = 'none';
-    }
-  };
-
-  return (
-    <div className="bg-gray-50 min-h-screen p-4">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Store Management</h1>
-          <p className="text-gray-600 mt-1">Manage your store locations ({totalElements} stores)</p>
-        </div>
-        {!formVisible && (
-          <button
-            onClick={() => setFormVisible(true)}
-            className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl"
-          >
-            <FaPlus className="mr-2" />
-            Add New Store
-          </button>
-        )}
-      </div>
-
-      {/* Enhanced Success/Error Messages */}
-      {success && (
-        <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg animate-fade-in">
-          <div className="flex">
-            <FaCheck className="text-green-400 mt-0.5 mr-3" />
-            <p className="text-sm text-green-700 font-medium">{success}</p>
-          </div>
-        </div>
-      )}
-      
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg animate-fade-in">
-          <div className="flex">
-            <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-red-700 font-medium">{error}</p>
-              {error.includes("connect to server") && (
-                <div className="mt-3">
-                  <p className="text-xs text-red-600">
-                    💡 <strong>Troubleshooting tips:</strong>
-                  </p>
-                  <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
-                    <li>Ensure your backend server is running on {BASE_URL}</li>
-                    <li>Check your network connection</li>
-                    <li>Verify CORS settings in your backend</li>
-                  </ul>
-                  <button
-                    onClick={handleRetry}
-                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                  >
-                    <FaRedo className="mr-1" />
-                    Retry Connection
-                  </button>
+    return (
+        <div className="bg-gray-50 min-h-screen p-4">
+            {/* Header Section */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900">Store Management</h1>
+                    <p className="text-gray-600 mt-1">Manage your store locations ({totalElements} stores)</p>
                 </div>
-              )}
-              {retryCount > 0 && (
-                <p className="text-xs text-red-600 mt-2">
-                  Retry attempt {retryCount}/3 in progress...
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {formVisible ? (
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              {editingId ? "Edit Store" : "Add New Store"}
-            </h2>
-            <p className="text-gray-600 mt-1">
-              {editingId ? "Update store information below" : "Fill in the details to create a new store"}
-            </p>
-          </div>
-          
-          <form onSubmit={editingId ? handleEditStore : handleAddStore} className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Store Name */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Store Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="storeName"
-                  placeholder="Enter store name"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
-                    validationErrors.storeName ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                  }`}
-                  value={formData.storeName}
-                  onChange={handleInputChange}
-                  required
-                  maxLength={100}
-                  disabled={submitting}
-                />
-                {validationErrors.storeName && (
-                  <p className="text-xs text-red-600 mt-1">{validationErrors.storeName}</p>
+                {!formVisible && (
+                    <button
+                        onClick={() => setFormVisible(true)}
+                        className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl"
+                    >
+                        <FaPlus className="mr-2" />
+                        Add New Store
+                    </button>
                 )}
-              </div>
-
-              {/* Contact Number */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Contact Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="tel"
-                  name="contactNumber"
-                  placeholder="Enter contact number"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
-                    validationErrors.contactNumber ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                  }`}
-                  value={formData.contactNumber}
-                  onChange={handleInputChange}
-                  required
-                  maxLength={15}
-                  disabled={submitting}
-                />
-                {validationErrors.contactNumber && (
-                  <p className="text-xs text-red-600 mt-1">{validationErrors.contactNumber}</p>
-                )}
-              </div>
-
-              {/* Address */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Address <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  name="address"
-                  placeholder="Enter store address"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
-                    validationErrors.address ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                  }`}
-                  value={formData.address}
-                  onChange={handleInputChange}
-                  required
-                  maxLength={255}
-                  disabled={submitting}
-                  rows={3}
-                />
-                {validationErrors.address && (
-                  <p className="text-xs text-red-600 mt-1">{validationErrors.address}</p>
-                )}
-              </div>
-
-              {/* Google Map URL */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Google Map URL
-                </label>
-                <input
-                  type="url"
-                  name="googleMapUrl"
-                  placeholder="Enter Google Map URL (optional)"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
-                    validationErrors.googleMapUrl ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                  }`}
-                  value={formData.googleMapUrl}
-                  onChange={handleInputChange}
-                  maxLength={500}
-                  disabled={submitting}
-                />
-                {validationErrors.googleMapUrl && (
-                  <p className="text-xs text-red-600 mt-1">{validationErrors.googleMapUrl}</p>
-                )}
-              </div>
-
-              {/* Store Image */}
-              <div className="space-y-2 lg:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Store Image
-                </label>
-                <div className="space-y-4">
-                  <input
-                    type="file"
-                    name="storeImage"
-                    accept="image/jpeg,image/jpg,image/png,image/gif"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                    onChange={handleImageChange}
-                    disabled={submitting}
-                  />
-                  <p className="text-xs text-gray-500">
-                    Supported formats: JPG, PNG, GIF. Maximum size: 5MB
-                  </p>
-                </div>
-              </div>
             </div>
 
-            {/* Enhanced Image Preview */}
-            {imagePreview && (
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Image Preview
-                </label>
-                <div className="relative w-64 h-40 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-                  <img
-                    src={imagePreview}
-                    alt="Store preview"
-                    className="w-full h-full object-cover"
-                    onError={(e) => handleImageError(e, "Preview")}
-                    onLoad={(e) => handleImageLoad(e, "Preview")}
-                  />
-                  <div 
-                    className="absolute inset-0 flex items-center justify-center bg-gray-100"
-                    style={{ display: 'none' }}
-                  >
-                    <div className="text-center">
-                      <FaImage className="h-8 w-8 text-gray-400 mx-auto mb-1" />
-                      <p className="text-xs text-gray-500">Preview not available</p>
+            {/* Enhanced Success/Error Messages */}
+            {success && (
+                <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg animate-fade-in">
+                    <div className="flex">
+                        <FaCheck className="text-green-400 mt-0.5 mr-3" />
+                        <p className="text-sm text-green-700 font-medium">{success}</p>
                     </div>
-                  </div>
                 </div>
-              </div>
             )}
 
-            {/* Form Actions */}
-            <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-              <button
-                type="button"
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                onClick={resetForm}
-                disabled={submitting}
-              >
-                <FaTimes className="mr-2" />
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={submitting || Object.keys(validationErrors).length > 0}
-              >
-                {submitting ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  <>
-                    <FaCheck className="mr-2" />
-                    {editingId ? "Update Store" : "Create Store"}
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          {/* Search and Filters */}
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
-              <h3 className="text-lg font-semibold text-gray-900">
-                All Stores ({totalElements} total)
-              </h3>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaSearch className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search stores..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-80"
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    #
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Store Image
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Store Details
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Contact Info
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  <tr key="loading-row">
-                    <td colSpan="6" className="px-6 py-12 text-center">
-                      <div className="flex flex-col items-center justify-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                        <p className="text-gray-500">Loading stores...</p>
-                        {retryCount > 0 && (
-                          <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ) : getCurrentPageData().length === 0 ? (
-                  <tr key="empty-row">
-                    <td colSpan="6" className="px-6 py-12 text-center">
-                      <div className="text-gray-500">
-                        <FaImage className="mx-auto h-16 w-16 text-gray-300 mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">No stores found</h3>
-                        <p className="text-gray-500 mb-4">
-                          {searchQuery ? `No stores match "${searchQuery}"` : "Get started by creating your first store"}
-                        </p>
-                        {error && !searchQuery && (
-                          <button
-                            onClick={handleRetry}
-                            className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                          >
-                            <FaRedo className="mr-2" />
-                            Try Again
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  getCurrentPageData().map((store, index) => (
-                    <tr 
-                      key={`store-row-${store.id}-${index}`} 
-                      className="hover:bg-gray-50 transition duration-150"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {searchQuery ? index + 1 : (currentPage * itemsPerPage + index + 1)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex-shrink-0 h-16 w-20 relative">
-                          {store.storeImage ? (
-                            <>
-                              <img
-                                src={store.storeImage}
-                                alt={store.storeName}
-                                className="h-16 w-20 rounded-lg object-cover border border-gray-200 shadow-sm bg-white"
-                                onError={(e) => handleImageError(e, store.storeName)}
-                                onLoad={(e) => handleImageLoad(e, store.storeName)}
-                                style={{ display: 'block' }}
-                              />
-                              <div 
-                                className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center absolute top-0 left-0"
-                                style={{ display: 'none' }}
-                              >
-                                <div className="text-center">
-                                  <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-                                  <p className="text-xs text-gray-500">No Image</p>
+            {error && (
+                <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg animate-fade-in">
+                    <div className="flex">
+                        <FaExclamationTriangle className="text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+                        <div className="flex-1">
+                            <p className="text-sm text-red-700 font-medium">{error}</p>
+                            {error.includes('connect to server') && (
+                                <div className="mt-3">
+                                    <p className="text-xs text-red-600"><strong>Troubleshooting tips:</strong></p>
+                                    <ul className="text-xs text-red-600 mt-1 ml-4 list-disc">
+                                        <li>Ensure your backend server is running on {BASE_URL}</li>
+                                        <li>Check your network connection</li>
+                                        <li>Verify CORS settings in your backend</li>
+                                    </ul>
+                                    <button
+                                        onClick={handleRetry}
+                                        className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                    >
+                                        <FaRedo className="mr-1" />
+                                        Retry Connection
+                                    </button>
                                 </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                              <div className="text-center">
-                                <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-                                <p className="text-xs text-gray-500">No Image</p>
-                              </div>
-                            </div>
-                          )}
+                            )}
+                            {retryCount > 0 && (
+                                <p className="text-xs text-red-600 mt-2">
+                                    Retry attempt {retryCount}/3 in progress...
+                                </p>
+                            )}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{store.storeName}</div>
-                        <div className="text-sm text-gray-500 max-w-xs truncate">{store.address}</div>
-                        {store.googleMapUrl && (
-                          <a 
-                            href={store.googleMapUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-indigo-600 hover:text-indigo-800"
-                          >
-                            View on Map
-                          </a>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{store.contactNumber}</div>
-                        <div className="text-sm text-gray-500">ID: {store.id}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => handleToggleStatus(store.id)}
-                          className={`inline-flex items-center px-3 py-2 rounded-full text-xs font-medium transition duration-200 ${
-                            store.isActive === 1
-                              ? "bg-green-100 text-green-800 hover:bg-green-200"
-                              : "bg-red-100 text-red-800 hover:bg-red-200"
-                          }`}
-                          title={`Click to ${store.isActive === 1 ? 'deactivate' : 'activate'} store`}
-                          disabled={store.id.toString().startsWith('fallback-')}
-                        >
-                          {store.isActive === 1 ? (
-                            <>
-                              <FaToggleOn className="mr-1" />
-                              Active
-                            </>
-                          ) : (
-                            <>
-                              <FaToggleOff className="mr-1" />
-                              Inactive
-                            </>
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center space-x-3">
-                          <button
-                            className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
-                              store.id.toString().startsWith('fallback-')
-                                ? "text-gray-400 bg-gray-100 cursor-not-allowed"
-                                : "text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
-                            }`}
-                            onClick={() => handleEditStoreClick(store)}
-                            title="Edit store"
-                            disabled={store.id.toString().startsWith('fallback-')}
-                          >
-                            <FaEdit className="mr-1" />
-                            Edit
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                </div>
+            )}
 
-          {/* Pagination */}
-          {!loading && !searchQuery && stores.length > 0 && totalPages > 1 && (
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 flex justify-between sm:hidden">
-                  <button
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    disabled={!hasPrevious}
-                    onClick={handlePrevPage}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    disabled={!hasNext}
-                    onClick={handleNextPage}
-                  >
-                    Next
-                  </button>
+            {/* Add/Edit Store Form */}
+            {formVisible ? (
+                <div className="bg-white rounded-xl shadow-lg p-8">
+                    <div className="mb-6">
+                        <h2 className="text-2xl font-bold text-gray-900">
+                            {editingId ? 'Edit Store' : 'Add New Store'}
+                        </h2>
+                        <p className="text-gray-600 mt-1">
+                            {editingId ? 'Update store information below' : 'Fill in the details to create a new store'}
+                        </p>
+                    </div>
+
+                    <form onSubmit={editingId ? handleEditStore : handleAddStore} className="space-y-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Store Name */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Store Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    name="storeName"
+                                    placeholder="Enter store name"
+                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                                        validationErrors.storeName ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                                    }`}
+                                    value={formData.storeName}
+                                    onChange={handleInputChange}
+                                    required
+                                    maxLength={100}
+                                    disabled={submitting}
+                                />
+                                {validationErrors.storeName && (
+                                    <p className="text-xs text-red-600 mt-1">{validationErrors.storeName}</p>
+                                )}
+                            </div>
+
+                            {/* Contact Number */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Contact Number <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="tel"
+                                    name="storeContactNumber"
+                                    placeholder="Enter contact number"
+                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                                        validationErrors.storeContactNumber ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                                    }`}
+                                    value={formData.storeContactNumber}
+                                    onChange={handleInputChange}
+                                    required
+                                    maxLength={15}
+                                    disabled={submitting}
+                                />
+                                {validationErrors.storeContactNumber && (
+                                    <p className="text-xs text-red-600 mt-1">{validationErrors.storeContactNumber}</p>
+                                )}
+                            </div>
+
+                            {/* Address */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Address <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                    name="storeAddress"
+                                    placeholder="Enter store address"
+                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                                        validationErrors.storeAddress ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                                    }`}
+                                    value={formData.storeAddress}
+                                    onChange={handleInputChange}
+                                    required
+                                    maxLength={255}
+                                    disabled={submitting}
+                                    rows={3}
+                                />
+                                {validationErrors.storeAddress && (
+                                    <p className="text-xs text-red-600 mt-1">{validationErrors.storeAddress}</p>
+                                )}
+                            </div>
+
+                            {/* Store URL */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Store URL
+                                </label>
+                                <input
+                                    type="url"
+                                    name="storeUrl"
+                                    placeholder="Enter store URL (optional)"
+                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+                                        validationErrors.storeUrl ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                                    }`}
+                                    value={formData.storeUrl}
+                                    onChange={handleInputChange}
+                                    maxLength={500}
+                                    disabled={submitting}
+                                />
+                                {validationErrors.storeUrl && (
+                                    <p className="text-xs text-red-600 mt-1">{validationErrors.storeUrl}</p>
+                                )}
+                            </div>
+
+                            {/* GSTIN Number */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    GSTIN Number
+                                </label>
+                                <input
+                                    type="text"
+                                    name="storeGstinNumber"
+                                    placeholder="Enter GSTIN number (optional)"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                                    value={formData.storeGstinNumber}
+                                    onChange={handleInputChange}
+                                    disabled={submitting}
+                                />
+                            </div>
+
+                            {/* Latitude */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Latitude
+                                </label>
+                                <input
+                                    type="number"
+                                    step="any"
+                                    name="storeLatitude"
+                                    placeholder="Enter latitude (optional)"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                                    value={formData.storeLatitude}
+                                    onChange={handleInputChange}
+                                    disabled={submitting}
+                                />
+                            </div>
+
+                            {/* Longitude */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Longitude
+                                </label>
+                                <input
+                                    type="number"
+                                    step="any"
+                                    name="storeLongitude"
+                                    placeholder="Enter longitude (optional)"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                                    value={formData.storeLongitude}
+                                    onChange={handleInputChange}
+                                    disabled={submitting}
+                                />
+                            </div>
+
+                            {/* Store Image */}
+                            <div className="space-y-2 lg:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700">Store Image</label>
+                                <div className="space-y-4">
+                                    <input
+                                        type="file"
+                                        name="storeImage"
+                                        accept="image/jpeg,image/jpg,image/png,image/gif"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 
+                                                 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium 
+                                                 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                        onChange={handleImageChange}
+                                        disabled={submitting}
+                                    />
+                                    <p className="text-xs text-gray-500">
+                                        Supported formats: JPG, PNG, GIF. Maximum size: 5MB
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Enhanced Image Preview */}
+                        {imagePreview && (
+                            <div className="mt-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-3">Image Preview</label>
+                                <div className="relative w-64 h-40 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+                                    <img
+                                        src={imagePreview}
+                                        alt="Store preview"
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => handleImageError(e, 'Preview')}
+                                        onLoad={(e) => handleImageLoad(e, 'Preview')}
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100" style={{ display: 'none' }}>
+                                        <div className="text-center">
+                                            <FaImage className="h-8 w-8 text-gray-400 mx-auto mb-1" />
+                                            <p className="text-xs text-gray-500">Preview not available</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Form Actions */}
+                        <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+                            <button
+                                type="button"
+                                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                onClick={resetForm}
+                                disabled={submitting}
+                            >
+                                <FaTimes className="mr-2" />
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={submitting || Object.keys(validationErrors).length > 0}
+                            >
+                                {submitting ? (
+                                    <span className="flex items-center">
+                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Processing...
+                                    </span>
+                                ) : (
+                                    <>
+                                        <FaCheck className="mr-2" />
+                                        {editingId ? 'Update Store' : 'Create Store'}
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
                 </div>
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
-                      Showing{" "}
-                      <span className="font-medium">{currentPage * itemsPerPage + 1}</span> to{" "}
-                      <span className="font-medium">
-                        {Math.min((currentPage + 1) * itemsPerPage, totalElements)}
-                      </span>{" "}
-                      of <span className="font-medium">{totalElements}</span> results
-                    </p>
-                  </div>
-                  <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                      <button
-                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                        disabled={!hasPrevious}
-                        onClick={handlePrevPage}
-                        title="Previous page"
-                      >
-                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                      
-                      {getPageNumbers().map((pageNumber) => (
-                        <button
-                          key={`page-btn-${pageNumber}`}
-                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition duration-200 ${
-                            currentPage === pageNumber
-                              ? "z-10 bg-indigo-50 border-indigo-500 text-indigo-600"
-                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-                          }`}
-                          onClick={() => handlePageClick(pageNumber)}
-                          title={`Go to page ${pageNumber + 1}`}
-                        >
-                          {pageNumber + 1}
-                        </button>
-                      ))}
-                      
-                      <button
-                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                        disabled={!hasNext}
-                        onClick={handleNextPage}
-                        title="Next page"
-                      >
-                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </nav>
-                  </div>
+            ) : (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                    {/* Search and Filters */}
+                    <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                All Stores ({totalElements} total)
+                            </h3>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <FaSearch className="h-5 w-5 text-gray-400" />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Search stores..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-80"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Table */}
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-100 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Store Image</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Store Details</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Info</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {loading ? (
+                                    <tr key="loading-row">
+                                        <td colSpan={6} className="px-6 py-12 text-center">
+                                            <div className="flex flex-col items-center justify-center">
+                                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+                                                <p className="text-gray-500">Loading stores...</p>
+                                                {retryCount > 0 && (
+                                                    <p className="text-sm text-gray-400 mt-2">Retry attempt {retryCount}/3</p>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : getCurrentPageData().length === 0 ? (
+                                    <tr key="empty-row">
+                                        <td colSpan={6} className="px-6 py-12 text-center">
+                                            <div className="text-gray-500">
+                                                <FaImage className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                                                <h3 className="text-lg font-medium text-gray-900 mb-2">No stores found</h3>
+                                                <p className="text-gray-500 mb-4">
+                                                    {searchQuery ? `No stores match "${searchQuery}"` : 'Get started by creating your first store'}
+                                                </p>
+                                                {error && !searchQuery && (
+                                                    <button
+                                                        onClick={handleRetry}
+                                                        className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                                                    >
+                                                        <FaRedo className="mr-2" />
+                                                        Try Again
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    getCurrentPageData().map((store, index) => (
+                                        <tr key={`store-row-${store.id}-${index}`} className="hover:bg-gray-50 transition duration-150">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                {searchQuery ? index + 1 : (currentPage * itemsPerPage) + index + 1}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="flex-shrink-0 h-16 w-20 relative">
+                                                    {store.storeImage ? (
+                                                        <>
+                                                            <img
+                                                                src={store.storeImage}
+                                                                alt={store.storeName}
+                                                                className="h-16 w-20 rounded-lg object-cover border border-gray-200 shadow-sm bg-white"
+                                                                onError={(e) => handleImageError(e, store.storeName)}
+                                                                onLoad={(e) => handleImageLoad(e, store.storeName)}
+                                                                style={{ display: 'block' }}
+                                                            />
+                                                            <div className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center absolute top-0 left-0" style={{ display: 'none' }}>
+                                                                <div className="text-center">
+                                                                    <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                                                                    <p className="text-xs text-gray-500">No Image</p>
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                                            <div className="text-center">
+                                                                <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                                                                <p className="text-xs text-gray-500">No Image</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm font-medium text-gray-900">{store.storeName}</div>
+                                                <div className="text-sm text-gray-500 max-w-xs truncate">{store.storeAddress}</div>
+                                                {store.storeUrl && (
+                                                    <a
+                                                        href={store.storeUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-xs text-indigo-600 hover:text-indigo-800"
+                                                    >
+                                                        View Store
+                                                    </a>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="text-sm text-gray-900">{store.storeContactNumber}</div>
+                                                <div className="text-sm text-gray-500">ID: {store.id}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <button
+                                                    onClick={() => handleToggleStatus(store.id)}
+                                                    className={`inline-flex items-center px-3 py-2 rounded-full text-xs font-medium transition duration-200 ${
+                                                        store.isActive === 1
+                                                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                                            : 'bg-red-100 text-red-800 hover:bg-red-200'
+                                                    }`}
+                                                    title={`Click to ${store.isActive === 1 ? 'deactivate' : 'activate'} store`}
+                                                    disabled={store.id.toString().startsWith('fallback-')}
+                                                >
+                                                    {store.isActive === 1 ? (
+                                                        <>
+                                                            <FaToggleOn className="mr-1" />
+                                                            Active
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <FaToggleOff className="mr-1" />
+                                                            Inactive
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                <div className="flex items-center space-x-3">
+                                                    <button
+                                                        className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
+                                                            store.id.toString().startsWith('fallback-')
+                                                                ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                                                                : 'text-indigo-700 bg-indigo-100 hover:bg-indigo-200'
+                                                        }`}
+                                                        onClick={() => handleEditStoreClick(store)}
+                                                        title="Edit store"
+                                                        disabled={store.id.toString().startsWith('fallback-')}
+                                                    >
+                                                        <FaEdit className="mr-1" />
+                                                        Edit
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Pagination */}
+                    {!loading && !searchQuery && stores.length > 0 && totalPages > 1 && (
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1 flex justify-between sm:hidden">
+                                    <button
+                                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                        disabled={!hasPrevious}
+                                        onClick={handlePrevPage}
+                                    >
+                                        Previous
+                                    </button>
+                                    <button
+                                        className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                        disabled={!hasNext}
+                                        onClick={handleNextPage}
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                                    <div>
+                                        <p className="text-sm text-gray-700">
+                                            Showing <span className="font-medium">{(currentPage * itemsPerPage) + 1}</span> to{' '}
+                                            <span className="font-medium">{Math.min((currentPage + 1) * itemsPerPage, totalElements)}</span> of{' '}
+                                            <span className="font-medium">{totalElements}</span> results
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                                            <button
+                                                className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                                disabled={!hasPrevious}
+                                                onClick={handlePrevPage}
+                                                title="Previous page"
+                                            >
+                                                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                </svg>
+                                            </button>
+                                            {getPageNumbers().map(pageNumber => (
+                                                <button
+                                                    key={`page-btn-${pageNumber}`}
+                                                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition duration-200 ${
+                                                        currentPage === pageNumber
+                                                            ? 'z-10 bg-indigo-50 border-indigo-500 text-indigo-600'
+                                                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                                                    }`}
+                                                    onClick={() => handlePageClick(pageNumber)}
+                                                    title={`Go to page ${pageNumber + 1}`}
+                                                >
+                                                    {pageNumber + 1}
+                                                </button>
+                                            ))}
+                                            <button
+                                                className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                                disabled={!hasNext}
+                                                onClick={handleNextPage}
+                                                title="Next page"
+                                            >
+                                                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                                                </svg>
+                                            </button>
+                                        </nav>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
-              </div>
-            </div>
-          )}
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default StoreManagement;

@@ -5,10 +5,12 @@ import Home from "./pages/Home";
 import Bikes from "./pages/Bikes";
 import DeliveryAtLocationPrices from "./pages/PriceMaster/DeliveryAtLocationPrices";
 import PickUpTariffPlan from "./pages/PriceMaster/PickUpTariffPlan";
-import LateCharges from "./pages/PriceMaster/LateCharges"; // ✅ NEW IMPORT
+import LateCharges from "./pages/PriceMaster/LateCharges";
 import AllCategories from "./pages/MasterRecords/AllCategories";
 import AllBrands from "./pages/MasterRecords/AllBrands";
 import AllModels from "./pages/MasterRecords/AllModels";
+import AllCity from "./pages/MasterRecords/AllCity";
+import AllVehicleTypes from "./pages/MasterRecords/AllVechicleTypes"; // ✅ NEW IMPORT
 import AllBookings from "./pages/AllBookings";
 import StoreMaster from "./pages/StoreMaster";
 import AllUsers from "./pages/AllUsers";
@@ -125,7 +127,7 @@ function App() {
             <Route
               path="priceMaster/lateCharges" 
               element={<LateCharges />} 
-            /> {/* ✅ NEW ROUTE */}
+            />
 
             {/* Master Records Submenu Routes */}
             <Route
@@ -134,6 +136,8 @@ function App() {
             />
             <Route path="masterRecords/allBrands" element={<AllBrands />} />
             <Route path="masterRecords/allModels" element={<AllModels />} />
+            <Route path="masterRecords/allCity" element={<AllCity />} />
+            <Route path="masterRecords/allVehicleTypes" element={<AllVehicleTypes />} /> {/* ✅ NEW ROUTE */}
             
             <Route
               path="allRegisterCustomers"

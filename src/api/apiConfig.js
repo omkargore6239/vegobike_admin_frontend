@@ -96,6 +96,48 @@ export const createFormData = (data) => {
   return formData;
 };
 
+// Store API helper functions (NEW)
+export const storeAPI = {
+  getAll: (params = {}) => apiClient.get('/stores/all', { params }),
+  getById: (id) => apiClient.get(`/stores/${id}`),
+  getActive: () => apiClient.get('/stores/active'),
+  create: (storeData, image = null) => {
+    const formData = new FormData();
+    
+    // Add all store fields
+    formData.append('storeName', storeData.storeName);
+    formData.append('storeContactNumber', storeData.storeContactNumber);
+    formData.append('storeAddress', storeData.storeAddress);
+    
+    if (storeData.storeUrl) formData.append('storeUrl', storeData.storeUrl);
+    if (storeData.storeGstinNumber) formData.append('storeGstinNumber', storeData.storeGstinNumber);
+    if (storeData.storeLatitude) formData.append('storeLatitude', storeData.storeLatitude);
+    if (storeData.storeLongitude) formData.append('storeLongitude', storeData.storeLongitude);
+    if (storeData.addedBy) formData.append('addedBy', storeData.addedBy);
+    if (image) formData.append('storeImage', image);
+    
+    return apiClient.post('/stores/add', formData);
+  },
+  update: (id, storeData, image = null) => {
+    const formData = new FormData();
+    
+    // Add all store fields
+    if (storeData.storeName) formData.append('storeName', storeData.storeName);
+    if (storeData.storeContactNumber) formData.append('storeContactNumber', storeData.storeContactNumber);
+    if (storeData.storeAddress) formData.append('storeAddress', storeData.storeAddress);
+    if (storeData.storeUrl) formData.append('storeUrl', storeData.storeUrl);
+    if (storeData.storeGstinNumber) formData.append('storeGstinNumber', storeData.storeGstinNumber);
+    if (storeData.storeLatitude) formData.append('storeLatitude', storeData.storeLatitude);
+    if (storeData.storeLongitude) formData.append('storeLongitude', storeData.storeLongitude);
+    if (storeData.addedBy) formData.append('addedBy', storeData.addedBy);
+    if (image) formData.append('storeImage', image);
+    
+    return apiClient.post(`/stores/edit/${id}`, formData);
+  },
+  toggleStatus: (id) => apiClient.put(`/stores/${id}/status`),
+  delete: (id) => apiClient.delete(`/stores/delete/${id}`),
+};
+
 // Category API helper functions
 export const categoryAPI = {
   getAll: (params = {}) => apiClient.get('/categories/all', { params }),
@@ -133,4 +175,8 @@ export const lateChargesAPI = {
   delete: (id) => apiClient.delete(`/late-charges/${id}`),
 };
 
+// ✅ FIXED: Export apiClient as named export
+export { apiClient };
+
+// Keep default export for backwards compatibility
 export default apiClient;
