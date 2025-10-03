@@ -1,94 +1,176 @@
+// C:\Users\Omkar\OneDrive\Desktop\VegoAdmin\Vego_Admin\src\api\apiConfig.js
+
 import axios from 'axios';
 
-// Named exports
+// ✅ Named exports
 export const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:8081';
 
+console.log('🔗 API Configuration Loaded');
+console.log('📍 Base URL:', BASE_URL);
+console.log('🌍 Environment:', import.meta.env.MODE);
+
+// ✅ Token storage keys
+const STORAGE_KEYS = {
+  TOKEN: 'auth_token',
+  USER: 'auth_user'
+};
+
+// ✅ Check if JWT token is valid
 const isTokenValid = (token) => {
+  if (!token) return false;
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.exp * 1000 > Date.now();
+    const isValid = payload.exp * 1000 > Date.now();
+    if (!isValid) {
+      console.warn('⚠️ Token expired');
+    }
+    return isValid;
   } catch (error) {
+    console.error('❌ Invalid token format:', error);
     return false;
   }
 };
 
-// ✅ Updated: Create axios instance with dynamic backend URL from BASE_URL env
+// ✅ Get valid token from storage
+const getToken = () => {
+  let token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+  
+  if (!token) {
+    token = localStorage.getItem('token');
+  }
+  
+  if (token && !isTokenValid(token)) {
+    console.warn('⚠️ Token found but invalid - clearing storage');
+    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    localStorage.removeItem('token');
+    return null;
+  }
+  
+  return token;
+};
+
+// ✅ Create axios instance WITHOUT /api in baseURL
 const apiClient = axios.create({
-  baseURL: `${BASE_URL}/api`, // Use BASE_URL env variable for backend prefix + /api
+  baseURL: BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
   withCredentials: false,
-  timeout: 10000,
+  timeout: 30000,
 });
 
-// Configure interceptors
-apiClient.interceptors.request.use((config) => {
-  // Skip auth for login endpoints
-  if (config.url.includes('/admin/login') || config.url.includes('/auth/login')) {
-    delete config.headers.Authorization;
+// ✅ Request Interceptor
+apiClient.interceptors.request.use(
+  (config) => {
+    if (import.meta.env.DEV) {
+      console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
+    }
+
+    // Skip auth for public endpoints
+    const publicEndpoints = [
+      '/admin/login',
+      '/auth/login',
+      '/auth/register',
+      '/auth/send-otp',
+      '/auth/verify-otp'
+    ];
+    
+    if (publicEndpoints.some(endpoint => config.url.includes(endpoint))) {
+      delete config.headers.Authorization;
+      return config;
+    }
+
+    // Handle FormData - let browser set Content-Type with boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
+    // Add JWT token
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      if (import.meta.env.DEV) {
+        console.log('🔐 Token attached');
+      }
+    } else {
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ No valid token found');
+      }
+    }
+    
     return config;
+  },
+  (error) => {
+    console.error('❌ Request error:', error);
+    return Promise.reject(error);
   }
+);
 
-  // Handle multipart form data for file uploads
-  if (config.data instanceof FormData) {
-    config.headers['Content-Type'] = 'multipart/form-data';
-  }
-
-  // Add authorization token
-  const token = localStorage.getItem('token');
-  if (token && isTokenValid(token)) {
-    config.headers.Authorization = `Bearer ${token}`;
-  } else {
-    localStorage.removeItem('token');
-  }
-  
-  return config;
-});
-
+// ✅ Response Interceptor
 apiClient.interceptors.response.use(
   (response) => {
     if (import.meta.env.DEV) {
-      console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url}:`, response.data);
+      console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url}:`, response.status);
     }
     return response;
   },
   (error) => {
     if (import.meta.env.DEV) {
-      console.error(`❌ ${error.config?.method?.toUpperCase()} ${error.config?.url}:`, error.response?.data || error.message);
+      console.error(
+        `❌ ${error.config?.method?.toUpperCase()} ${error.config?.url}:`,
+        error.response?.status,
+        error.response?.data
+      );
     }
 
+    // Handle 401 Unauthorized
     if (error.response?.status === 401) {
+      console.error('🔐 Unauthorized - Clearing tokens');
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.USER);
       localStorage.removeItem('token');
-      if (window.location.pathname !== '/login') {
+      
+      if (!['/login', '/admin-login'].includes(window.location.pathname)) {
         window.location.href = '/login';
       }
     }
 
+    // Handle 403 Forbidden
     if (error.response?.status === 403) {
-      console.error('Access forbidden - Check backend security configuration');
+      console.error('🚫 Access forbidden');
     }
 
+    // Handle 500+ Server errors
     if (error.response?.status >= 500) {
-      console.error('Server error occurred');
+      console.error('💥 Server error:', error.response?.status);
     }
 
     return Promise.reject(error);
   }
 );
 
-// Helper function to create FormData for file uploads
+// ✅ Helper: Create FormData
 export const createFormData = (data) => {
   const formData = new FormData();
 
   Object.keys(data).forEach(key => {
-    if (data[key] !== null && data[key] !== undefined) {
-      if (data[key] instanceof File) {
-        formData.append(key, data[key]);
-      } else if (typeof data[key] === 'object') {
-        formData.append(key, JSON.stringify(data[key]));
+    const value = data[key];
+    
+    if (value !== null && value !== undefined) {
+      if (value instanceof File) {
+        formData.append(key, value);
+      } else if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (item instanceof File) {
+            formData.append(key, item);
+          } else {
+            formData.append(key, item);
+          }
+        });
+      } else if (typeof value === 'object') {
+        formData.append(key, JSON.stringify(value));
       } else {
-        formData.append(key, data[key]);
+        formData.append(key, value);
       }
     }
   });
@@ -96,15 +178,62 @@ export const createFormData = (data) => {
   return formData;
 };
 
-// Store API helper functions (NEW)
+// ✅ BIKE API - Matches BikeController
+export const bikeAPI = {
+  getAll: () => apiClient.get('/api/bikes/all'),
+  getById: (id) => apiClient.get(`/api/bikes/${id}`),
+  getAvailable: (params) => apiClient.get('/api/bikes/available', { params }),
+  create: (bikeData) => {
+    const formData = createFormData(bikeData);
+    return apiClient.post('/api/bikes/add', formData);
+  },
+  update: (id, bikeData) => {
+    const formData = createFormData(bikeData);
+    return apiClient.put(`/api/bikes/update/${id}`, formData);
+  },
+  delete: (id) => apiClient.delete(`/api/bikes/${id}`),
+  toggleStatus: (id) => apiClient.patch(`/api/bikes/${id}/status`),
+};
+
+// ✅ BRAND API
+export const brandAPI = {
+  getAll: (params = {}) => apiClient.get('/api/brands/all', { params }),
+  getActive: () => apiClient.get('/api/brands/active'),
+  getById: (id) => apiClient.get(`/api/brands/${id}`),
+  create: (brandData, image = null) => {
+    const formData = new FormData();
+    formData.append('brandName', brandData.brandName);
+    if (image) formData.append('image', image);
+    return apiClient.post('/api/brands/add', formData);
+  },
+  update: (id, brandData, image = null) => {
+    const formData = new FormData();
+    formData.append('brandName', brandData.brandName);
+    if (image) formData.append('image', image);
+    return apiClient.post(`/api/brands/edit/${id}`, formData);
+  },
+  toggleStatus: (id) => apiClient.patch(`/api/brands/${id}/status`),
+  delete: (id) => apiClient.delete(`/api/brands/delete/${id}`),
+};
+
+// ✅ MODEL API
+export const modelAPI = {
+  getAll: (params = {}) => apiClient.get('/api/models/all', { params }),
+  getActive: () => apiClient.get('/api/models/active'),
+  getById: (id) => apiClient.get(`/api/models/${id}`),
+  create: (modelData) => apiClient.post('/api/models/add', modelData),
+  update: (id, modelData) => apiClient.post(`/api/models/edit/${id}`, modelData),
+  toggleStatus: (id) => apiClient.patch(`/api/models/${id}/status`),
+  delete: (id) => apiClient.delete(`/api/models/delete/${id}`),
+};
+
+// ✅ STORE API
 export const storeAPI = {
-  getAll: (params = {}) => apiClient.get('/stores/all', { params }),
-  getById: (id) => apiClient.get(`/stores/${id}`),
-  getActive: () => apiClient.get('/stores/active'),
+  getAll: (params = {}) => apiClient.get('/api/stores/all', { params }),
+  getById: (id) => apiClient.get(`/api/stores/${id}`),
+  getActive: () => apiClient.get('/api/stores/active'),
   create: (storeData, image = null) => {
     const formData = new FormData();
-    
-    // Add all store fields
     formData.append('storeName', storeData.storeName);
     formData.append('storeContactNumber', storeData.storeContactNumber);
     formData.append('storeAddress', storeData.storeAddress);
@@ -116,12 +245,10 @@ export const storeAPI = {
     if (storeData.addedBy) formData.append('addedBy', storeData.addedBy);
     if (image) formData.append('storeImage', image);
     
-    return apiClient.post('/stores/add', formData);
+    return apiClient.post('/api/stores/add', formData);
   },
   update: (id, storeData, image = null) => {
     const formData = new FormData();
-    
-    // Add all store fields
     if (storeData.storeName) formData.append('storeName', storeData.storeName);
     if (storeData.storeContactNumber) formData.append('storeContactNumber', storeData.storeContactNumber);
     if (storeData.storeAddress) formData.append('storeAddress', storeData.storeAddress);
@@ -132,51 +259,96 @@ export const storeAPI = {
     if (storeData.addedBy) formData.append('addedBy', storeData.addedBy);
     if (image) formData.append('storeImage', image);
     
-    return apiClient.post(`/stores/edit/${id}`, formData);
+    return apiClient.post(`/api/stores/edit/${id}`, formData);
   },
-  toggleStatus: (id) => apiClient.put(`/stores/${id}/status`),
-  delete: (id) => apiClient.delete(`/stores/delete/${id}`),
+  toggleStatus: (id) => apiClient.put(`/api/stores/${id}/status`),
+  delete: (id) => apiClient.delete(`/api/stores/delete/${id}`),
 };
 
-// Category API helper functions
+// ✅ CATEGORY API
 export const categoryAPI = {
-  getAll: (params = {}) => apiClient.get('/categories/all', { params }),
-  getById: (id) => apiClient.get(`/categories/${id}`),
-  getActive: () => apiClient.get('/categories/active'),
+  getAll: (params = {}) => apiClient.get('/api/categories/all', { params }),
+  getById: (id) => apiClient.get(`/api/categories/${id}`),
+  getActive: () => apiClient.get('/api/categories/active'),
   create: (categoryData, image = null) => {
     const formData = new FormData();
     formData.append('categoryName', categoryData.categoryName);
-    if (image) {
-      formData.append('image', image);
-    }
-    return apiClient.post('/categories/add', formData);
+    if (image) formData.append('image', image);
+    return apiClient.post('/api/categories/add', formData);
   },
   update: (id, categoryData, image = null) => {
     const formData = new FormData();
     formData.append('categoryName', categoryData.categoryName);
-    if (image) {
-      formData.append('image', image);
-    }
-    return apiClient.post(`/categories/edit/${id}`, formData);
+    if (image) formData.append('image', image);
+    return apiClient.post(`/api/categories/edit/${id}`, formData);
   },
-  toggleStatus: (id) => apiClient.get(`/categories/status/${id}`),
-  delete: (id) => apiClient.delete(`/categories/delete/${id}`),
-  search: (name, params = {}) => apiClient.get('/categories/search', { params: { name, ...params } }),
+  toggleStatus: (id) => apiClient.get(`/api/categories/status/${id}`),
+  delete: (id) => apiClient.delete(`/api/categories/delete/${id}`),
+  search: (name, params = {}) => apiClient.get('/api/categories/search', { params: { name, ...params } }),
 };
 
-// Late Charges API helper functions
+// ✅ LATE CHARGES API
 export const lateChargesAPI = {
-  getAll: () => apiClient.get('/late-charges/all'),
-  getById: (id) => apiClient.get(`/late-charges/${id}`),
-  getActive: () => apiClient.get('/late-charges/active'),
-  create: (data) => apiClient.post('/late-charges/add', data),
-  update: (id, data) => apiClient.put(`/late-charges/update/${id}`, data),
-  toggleStatus: (id, isActive) => apiClient.put(`/late-charges/${id}/status?isActive=${isActive}`),
-  delete: (id) => apiClient.delete(`/late-charges/${id}`),
+  getAll: () => apiClient.get('/api/late-charges/all'),
+  getById: (id) => apiClient.get(`/api/late-charges/${id}`),
+  getActive: () => apiClient.get('/api/late-charges/active'),
+  create: (data) => apiClient.post('/api/late-charges/add', data),
+  update: (id, data) => apiClient.put(`/api/late-charges/update/${id}`, data),
+  toggleStatus: (id, isActive) => apiClient.put(`/api/late-charges/${id}/status?isActive=${isActive}`),
+  delete: (id) => apiClient.delete(`/api/late-charges/${id}`),
 };
 
-// ✅ FIXED: Export apiClient as named export
+// ✅ AUTH/USER API
+export const authAPI = {
+  login: (credentials) => apiClient.post('/api/auth/login', credentials),
+  adminLogin: (credentials) => apiClient.post('/api/admin/login', credentials),
+  register: (userData) => apiClient.post('/api/auth/register', userData),
+  sendOtp: (phoneNumber) => apiClient.post('/api/auth/send-otp', { phoneNumber }),
+  verifyOtp: (phoneNumber, otp) => apiClient.post('/api/auth/verify-otp', { phoneNumber, otp }),
+  getUsers: (params = {}) => apiClient.get('/api/auth/users', { params }),
+  getUserById: (id) => apiClient.get(`/api/auth/users/${id}`),
+  updateUser: (id, userData) => apiClient.put(`/api/auth/users/${id}`, userData),
+  deleteUser: (id) => apiClient.delete(`/api/auth/users/${id}`),
+};
+
+// ✅ DOCUMENT API
+export const documentAPI = {
+  verify: (userId, fieldName, status) => 
+    apiClient.patch(`/api/documents/verify/${userId}`, null, {
+      params: { [fieldName]: status }
+    }),
+  getUserDocuments: (userId) => apiClient.get(`/api/documents/user/${userId}`),
+};
+
+// ✅ BOOKING API
+export const bookingAPI = {
+  getAll: (params = {}) => apiClient.get('/api/booking-bikes/allBooking', { params }),
+  getById: (id) => apiClient.get(`/api/booking-bikes/getById/${id}`),
+  getByCustomer: (customerId, params = {}) => 
+    apiClient.get('/api/booking-bikes/by-customer', { params: { customerId, ...params } }),
+  create: (bookingData) => apiClient.post('/api/booking-bikes/create', bookingData),
+  accept: (bookingId) => apiClient.post(`/api/booking-bikes/${bookingId}/accept`),
+  cancel: (bookingId, cancelledBy = 'USER') => 
+    apiClient.post(`/api/booking-bikes/${bookingId}/cancel`, null, { params: { cancelledBy } }),
+  startTrip: (bookingId, images) => {
+    const formData = new FormData();
+    images.forEach((image) => formData.append('images', image));
+    return apiClient.post(`/api/booking-bikes/${bookingId}/start`, formData);
+  },
+  endTrip: (bookingId, images) => {
+    const formData = new FormData();
+    images.forEach((image) => formData.append('images', image));
+    return apiClient.post(`/api/booking-bikes/${bookingId}/end`, formData);
+  },
+  complete: (bookingId) => apiClient.post(`/api/booking-bikes/${bookingId}/complete`),
+  updateCharges: (bookingId, charges) => 
+    apiClient.patch(`/api/booking-bikes/${bookingId}/charges`, charges),
+  getInvoice: (bookingId) => 
+    apiClient.get(`/api/booking-bikes/${bookingId}/invoice`, { responseType: 'blob' }),
+};
+
+// ✅ Export apiClient
 export { apiClient };
 
-// Keep default export for backwards compatibility
+// ✅ Default export
 export default apiClient;

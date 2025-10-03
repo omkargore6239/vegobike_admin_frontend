@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+// AllCategories.jsx - FULLY FIXED (NO INFINITE LOOPS) ✅
+
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   FaEdit,
   FaTrash,
@@ -32,7 +34,10 @@ const AllCategories = () => {
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [imageLoadErrors, setImageLoadErrors] = useState(new Set());
+
+  // ✅ FIX: Use ref to track failed images and prevent infinite loops
+  const imageErrorTrackerRef = useRef(new Set());
+  const imageLoadTrackerRef = useRef(new Set());
 
   // API
   const API_BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:8081";
@@ -55,19 +60,11 @@ const AllCategories = () => {
 
   // Image URL helper function
   const fixImageUrl = (imagePath) => {
-    if (!imagePath || imagePath.trim() === '') return null;
-    
+    if (!imagePath || imagePath.trim() === "") return null;
     const path = imagePath.trim();
-    
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
-    }
-    
-    if (path.startsWith('/')) {
-      return API_BASE_URL + path;
-    }
-    
-    return API_BASE_URL + '/' + path;
+    if (path.startsWith("http://") || path.startsWith("https://")) return path;
+    if (path.startsWith("/")) return API_BASE_URL + path;
+    return API_BASE_URL + "/" + path;
   };
 
   // Helpers
@@ -76,13 +73,11 @@ const AllCategories = () => {
   const makeApiCall = async (url, options = {}) => {
     const headers = new Headers(options.headers || {});
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    
     if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
 
     const finalOptions = { method: "GET", ...options, headers };
-    console.log("🔄 API Call:", url, finalOptions.method);
 
     const res = await fetch(url, finalOptions);
     const contentType = res.headers.get("content-type") || "";
@@ -92,28 +87,30 @@ const AllCategories = () => {
     try {
       responseData = isJson ? await res.json() : await res.text();
     } catch (parseError) {
-      console.warn("⚠️ Parse error:", parseError);
       responseData = null;
     }
 
     if (!res.ok) {
-      const errorMsg = (isJson && (responseData?.message || responseData?.error)) || 
-                       res.statusText || `HTTP ${res.status}`;
+      const errorMsg =
+        (isJson && (responseData?.message || responseData?.error)) ||
+        res.statusText ||
+        `HTTP ${res.status}`;
       throw new Error(errorMsg);
     }
 
-    console.log("✅ API Response:", responseData);
     return responseData;
   };
 
   // Vehicle types
   const fetchVehicleTypes = async () => {
     try {
-      console.log("📡 Fetching vehicle types...");
       const resp = await makeApiCall(API.vehicleTypes.active);
-      const vehicleTypesData = Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : [];
+      const vehicleTypesData = Array.isArray(resp?.data)
+        ? resp.data
+        : Array.isArray(resp)
+        ? resp
+        : [];
       setVehicleTypes(vehicleTypesData);
-      console.log("✅ Vehicle types loaded:", vehicleTypesData.length);
     } catch (err) {
       console.warn("❌ Vehicle types fetch failed:", err.message);
       setVehicleTypes([]);
@@ -129,40 +126,32 @@ const AllCategories = () => {
   const fetchCategories = async () => {
     setPageLoading(true);
     try {
-      console.log("📡 Fetching categories - Page:", currentPage, "Size:", itemsPerPage);
       const url = `${API.categories.list}?page=${currentPage}&size=${itemsPerPage}`;
       const resp = await makeApiCall(url);
-      
+
       if (resp?.success) {
         const categoriesData = Array.isArray(resp.data) ? resp.data : [];
-        
-        const categoriesWithFixedImages = categoriesData.map(category => ({
+
+        const categoriesWithFixedImages = categoriesData.map((category) => ({
           ...category,
-          image: fixImageUrl(category.image)
+          image: fixImageUrl(category.image),
         }));
-        
-        console.log("✅ Categories loaded:", categoriesWithFixedImages.length);
-        
-        categoriesWithFixedImages.forEach(cat => {
-          if (cat.image) {
-            console.log(`🖼️  Category ${cat.id} (${cat.categoryName}) fixed image:`, cat.image);
-          }
-        });
-        
+
         setData(categoriesWithFixedImages);
-        setImageLoadErrors(new Set());
-        
+
+        // ✅ Clear trackers when new data loads
+        imageErrorTrackerRef.current.clear();
+        imageLoadTrackerRef.current.clear();
+
         if (resp.pagination) {
           setTotalPages(resp.pagination.totalPages);
           setTotalElements(resp.pagination.totalElements);
         }
       } else {
-        console.warn("⚠️ Categories response not successful:", resp);
         setData([]);
         setError(resp?.message || "Failed to load categories");
       }
     } catch (err) {
-      console.error("❌ Categories fetch error:", err);
       setError(`Failed to load categories: ${err.message}`);
       setData([]);
     } finally {
@@ -170,19 +159,31 @@ const AllCategories = () => {
     }
   };
 
-  // Image error handling
-  const handleImageError = (categoryId, imageUrl) => {
-    console.error(`❌ Image load failed for category ${categoryId}:`, imageUrl);
-    setImageLoadErrors(prev => new Set([...prev, categoryId]));
+  // ✅ FIX: Image error handling - prevent infinite retries
+  const handleImageError = (categoryId, imageUrl, e) => {
+    const key = `${categoryId}-${imageUrl}`;
+    
+    // Check if already failed
+    if (imageErrorTrackerRef.current.has(key)) {
+      e.target.style.display = "none";
+      return;
+    }
+
+    // Mark as failed
+    imageErrorTrackerRef.current.add(key);
+    console.error(`❌ Image load failed for category ${categoryId}`);
+    e.target.style.display = "none";
   };
 
+  // ✅ FIX: Image load handling - log only once
   const handleImageLoad = (categoryId, imageUrl) => {
-    console.log(`✅ Image loaded successfully for category ${categoryId}:`, imageUrl);
-    setImageLoadErrors(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(categoryId);
-      return newSet;
-    });
+    const key = `${categoryId}-${imageUrl}`;
+    
+    // Only log if not already logged
+    if (!imageLoadTrackerRef.current.has(key)) {
+      console.log(`✅ Image loaded successfully for category ${categoryId}`);
+      imageLoadTrackerRef.current.add(key);
+    }
   };
 
   // Initial load and page changes
@@ -220,12 +221,9 @@ const AllCategories = () => {
     }
 
     setFormData((s) => ({ ...s, image: file }));
-    
+
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImagePreview(ev.target.result);
-      console.log("🖼️  Image preview created");
-    };
+    reader.onload = (ev) => setImagePreview(ev.target.result);
     reader.readAsDataURL(file);
     setError("");
   };
@@ -244,15 +242,12 @@ const AllCategories = () => {
 
     setLoading(true);
     try {
-      console.log("📤 Adding category:", formData.categoryName);
-      
       const formDataToSend = new FormData();
       formDataToSend.append("categoryName", formData.categoryName.trim());
       formDataToSend.append("vehicleTypeId", formData.vehicleTypeId.toString());
-      
+
       if (formData.image) {
         formDataToSend.append("image", formData.image);
-        console.log("📎 Image attached:", formData.image.name, formData.image.size, "bytes");
       }
 
       const resp = await makeApiCall(API.categories.add, {
@@ -269,7 +264,6 @@ const AllCategories = () => {
         setError(resp?.message || "Failed to create category");
       }
     } catch (err) {
-      console.error("❌ Add category error:", err);
       setError(`Failed to create category: ${err.message}`);
     } finally {
       setLoading(false);
@@ -278,14 +272,13 @@ const AllCategories = () => {
 
   // Edit handlers
   const handleEditCategory = (category) => {
-    console.log("✏️  Editing category:", category);
     setEditingId(category.id);
     setFormData({
       categoryName: category.categoryName || "",
       vehicleTypeId: (category.vehicleType?.id || category.vehicleTypeId || "").toString(),
       image: null,
     });
-    
+
     setImagePreview(category.image || null);
     setFormVisible(true);
     setError("");
@@ -305,15 +298,12 @@ const AllCategories = () => {
 
     setLoading(true);
     try {
-      console.log("💾 Updating category ID:", editingId);
-      
       const formDataToSend = new FormData();
       formDataToSend.append("categoryName", formData.categoryName.trim());
       formDataToSend.append("vehicleTypeId", formData.vehicleTypeId.toString());
-      
+
       if (formData.image) {
         formDataToSend.append("image", formData.image);
-        console.log("📎 New image attached:", formData.image.name);
       }
 
       const resp = await makeApiCall(API.categories.edit(editingId), {
@@ -329,7 +319,6 @@ const AllCategories = () => {
         setError(resp?.message || "Failed to update category");
       }
     } catch (err) {
-      console.error("❌ Update category error:", err);
       setError(`Failed to update category: ${err.message}`);
     } finally {
       setLoading(false);
@@ -340,9 +329,8 @@ const AllCategories = () => {
   const handleToggleStatus = async (id) => {
     setLoading(true);
     try {
-      console.log("🔄 Toggling status for category ID:", id);
       const resp = await makeApiCall(API.categories.toggle(id));
-      
+
       if (resp?.success) {
         setSuccess("Category status updated successfully!");
         await fetchCategories();
@@ -350,7 +338,6 @@ const AllCategories = () => {
         setError("Failed to update status");
       }
     } catch (err) {
-      console.error("❌ Toggle status error:", err);
       setError(`Failed to update status: ${err.message}`);
     } finally {
       setLoading(false);
@@ -376,7 +363,7 @@ const AllCategories = () => {
     setFormVisible(false);
     setError("");
     setSuccess("");
-    
+
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) fileInput.value = "";
   };
@@ -385,15 +372,14 @@ const AllCategories = () => {
   const filteredData = useMemo(() => {
     if (!searchQuery.trim()) return data;
     const query = searchQuery.toLowerCase();
-    return data.filter((item) =>
-      (item.categoryName || "").toLowerCase().includes(query)
-    );
+    return data.filter((item) => (item.categoryName || "").toLowerCase().includes(query));
   }, [data, searchQuery]);
 
-  // Image component with better error handling
+  // ✅ FIX: Image component with better error handling
   const CategoryImage = ({ category }) => {
-    const hasError = imageLoadErrors.has(category.id);
     const imageUrl = category.image;
+    const key = `${category.id}-${imageUrl}`;
+    const hasError = imageErrorTrackerRef.current.has(key);
 
     if (!imageUrl || hasError) {
       return (
@@ -410,7 +396,7 @@ const AllCategories = () => {
           alt={category.categoryName}
           className="w-12 h-12 object-cover rounded border"
           onLoad={() => handleImageLoad(category.id, imageUrl)}
-          onError={() => handleImageError(category.id, imageUrl)}
+          onError={(e) => handleImageError(category.id, imageUrl, e)}
           loading="lazy"
         />
       </div>
@@ -439,7 +425,11 @@ const AllCategories = () => {
         <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-md border-l-4 border-green-500">
           <div className="flex">
             <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
             </svg>
             {success}
           </div>
@@ -450,7 +440,11 @@ const AllCategories = () => {
         <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md border-l-4 border-red-500">
           <div className="flex">
             <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 9a1 1 0 100-2 1 1 0 000 2z"
+                clipRule="evenodd"
+              />
             </svg>
             {error}
           </div>
@@ -474,9 +468,7 @@ const AllCategories = () => {
                   placeholder="Enter category name"
                   className="border border-gray-300 p-3 rounded w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={formData.categoryName}
-                  onChange={(e) =>
-                    setFormData((s) => ({ ...s, categoryName: e.target.value }))
-                  }
+                  onChange={(e) => setFormData((s) => ({ ...s, categoryName: e.target.value }))}
                   required
                   maxLength={100}
                 />
@@ -488,9 +480,7 @@ const AllCategories = () => {
                 <select
                   className="border border-gray-300 p-3 rounded w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={formData.vehicleTypeId}
-                  onChange={(e) =>
-                    setFormData((s) => ({ ...s, vehicleTypeId: e.target.value }))
-                  }
+                  onChange={(e) => setFormData((s) => ({ ...s, vehicleTypeId: e.target.value }))}
                   required
                 >
                   <option value="">-- Select Vehicle Type --</option>
@@ -530,7 +520,6 @@ const AllCategories = () => {
                       alt="Preview"
                       className="w-24 h-24 object-cover rounded border shadow-sm"
                       onError={(e) => {
-                        console.warn("Preview image error:", e);
                         e.currentTarget.style.display = "none";
                       }}
                     />
@@ -559,8 +548,10 @@ const AllCategories = () => {
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                     Saving...
                   </div>
+                ) : editingId ? (
+                  "Save Changes"
                 ) : (
-                  editingId ? "Save Changes" : "Add Category"
+                  "Add Category"
                 )}
               </button>
             </div>
@@ -632,7 +623,10 @@ const AllCategories = () => {
                   filteredData.map((category) => {
                     const vtId = category.vehicleType?.id || category.vehicleTypeId;
                     return (
-                      <tr key={category.id} className="bg-white border-b hover:bg-gray-50 transition-colors">
+                      <tr
+                        key={category.id}
+                        className="bg-white border-b hover:bg-gray-50 transition-colors"
+                      >
                         <td className="px-6 py-4">
                           <span className="font-mono text-sm">#{category.id}</span>
                         </td>
@@ -664,7 +658,6 @@ const AllCategories = () => {
                             : "N/A"}
                         </td>
                         <td className="px-6 py-4">
-                          {/* ✅ FIXED: Properly wrapped JSX elements */}
                           <div className="flex items-center space-x-1">
                             <button
                               className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
@@ -697,7 +690,7 @@ const AllCategories = () => {
                             {category.image && (
                               <button
                                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                onClick={() => window.open(category.image, '_blank')}
+                                onClick={() => window.open(category.image, "_blank")}
                                 title="View Full Image"
                               >
                                 <FaEye />
@@ -718,7 +711,8 @@ const AllCategories = () => {
             <div className="flex justify-between items-center mt-6">
               <p className="text-sm text-gray-500">
                 Showing {totalElements === 0 ? 0 : currentPage * itemsPerPage + 1} to{" "}
-                {Math.min((currentPage + 1) * itemsPerPage, totalElements)} of {totalElements} entries
+                {Math.min((currentPage + 1) * itemsPerPage, totalElements)} of {totalElements}{" "}
+                entries
               </p>
               <div className="flex space-x-2">
                 <button
