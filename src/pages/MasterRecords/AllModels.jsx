@@ -110,9 +110,9 @@ const AllModels = () => {
     setLoading(true);
     setError("");
     try {
-      let url = `/models/all?page=${page}&size=${size}&sort=createdAt,desc`;
+      let url = `/api/models/all?page=${page}&size=${size}&sort=createdAt,desc`;
       if (searchQuery.trim()) {
-        url = `/models/search?query=${encodeURIComponent(searchQuery)}&page=${page}&size=${size}&sort=createdAt,desc`;
+        url = `/api/models/search?query=${encodeURIComponent(searchQuery)}&page=${page}&size=${size}&sort=createdAt,desc`;
       }
 
       const response = await apiClient.get(url);
@@ -216,7 +216,7 @@ const AllModels = () => {
     }
 
     try {
-      const response = await apiClient.post("/models/add", formDataToSend, {
+      const response = await apiClient.post("/api/models/add", formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -273,7 +273,7 @@ const AllModels = () => {
     }
 
     try {
-      const response = await apiClient.post(`/models/edit/${editingId}`, formDataToSend, {
+      const response = await apiClient.post(`/api/models/edit/${editingId}`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -305,7 +305,7 @@ const AllModels = () => {
     setError("");
     setSuccess("");
     try {
-      const response = await apiClient.delete(`/models/delete/${id}`);
+      const response = await apiClient.delete(`/api/models/delete/${id}`);
       if (response.data && response.data.success) {
         setSuccess("Model deleted successfully!");
         setConfirmDeleteId(null);

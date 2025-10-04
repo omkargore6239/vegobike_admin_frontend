@@ -209,7 +209,7 @@ const AdminLogin = () => {
   const checkBackendConnection = async (retryAttempt = 0) => {
     try {
       console.log("🔄 Testing backend connection...");
-      const response = await apiClient.get('/auth/test');
+      const response = await apiClient.get('/api/auth/test');
       setConnectionStatus("connected");
       setRetryCount(0);
       console.log("✅ Backend connection successful:", response.data);
@@ -241,7 +241,7 @@ const AdminLogin = () => {
     console.log("Using API URL:", `${BASE_URL}/api/auth/admin/login`);
 
     try {
-      const response = await apiClient.post('/auth/admin/login', {
+      const response = await apiClient.post('/api/auth/admin/login', {
         email: email.trim(),
         password: password
       });

@@ -109,7 +109,7 @@ const AllBrands = () => {
     setLoading(true);
     setError("");
     try {
-      const response = await apiClient.get(`/brands/all?page=${page}&size=${size}&sort=createdAt,desc`);
+      const response = await apiClient.get(`/api/brands/all?page=${page}&size=${size}&sort=createdAt,desc`);
       console.log("Fetched brand data:", response.data);
       
       if (response.data && response.data.success) {
@@ -215,7 +215,7 @@ const AllBrands = () => {
     }
 
     try {
-      const response = await apiClient.post("/brands/add", formDataToSend, {
+      const response = await apiClient.post("/api/brands/add", formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -263,7 +263,7 @@ const AllBrands = () => {
     }
 
     try {
-      const response = await apiClient.post(`/brands/edit/${editingId}`, formDataToSend, {
+      const response = await apiClient.post(`/api/brands/edit/${editingId}`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -295,7 +295,7 @@ const AllBrands = () => {
     setError("");
     setSuccess("");
     try {
-      const response = await apiClient.get(`/brands/status/${id}`);
+      const response = await apiClient.get(`/api/brands/status/${id}`);
       if (response.data && response.data.success) {
         setSuccess("Status updated successfully!");
         // Refresh current page
@@ -320,7 +320,7 @@ const AllBrands = () => {
     setError("");
     setSuccess("");
     try {
-      const response = await apiClient.delete(`/brands/delete/${id}`);
+      const response = await apiClient.delete(`/api/brands/delete/${id}`);
       if (response.data && response.data.success) {
         setSuccess("Brand deleted successfully!");
         setConfirmDeleteId(null);
