@@ -243,40 +243,40 @@ const Bikes = () => {
   }, []);
 
   // ✅ Delete bike with NEW API
-  const handleDeleteBike = async (id) => {
-    if (!id) {
-      setError("Invalid bike ID");
-      setConfirmDeleteId(null);
-      return;
-    }
+  // const handleDeleteBike = async (id) => {
+  //   if (!id) {
+  //     setError("Invalid bike ID");
+  //     setConfirmDeleteId(null);
+  //     return;
+  //   }
 
-    try {
-      console.log(`🗑️ Deleting bike: ${id}`);
-      await bikeAPI.delete(id); // ✅ Uses /api/bikes/{id}
+  //   try {
+  //     console.log(`🗑️ Deleting bike: ${id}`);
+  //     await bikeAPI.delete(id); // ✅ Uses /api/bikes/{id}
       
-      setSuccess("Bike deleted successfully!");
-      toast.success("Bike deleted successfully!");
-      setConfirmDeleteId(null);
-      await fetchBikes();
+  //     setSuccess("Bike deleted successfully!");
+  //     toast.success("Bike deleted successfully!");
+  //     setConfirmDeleteId(null);
+  //     await fetchBikes();
       
-    } catch (error) {
-      console.error("❌ Error deleting bike:", error);
-      toast.error("Failed to delete bike");
-      setConfirmDeleteId(null);
-    }
-  };
+  //   } catch (error) {
+  //     console.error("❌ Error deleting bike:", error);
+  //     toast.error("Failed to delete bike");
+  //     setConfirmDeleteId(null);
+  //   }
+  // };
 
-  // Retry function
-  const handleRetry = () => {
-    setError("");
-    setRetryCount(0);
-    const loadData = async () => {
-      setLoading(true);
-      await fetchReferenceData();
-      await fetchBikes();
-    };
-    loadData();
-  };
+  // // Retry function
+  // const handleRetry = () => {
+  //   setError("");
+  //   setRetryCount(0);
+  //   const loadData = async () => {
+  //     setLoading(true);
+  //     await fetchReferenceData();
+  //     await fetchBikes();
+  //   };
+  //   loadData();
+  // };
 
   // Navigation handlers
   const handleAddBike = () => navigate("/dashboard/addBike");
@@ -522,13 +522,13 @@ const Bikes = () => {
                             >
                               <FaEdit />
                             </button>
-                            <button
+                            {/* <button
                               onClick={() => setConfirmDeleteId(bike.id)}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete"
                             >
                               <FaTrash />
-                            </button>
+                            </button> */}
                           </div>
                         </td>
                       </tr>

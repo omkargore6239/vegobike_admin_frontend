@@ -10,7 +10,7 @@
 
 // export default apiClient;
 
-export const BASE_URL = "http://localhost:8081";
+export const BASE_URL = "http://localhost:8080";
 
 // export const APIs = {
 //   vehicleAll: `${BASE_URL}/vehicle/all`,
