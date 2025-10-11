@@ -612,6 +612,7 @@ const Bikes = () => {
             </div>
           </div>
         </div>
+        
       )}
     </div>
   );

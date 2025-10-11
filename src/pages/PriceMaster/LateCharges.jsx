@@ -944,14 +944,14 @@ const LateCharges = () => {
                               {charge.isActive === 1 ? <FaToggleOn className="mr-1" /> : <FaToggleOff className="mr-1" />}
                               {charge.isActive === 1 ? "Deactivate" : "Activate"}
                             </button>
-                            <button
+                            {/* <button
                               className="inline-flex items-center px-2 py-1 text-sm font-medium rounded-lg transition duration-200 text-red-700 bg-red-100 hover:bg-red-200"
                               onClick={() => setConfirmDeleteId(charge.id)}
                               title="Delete charge"
                             >
                               <FaTrash className="mr-1" />
                               Delete
-                            </button>
+                            </button> */}
                           </div>
                         )}
                       </td>
@@ -1043,7 +1043,7 @@ const LateCharges = () => {
       </div>
 
       {/* Delete Confirmation Modal */}
-      {confirmDeleteId && (
+      {/* {confirmDeleteId && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
             <div className="flex items-center mb-4">
@@ -1074,7 +1074,7 @@ const LateCharges = () => {
             </div>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 };

@@ -771,19 +771,19 @@ const AllBrands = () => {
                             <FaEdit className="mr-1" />
                             Edit
                           </button>
-                          <button
-                            className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
+                          {/* <button */}
+                            {/* className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
                               brand.brandId.toString().startsWith('fallback-')
                                 ? "text-gray-400 bg-gray-100 cursor-not-allowed"
                                 : "text-red-700 bg-red-100 hover:bg-red-200"
-                            }`}
-                            onClick={() => setConfirmDeleteId(brand.brandId)}
+                            }`} */}
+                            {/* onClick={() => setConfirmDeleteId(brand.brandId)}
                             title="Delete brand"
-                            disabled={brand.brandId.toString().startsWith('fallback-')}
-                          >
+                            disabled={brand.brandId.toString().startsWith('fallback-')} */}
+                          {/* >
                             <FaTrash className="mr-1" />
-                            Delete
-                          </button>
+                            Delete */}
+                          {/* </button> */}
                         </div>
                       </td>
                     </tr>

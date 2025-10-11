@@ -642,8 +642,6 @@
 
 
 
-// AllBookings.jsx - PROFESSIONAL DESIGN WITH COMPLETE BACKEND INTEGRATION
-
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   FaEye, FaMapMarkerAlt, FaMotorcycle, FaCreditCard, FaCalendarAlt,
@@ -653,7 +651,289 @@ import {
 } from "react-icons/fa";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import apiClient, { BASE_URL } from '../api/apiConfig';
+
+// Static bookings data
+const staticBookingsData = [
+  {
+    id: 1,
+    bookingId: "BK001",
+    customerId: 101,
+    customerName: "Rajesh Kumar",
+    customerNumber: "9876543210",
+    vehicleId: 1,
+    bikeDetails: {
+      registrationNumber: "MH12AB1234",
+      brand: "Honda",
+      model: "Activa 6G"
+    },
+    startDate: "2024-12-01T10:00:00Z",
+    endDate: "2024-12-03T18:00:00Z",
+    address: "Andheri West, Mumbai",
+    addressType: "Home Delivery",
+    charges: 1500,
+    lateFeeCharges: 0,
+    gst: 75,
+    advanceAmount: 2000,
+    finalAmount: 3575,
+    paymentType: 2, // 2 = Online, 1 = Cash
+    paymentStatus: "PAID",
+    status: "Completed",
+    createdAt: "2024-12-01T09:00:00Z",
+    updatedAt: "2024-12-03T18:30:00Z"
+  },
+  {
+    id: 2,
+    bookingId: "BK002",
+    customerId: 102,
+    customerName: "Priya Sharma",
+    customerNumber: "9876543211",
+    vehicleId: 2,
+    bikeDetails: {
+      registrationNumber: "MH14CD5678",
+      brand: "TVS",
+      model: "Jupiter"
+    },
+    startDate: "2024-12-05T14:00:00Z",
+    endDate: "2024-12-07T12:00:00Z",
+    address: "Bandra East, Mumbai",
+    addressType: "Self Pickup",
+    charges: 1200,
+    lateFeeCharges: 200,
+    gst: 70,
+    advanceAmount: 1500,
+    finalAmount: 2970,
+    paymentType: 1, // Cash
+    paymentStatus: "PENDING",
+    status: "On Going",
+    createdAt: "2024-12-05T13:00:00Z",
+    updatedAt: "2024-12-05T14:15:00Z"
+  },
+  {
+    id: 3,
+    bookingId: "BK003",
+    customerId: 103,
+    customerName: "Amit Patel",
+    customerNumber: "9876543212",
+    vehicleId: 3,
+    bikeDetails: {
+      registrationNumber: "GJ05EF9012",
+      brand: "Hero",
+      model: "Splendor Plus"
+    },
+    startDate: "2024-12-10T08:00:00Z",
+    endDate: "2024-12-12T20:00:00Z",
+    address: "Ahmedabad, Gujarat",
+    addressType: "Office Delivery",
+    charges: 1800,
+    lateFeeCharges: 0,
+    gst: 90,
+    advanceAmount: 2500,
+    finalAmount: 4390,
+    paymentType: 2, // Online
+    paymentStatus: "PAID",
+    status: "Accepted",
+    createdAt: "2024-12-09T15:00:00Z",
+    updatedAt: "2024-12-10T07:30:00Z"
+  },
+  {
+    id: 4,
+    bookingId: "BK004",
+    customerId: 104,
+    customerName: "Sneha Reddy",
+    customerNumber: "9876543213",
+    vehicleId: 4,
+    bikeDetails: {
+      registrationNumber: "TS09GH3456",
+      brand: "Yamaha",
+      model: "Fascino 125"
+    },
+    startDate: "2024-12-15T16:00:00Z",
+    endDate: "2024-12-17T10:00:00Z",
+    address: "Hyderabad, Telangana",
+    addressType: "Home Delivery",
+    charges: 1400,
+    lateFeeCharges: 300,
+    gst: 85,
+    advanceAmount: 2000,
+    finalAmount: 3785,
+    paymentType: 1, // Cash
+    paymentStatus: "PARTIAL",
+    status: "Trip Started",
+    createdAt: "2024-12-14T12:00:00Z",
+    updatedAt: "2024-12-15T16:15:00Z"
+  },
+  {
+    id: 5,
+    bookingId: "BK005",
+    customerId: 105,
+    customerName: "Vikram Singh",
+    customerNumber: "9876543214",
+    vehicleId: 5,
+    bikeDetails: {
+      registrationNumber: "RJ14IJ7890",
+      brand: "Bajaj",
+      model: "Pulsar 150"
+    },
+    startDate: "2024-12-20T12:00:00Z",
+    endDate: "2024-12-22T18:00:00Z",
+    address: "Jaipur, Rajasthan",
+    addressType: "Self Pickup",
+    charges: 2000,
+    lateFeeCharges: 0,
+    gst: 100,
+    advanceAmount: 3000,
+    finalAmount: 5100,
+    paymentType: 2, // Online
+    paymentStatus: "PAID",
+    status: "Confirmed",
+    createdAt: "2024-12-19T10:00:00Z",
+    updatedAt: "2024-12-19T10:30:00Z"
+  },
+  {
+    id: 6,
+    bookingId: "BK006",
+    customerId: 106,
+    customerName: "Kavya Nair",
+    customerNumber: "9876543215",
+    vehicleId: 6,
+    bikeDetails: {
+      registrationNumber: "KL07KL1234",
+      brand: "Honda",
+      model: "Dio"
+    },
+    startDate: "2024-12-08T09:00:00Z",
+    endDate: "2024-12-10T17:00:00Z",
+    address: "Kochi, Kerala",
+    addressType: "Home Delivery",
+    charges: 1300,
+    lateFeeCharges: 150,
+    gst: 72,
+    advanceAmount: 1800,
+    finalAmount: 3322,
+    paymentType: 1, // Cash
+    paymentStatus: "PENDING",
+    status: "End Trip",
+    createdAt: "2024-12-07T14:00:00Z",
+    updatedAt: "2024-12-10T17:30:00Z"
+  },
+  {
+    id: 7,
+    bookingId: "BK007",
+    customerId: 107,
+    customerName: "Rohit Gupta",
+    customerNumber: "9876543216",
+    vehicleId: 7,
+    bikeDetails: {
+      registrationNumber: "UP16MN5678",
+      brand: "TVS",
+      model: "Apache RTR 160"
+    },
+    startDate: "2024-11-25T11:00:00Z",
+    endDate: "2024-11-27T15:00:00Z",
+    address: "Noida, Uttar Pradesh",
+    addressType: "Office Delivery",
+    charges: 1700,
+    lateFeeCharges: 0,
+    gst: 85,
+    advanceAmount: 2200,
+    finalAmount: 3985,
+    paymentType: 2, // Online
+    paymentStatus: "PAID",
+    status: "Cancelled",
+    createdAt: "2024-11-24T16:00:00Z",
+    updatedAt: "2024-11-25T10:00:00Z"
+  },
+  {
+    id: 8,
+    bookingId: "BK008",
+    customerId: 108,
+    customerName: "Anita Desai",
+    customerNumber: "9876543217",
+    vehicleId: 8,
+    bikeDetails: {
+      registrationNumber: "WB19OP9012",
+      brand: "Hero",
+      model: "Maestro Edge 125"
+    },
+    startDate: "2024-12-18T13:00:00Z",
+    endDate: "2024-12-20T11:00:00Z",
+    address: "Kolkata, West Bengal",
+    addressType: "Self Pickup",
+    charges: 1600,
+    lateFeeCharges: 0,
+    gst: 80,
+    advanceAmount: 2100,
+    finalAmount: 3780,
+    paymentType: 1, // Cash
+    paymentStatus: "PAID",
+    status: "Pending",
+    createdAt: "2024-12-17T09:00:00Z",
+    updatedAt: "2024-12-17T09:30:00Z"
+  },
+  {
+    id: 9,
+    bookingId: "BK009",
+    customerId: 109,
+    customerName: "Suresh Yadav",
+    customerNumber: "9876543218",
+    vehicleId: 9,
+    bikeDetails: {
+      registrationNumber: "BR01QR3456",
+      brand: "Yamaha",
+      model: "Ray ZR 125"
+    },
+    startDate: "2024-12-22T15:00:00Z",
+    endDate: "2024-12-24T09:00:00Z",
+    address: "Patna, Bihar",
+    addressType: "Home Delivery",
+    charges: 1450,
+    lateFeeCharges: 0,
+    gst: 72,
+    advanceAmount: 1900,
+    finalAmount: 3422,
+    paymentType: 2, // Online
+    paymentStatus: "PAID",
+    status: "Rejected",
+    createdAt: "2024-12-21T11:00:00Z",
+    updatedAt: "2024-12-21T12:00:00Z"
+  },
+  {
+    id: 10,
+    bookingId: "BK010",
+    customerId: 110,
+    customerName: "Meera Shah",
+    customerNumber: "9876543219",
+    vehicleId: 10,
+    bikeDetails: {
+      registrationNumber: "MP09ST7890",
+      brand: "Bajaj",
+      model: "Avenger Street 160"
+    },
+    startDate: "2024-12-25T10:00:00Z",
+    endDate: "2024-12-27T16:00:00Z",
+    address: "Bhopal, Madhya Pradesh",
+    addressType: "Self Pickup",
+    charges: 1900,
+    lateFeeCharges: 0,
+    gst: 95,
+    advanceAmount: 2500,
+    finalAmount: 4495,
+    paymentType: 1, // Cash
+    paymentStatus: "PENDING",
+    status: "Confirmed",
+    createdAt: "2024-12-24T08:00:00Z",
+    updatedAt: "2024-12-24T08:30:00Z"
+  }
+];
+
+// Static customer suggestions data
+const staticCustomerSuggestions = [
+  { id: 101, name: "Rajesh Kumar", phone: "9876543210" },
+  { id: 102, name: "Priya Sharma", phone: "9876543211" },
+  { id: 103, name: "Amit Patel", phone: "9876543212" },
+  { id: 104, name: "Sneha Reddy", phone: "9876543213" },
+  { id: 105, name: "Vikram Singh", phone: "9876543214" }
+];
 
 const AllBookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -667,20 +947,23 @@ const AllBookings = () => {
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
 
-  // Fetch all bookings
+  // Fetch all bookings (static data implementation)
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
       console.log('📋 Fetching all bookings...');
 
-      const response = await apiClient.get('/api/booking-bikes/allBooking');
-      const bookingsData = Array.isArray(response.data) ? response.data : [];
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const bookingsData = staticBookingsData;
 
       console.log('✅ Bookings fetched:', bookingsData.length);
       console.log('📦 Sample booking:', bookingsData[0]);
 
       setBookings(bookingsData);
       setTotalPages(Math.ceil(bookingsData.length / itemsPerPage));
+      toast.success('📋 Bookings loaded successfully!');
     } catch (error) {
       console.error('❌ Error fetching bookings:', error);
       toast.error('Failed to load bookings');
@@ -690,7 +973,7 @@ const AllBookings = () => {
     }
   }, [itemsPerPage]);
 
-  // New function to fetch customer suggestions
+  // Fetch customer suggestions (static implementation)
   const fetchCustomerSuggestions = useCallback(async (query) => {
     if (query.length < 2) {
       setCustomerSuggestions([]);
@@ -698,8 +981,16 @@ const AllBookings = () => {
     }
 
     try {
-      const response = await apiClient.get(`/api/customers/search?query=${query}`);
-      setCustomerSuggestions(response.data || []);
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Filter static customer suggestions
+      const filteredSuggestions = staticCustomerSuggestions.filter(customer =>
+        customer.name.toLowerCase().includes(query.toLowerCase()) ||
+        customer.phone.includes(query)
+      );
+
+      setCustomerSuggestions(filteredSuggestions);
     } catch (error) {
       console.error('❌ Error fetching customer suggestions:', error);
       setCustomerSuggestions([]);
@@ -742,16 +1033,18 @@ const AllBookings = () => {
     [filteredBookings, indexOfFirstItem, indexOfLastItem]
   );
 
-  // Handle view booking details
+  // Handle view booking details (static implementation)
   const handleView = async (booking) => {
     console.log('👁️ Viewing booking:', booking.id);
 
     try {
       setLoading(true);
 
-      // Fetch full booking details
-      const response = await apiClient.get(`/api/booking-bikes/getById/${booking.id}`);
-      const fullBooking = response.data;
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Find full booking details from static data
+      const fullBooking = staticBookingsData.find(b => b.id === booking.id);
 
       console.log('✅ Full booking data:', fullBooking);
 
@@ -810,7 +1103,7 @@ const AllBookings = () => {
   return (
     <div className="min-h-screen bg-gray-100 py-1 px-1">
       <ToastContainer position="top-right" />
-
+      
       <div className="max-w-7xl mx-auto">
         {viewMode && selectedBooking ? (
           <BookingDetailView
@@ -821,6 +1114,7 @@ const AllBookings = () => {
             getStatusColor={getStatusColor}
             getPaymentMethodIcon={getPaymentMethodIcon}
             refreshBookings={fetchBookings}
+            setBookings={setBookings}
           />
         ) : (
           <BookingListView
@@ -849,8 +1143,8 @@ const AllBookings = () => {
   );
 };
 
-// ✅ Booking Detail View Component - Booking Status beside Current Status
-const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings }) => {
+// Booking Detail View Component (static data implementation)
+const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings }) => {
   const [formData, setFormData] = useState({});
   const [additionalCharges, setAdditionalCharges] = useState([]);
   const [newCharge, setNewCharge] = useState({ type: 'Additional Charges', amount: '' });
@@ -890,7 +1184,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // ✅ Enhanced Add More functionality with validation
+  // Enhanced Add More functionality with validation
   const handleAddMore = () => {
     if (newCharge.type !== 'Additional Charges' && newCharge.amount && !isNaN(parseFloat(newCharge.amount))) {
       const charge = {
@@ -898,10 +1192,10 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         type: newCharge.type,
         amount: parseFloat(newCharge.amount)
       };
-
+      
       setAdditionalCharges(prev => [...prev, charge]);
       setNewCharge({ type: 'Additional Charges', amount: '' });
-
+      
       toast.success(`✅ Added ${charge.type}: ₹${charge.amount}`);
       console.log('Added charge:', charge);
     } else {
@@ -918,56 +1212,33 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
   const handleRemoveCharge = (id) => {
     const chargeToRemove = additionalCharges.find(charge => charge.id === id);
     setAdditionalCharges(prev => prev.filter(charge => charge.id !== id));
-
+    
     if (chargeToRemove) {
       toast.success(`🗑️ Removed ${chargeToRemove.type}: ₹${chargeToRemove.amount}`);
     }
   };
 
-  // ✅ Enhanced Save functionality with API call
+  // Enhanced Save functionality (static implementation)
   const handleSaveCharges = async () => {
     if (additionalCharges.length === 0) {
       toast.warning('⚠️ No additional charges to save');
       return;
     }
+
     setIsSavingCharges(true);
     try {
       console.log('💾 Saving additional charges:', additionalCharges);
 
-      // API call to save additional charges
-      const payload = {
-        bookingId: booking.id,
-        additionalCharges: additionalCharges.map(charge => ({
-          type: charge.type,
-          amount: charge.amount,
-          description: `${charge.type} - ₹${charge.amount}`
-        })),
-        totalAdditionalAmount: additionalCharges.reduce((sum, charge) => sum + charge.amount, 0)
-      };
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // Try multiple endpoints for saving additional charges
-      try {
-        const response = await apiClient.post(`/api/booking-bikes/${booking.id}/additional-charges`, payload);
-        console.log('✅ Charges saved via additional-charges endpoint:', response.data);
-      } catch (error1) {
-        try {
-          const response = await apiClient.put(`/api/booking-bikes/updateCharges/${booking.id}`, payload);
-          console.log('✅ Charges saved via updateCharges endpoint:', response.data);
-        } catch (error2) {
-          try {
-            const response = await apiClient.patch(`/api/booking-bikes/${booking.id}`, { additionalCharges: payload.additionalCharges });
-            console.log('✅ Charges saved via PATCH endpoint:', response.data);
-          } catch (error3) {
-            throw error3;
-          }
-        }
-      }
       toast.success('💾 Additional charges saved successfully!');
-
-      // Update total amount if needed
+      
+      // Update total amount
       const totalAdditional = additionalCharges.reduce((sum, charge) => sum + charge.amount, 0);
       const newTotal = parseFloat(formData.totalRideFair) + totalAdditional;
       setFormData(prev => ({ ...prev, totalRideFair: newTotal }));
+
     } catch (error) {
       console.error('❌ Error saving additional charges:', error);
       toast.error('❌ Failed to save additional charges');
@@ -976,7 +1247,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // ✅ Enhanced Update booking status with multiple API endpoints
+  // Enhanced Update booking status (static implementation)
   const handleUpdateBookingDetails = async () => {
     if (!booking?.id) {
       toast.error('❌ Booking ID not found');
@@ -988,6 +1259,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
       toast.info('ℹ️ Status is already up to date');
       return;
     }
+
     setIsUpdating(true);
     try {
       console.log('🔄 Updating booking status:', {
@@ -996,139 +1268,61 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         previousStatus: formData.currentBookingStatus
       });
 
-      // Prepare update payload
-      const updatePayload = {
-        status: formData.bookingStatus,
-        updatedAt: new Date().toISOString(),
-        updatedBy: 'admin'
-      };
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Try multiple API endpoints for updating booking status
-      let response = null;
-      let updateSuccess = false;
-      const endpoints = [
-        { url: `/api/booking-bikes/updateStatus/${booking.id}`, method: 'PUT' },
-        { url: `/api/booking-bikes/${booking.id}/status`, method: 'PATCH' },
-        { url: `/api/booking-bikes/${booking.id}`, method: 'PUT' },
-        { url: `/api/booking-bikes/update/${booking.id}`, method: 'POST' },
-        { url: `/api/booking-bikes/${booking.id}/update-status`, method: 'PUT' },
-        // Adding the accept/cancel specific endpoints
-        ...(formData.bookingStatus === 'Accepted' ? [{ url: `/api/booking-bikes/${booking.id}/accept`, method: 'POST' }] : []),
-        ...(formData.bookingStatus === 'Cancelled' ? [{ url: `/api/booking-bikes/${booking.id}/cancel`, method: 'POST' }] : []),
-        ...(formData.bookingStatus === 'Completed' ? [{ url: `/api/booking-bikes/${booking.id}/complete`, method: 'POST' }] : [])
-      ];
+      // Update the booking in static data
+      setBookings(prevBookings => 
+        prevBookings.map(b => 
+          b.id === booking.id 
+            ? { ...b, status: formData.bookingStatus, updatedAt: new Date().toISOString() }
+            : b
+        )
+      );
 
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔄 Trying endpoint: ${endpoint.method} ${endpoint.url}`);
+      // Update the current status to reflect the change
+      setFormData(prev => ({
+        ...prev,
+        currentBookingStatus: formData.bookingStatus
+      }));
 
-          if (endpoint.method === 'PUT') {
-            response = await apiClient.put(endpoint.url, updatePayload);
-          } else if (endpoint.method === 'PATCH') {
-            response = await apiClient.patch(endpoint.url, updatePayload);
-          } else if (endpoint.method === 'POST') {
-            // For specific action endpoints, send minimal data
-            if (endpoint.url.includes('/accept') || endpoint.url.includes('/cancel') || endpoint.url.includes('/complete')) {
-              response = await apiClient.post(endpoint.url, {});
-            } else {
-              response = await apiClient.post(endpoint.url, updatePayload);
-            }
-          }
+      // Show success notification
+      toast.success(
+        `🎉 Status changed from "${formData.currentBookingStatus}" to "${formData.bookingStatus}"`,
+        { duration: 4000 }
+      );
 
-          updateSuccess = true;
-          console.log(`✅ Status updated via ${endpoint.url}:`, response.data);
-          toast.success(`✅ Booking status updated to "${formData.bookingStatus}" successfully!`);
-          break;
-        } catch (error) {
-          console.log(`❌ ${endpoint.url} failed:`, error.response?.status, error.response?.data);
-          continue;
-        }
+      // Refresh the bookings list after a short delay
+      if (refreshBookings) {
+        setTimeout(() => {
+          refreshBookings();
+          console.log('🔄 Bookings list refreshed');
+        }, 1500);
       }
 
-      if (updateSuccess && response) {
-        // Update the current status to reflect the change
-        setFormData(prev => ({
-          ...prev,
-          currentBookingStatus: formData.bookingStatus
-        }));
+      console.log('✅ Booking status update completed:', {
+        bookingId: booking.id,
+        oldStatus: formData.currentBookingStatus,
+        newStatus: formData.bookingStatus,
+        timestamp: new Date().toISOString()
+      });
 
-        // Show success notification with status change details
-        toast.success(
-          `🎉 Status changed from "${formData.currentBookingStatus}" to "${formData.bookingStatus}"`,
-          { duration: 4000 }
-        );
-
-        // Refresh the bookings list after a short delay
-        if (refreshBookings) {
-          setTimeout(() => {
-            refreshBookings();
-            console.log('🔄 Bookings list refreshed');
-          }, 1500);
-        }
-
-        // Log the successful update
-        console.log('✅ Booking status update completed:', {
-          bookingId: booking.id,
-          oldStatus: formData.currentBookingStatus,
-          newStatus: formData.bookingStatus,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        throw new Error('All endpoints failed');
-      }
     } catch (error) {
       console.error('❌ Error updating booking status:', error);
-
-      // Enhanced error handling with specific messages
-      if (error.response) {
-        const status = error.response.status;
-        const message = error.response.data?.message || error.response.data?.error || 'Unknown error';
-
-        switch (status) {
-          case 404:
-            toast.error('❌ Booking not found. Please refresh and try again.');
-            break;
-          case 400:
-            toast.error(`❌ Invalid request: ${message}`);
-            break;
-          case 401:
-            toast.error('❌ Unauthorized. Please login again.');
-            setTimeout(() => {
-              window.location.href = '/login';
-            }, 2000);
-            break;
-          case 403:
-            toast.error('❌ You don\'t have permission to update this booking.');
-            break;
-          case 422:
-            toast.error(`❌ Validation error: ${message}`);
-            break;
-          case 409:
-            toast.error('❌ Booking status conflict. Please refresh and try again.');
-            break;
-          case 500:
-            toast.error('❌ Server error. Please try again later.');
-            break;
-          default:
-            toast.error(`❌ Update failed: ${message}`);
-        }
-      } else if (error.request) {
-        toast.error('❌ Network error. Please check your internet connection.');
-      } else {
-        toast.error('❌ Something went wrong. Please try again.');
-      }
+      toast.error('❌ Something went wrong. Please try again.');
 
       // Reset the status on error
       setFormData(prev => ({
         ...prev,
         bookingStatus: prev.currentBookingStatus
       }));
+
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // ✅ Enhanced status validation function
+  // Enhanced status validation function
   const canUpdateStatus = (currentStatus, newStatus) => {
     const statusFlow = {
       'Pending': ['Accepted', 'Cancelled'],
@@ -1141,133 +1335,8 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
       'Cancelled': [], // Terminal state
       'Rejected': [] // Terminal state
     };
+
     return statusFlow[currentStatus]?.includes(newStatus) || false;
-  };
-
-  // ✅ Enhanced booking status dropdown with validation
-  const renderBookingStatusField = () => {
-    const availableStatuses = ['Confirmed', 'Accepted', 'Trip Started', 'On Going', 'End Trip', 'Completed', 'Cancelled', 'Rejected'];
-
-    return (
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">
-          Booking Status <span className="text-red-500">*</span>
-        </label>
-        <select
-          value={formData.bookingStatus}
-          onChange={(e) => {
-            const newStatus = e.target.value;
-            // Check if status change is valid
-            if (canUpdateStatus(formData.currentBookingStatus, newStatus) || newStatus === formData.currentBookingStatus) {
-              handleInputChange('bookingStatus', newStatus);
-            } else {
-              toast.warning(`⚠️ Cannot change status from "${formData.currentBookingStatus}" to "${newStatus}"`);
-            }
-          }}
-          className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-        >
-          {availableStatuses.map(status => (
-            <option
-              key={status}
-              value={status}
-              disabled={!canUpdateStatus(formData.currentBookingStatus, status) && status !== formData.currentBookingStatus}
-            >
-              {status}
-              {status === formData.currentBookingStatus ? ' (Current)' : ''}
-            </option>
-          ))}
-        </select>
-
-        {/* Status change hint */}
-        {formData.bookingStatus !== formData.currentBookingStatus && (
-          <div className="mt-1 text-xs text-blue-600 font-medium">
-            ✨ Ready to change to "{formData.bookingStatus}"
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ✅ Enhanced Update Button with better UX
-  const renderUpdateButton = () => {
-    const hasStatusChanged = formData.bookingStatus !== formData.currentBookingStatus;
-    const isValidChange = canUpdateStatus(formData.currentBookingStatus, formData.bookingStatus);
-
-    return (
-      <div className="mb-3">
-        <button
-          onClick={handleUpdateBookingDetails}
-          disabled={isUpdating || !hasStatusChanged || !isValidChange}
-          className={`w-1/4 py-2 px-4 rounded-md text-sm font-semibold transition-all duration-200 flex items-center justify-center ${
-            !hasStatusChanged
-              ? 'bg-gray-400 cursor-not-allowed text-white'
-              : !isValidChange
-              ? 'bg-red-400 cursor-not-allowed text-white'
-              : isUpdating
-              ? 'bg-blue-400 cursor-not-allowed text-white'
-              : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
-          }`}
-        >
-          {isUpdating ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Updating Status...
-            </>
-          ) : !hasStatusChanged ? (
-            <>
-              <FaCheckCircle className="mr-2" />
-              Status Up to Date
-            </>
-          ) : !isValidChange ? (
-            <>
-              <FaTimesCircle className="mr-2" />
-              Invalid Status Change
-            </>
-          ) : (
-            <>
-              <FaEdit className="mr-2" />
-              Update Booking Status
-            </>
-          )}
-        </button>
-
-        {/* Enhanced status change preview */}
-        {hasStatusChanged && !isUpdating && (
-          <div className={`mt-2 p-3 rounded-lg border-l-4 ${
-            isValidChange
-              ? 'bg-green-50 border-green-400 border-l-green-500'
-              : 'bg-red-50 border-red-400 border-l-red-500'
-          }`}>
-            <div className="flex">
-              <div className="flex-shrink-0">
-                {isValidChange ? (
-                  <FaCheckCircle className="h-4 w-4 text-green-400 mt-0.5" />
-                ) : (
-                  <FaTimesCircle className="h-4 w-4 text-red-400 mt-0.5" />
-                )}
-              </div>
-              <div className="ml-3">
-                <p className={`text-xs font-medium ${
-                  isValidChange ? 'text-green-800' : 'text-red-800'
-                }`}>
-                  {isValidChange ? 'Ready to Update' : 'Invalid Status Change'}
-                </p>
-                <p className={`text-xs ${
-                  isValidChange ? 'text-green-700' : 'text-red-700'
-                }`}>
-                  Status will change from <span className="font-semibold">"{formData.currentBookingStatus}"</span> to <span className="font-semibold">"{formData.bookingStatus}"</span>
-                </p>
-                {!isValidChange && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Please select a valid status transition.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
   };
 
   // Calculate total additional charges
@@ -1288,6 +1357,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
             </button>
           </div>
         </div>
+
         <div className="p-2">
           {/* Vehicle Image */}
           <div className="mb-2">
@@ -1299,6 +1369,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               </div>
             </div>
           </div>
+
           {/* Form Grid - 4 fields per row */}
           <div className="grid grid-cols-4 gap-2 mb-2">
             {/* Row 1 */}
@@ -1346,6 +1417,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
               />
             </div>
+
             {/* Row 2 */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-0.5">
@@ -1392,6 +1464,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 <option value="Office Delivery">Office Delivery</option>
               </select>
             </div>
+
             {/* Row 3 */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-0.5">
@@ -1435,6 +1508,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
               />
             </div>
+
             {/* Row 4 - All 4 fields including both status fields */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-0.5">
@@ -1480,7 +1554,8 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               </select>
             </div>
           </div>
-          {/* ✅ UPDATE BOOKING DETAILS BUTTON - Full width below the grid */}
+
+          {/* UPDATE BOOKING DETAILS BUTTON - Full width below the grid */}
           <div className="mb-3">
             <button
               onClick={handleUpdateBookingDetails}
@@ -1510,7 +1585,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 </>
               )}
             </button>
-
+            
             {/* Status change preview */}
             {formData.bookingStatus !== formData.currentBookingStatus && !isUpdating && (
               <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-md">
@@ -1521,7 +1596,8 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               </div>
             )}
           </div>
-          {/* ✅ ENHANCED Additional Charges Section with properly positioned buttons */}
+
+          {/* ENHANCED Additional Charges Section with properly positioned buttons */}
           <div className="mb-3">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-semibold text-gray-700">
@@ -1533,11 +1609,11 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 )}
               </label>
             </div>
-
+            
             <div className="border border-gray-300 rounded-lg p-3 bg-gray-50">
               {/* Input Row */}
               <div className="flex space-x-2 mb-3">
-                <select
+                <select 
                   value={newCharge.type}
                   onChange={(e) => setNewCharge(prev => ({ ...prev, type: e.target.value }))}
                   className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
@@ -1547,16 +1623,16 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   <option value="Damage Charges">Damage Charges</option>
                   <option value="challan">challan</option>
                 </select>
-                <input
+                <input 
                   type="number"
-                  placeholder="Enter Amount"
+                  placeholder="Enter Amount" 
                   value={newCharge.amount}
                   onChange={(e) => setNewCharge(prev => ({ ...prev, amount: e.target.value }))}
                   className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
                   min="0"
                   step="0.01"
                 />
-                <button
+                <button 
                   onClick={() => setNewCharge({ type: 'Additional Charges', amount: '' })}
                   className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center"
                   title="Clear fields"
@@ -1565,7 +1641,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   Clear
                 </button>
               </div>
-
+              
               {/* Action Buttons - Positioned below input */}
               <div className="flex space-x-2 mb-3">
                 <button
@@ -1594,7 +1670,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   )}
                 </button>
               </div>
-
+              
               {/* Display Added Charges */}
               {additionalCharges.length > 0 && (
                 <div className="space-y-2 border-t pt-3 mt-3">
@@ -1603,8 +1679,8 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                     Added Charges ({additionalCharges.length}):
                   </div>
                   {additionalCharges.map((charge, index) => (
-                    <div
-                      key={charge.id}
+                    <div 
+                      key={charge.id} 
                       className="flex justify-between items-center py-2 px-3 bg-white rounded-md border border-blue-200 text-xs"
                     >
                       <div className="flex items-center space-x-2">
@@ -1615,7 +1691,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                       </div>
                       <div className="flex items-center space-x-3">
                         <span className="font-bold text-green-600">₹{charge.amount}</span>
-                        <button
+                        <button 
                           onClick={() => handleRemoveCharge(charge.id)}
                           className="text-red-500 hover:text-red-700 hover:bg-red-100 p-1 rounded-full font-bold transition-colors"
                           title="Remove charge"
@@ -1625,7 +1701,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                       </div>
                     </div>
                   ))}
-
+                  
                   {/* Total Row */}
                   <div className="flex justify-between items-center py-2 px-3 bg-green-50 border border-green-200 rounded-md font-semibold text-sm">
                     <span className="text-green-700 flex items-center">
@@ -1636,7 +1712,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   </div>
                 </div>
               )}
-
+              
               {additionalCharges.length === 0 && (
                 <div className="text-center py-6 text-gray-500 text-xs bg-white rounded-md border-2 border-dashed border-gray-200">
                   <FaFileAlt className="mx-auto text-2xl mb-2 text-gray-400" />
@@ -1645,13 +1721,14 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               )}
             </div>
           </div>
+
           {/* View Customer Documents Section */}
           <div className="border-t pt-3">
             <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
               <FaFileAlt className="mr-2" />
               Customer Documents
             </h2>
-
+            
             <div className="grid grid-cols-3 gap-3">
               {/* Aadhar Front Image */}
               <div className="text-center">
@@ -1667,13 +1744,13 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 </div>
                 <p className="text-xs font-semibold text-gray-700 mb-2">Aadhar Front Image</p>
                 <div className="flex space-x-1">
-                  <button
+                  <button 
                     onClick={() => toast.success('✅ Document verified successfully')}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
                   >
                     Verify
                   </button>
-                  <button
+                  <button 
                     onClick={() => toast.error('❌ Document rejected')}
                     className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
                   >
@@ -1681,6 +1758,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   </button>
                 </div>
               </div>
+
               {/* Aadhar Back Image */}
               <div className="text-center">
                 <div className="w-full h-24 bg-gray-100 rounded-lg mb-2 flex items-center justify-center relative border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors">
@@ -1695,13 +1773,13 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 </div>
                 <p className="text-xs font-semibold text-gray-700 mb-2">Aadhar Back Image</p>
                 <div className="flex space-x-1">
-                  <button
+                  <button 
                     onClick={() => toast.success('✅ Document verified successfully')}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
                   >
                     Verify
                   </button>
-                  <button
+                  <button 
                     onClick={() => toast.error('❌ Document rejected')}
                     className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
                   >
@@ -1709,6 +1787,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   </button>
                 </div>
               </div>
+
               {/* Driving License Image */}
               <div className="text-center">
                 <div className="w-full h-24 bg-gray-100 rounded-lg mb-2 flex items-center justify-center relative border-2 border-dashed border-green-300 hover:border-green-400 transition-colors">
@@ -1723,13 +1802,13 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 </div>
                 <p className="text-xs font-semibold text-gray-700 mb-2">Driving License Image</p>
                 <div className="flex space-x-1">
-                  <button
+                  <button 
                     onClick={() => toast.success('✅ Document verified successfully')}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
                   >
                     View
                   </button>
-                  <button
+                  <button 
                     onClick={() => toast.info('ℹ️ Document already verified')}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
                   >
@@ -1745,7 +1824,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
   );
 };
 
-// ✅ Booking List View Component (updated with customer suggestions)
+// Booking List View Component (updated with customer suggestions)
 const BookingListView = ({
   bookings,
   searchQuery,
@@ -1768,9 +1847,8 @@ const BookingListView = ({
 }) => {
   // Handle customer suggestion selection
   const handleSuggestionClick = (customer) => {
-    setSearchQuery(customer.name);
+    setSearchQuery({ target: { value: customer.name } });
     setShowCustomerSuggestions(false);
-    // You could also filter bookings by this customer here if needed
   };
 
   return (
@@ -1784,7 +1862,7 @@ const BookingListView = ({
             </h1>
             <p className="text-gray-500 text-xs">Manage and track all bike rentals</p>
           </div>
-
+          
           <div className="flex items-center space-x-4">
             <div className="bg-gradient-to-r from-indigo-500 to-blue-500 text-white px-3 py-1.5 rounded-lg shadow-lg">
               <div className="text-lg font-bold">{filteredBookings.length}</div>
@@ -1793,6 +1871,7 @@ const BookingListView = ({
           </div>
         </div>
       </div>
+
       {/* Search */}
       <div className="bg-white rounded-xl shadow-lg p-3">
         <div className="relative">
@@ -1824,6 +1903,7 @@ const BookingListView = ({
           )}
         </div>
       </div>
+
       {/* Bookings Table */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
@@ -1918,6 +1998,7 @@ const BookingListView = ({
             </tbody>
           </table>
         </div>
+
         {/* Pagination */}
         {!loading && bookings.length > 0 && totalPages > 1 && (
           <div className="border-t border-gray-100 px-3 py-2 bg-gray-50">
@@ -1937,11 +2018,11 @@ const BookingListView = ({
                 >
                   Previous
                 </button>
-
+                
                 <span className="px-2 py-1 text-xs font-medium text-gray-700">
                   Page {currentPage} of {totalPages}
                 </span>
-
+                
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
@@ -1959,3 +2040,4 @@ const BookingListView = ({
 };
 
 export default AllBookings;
+

@@ -2485,7 +2485,7 @@ const AllModels = () => {
                             <FaEdit className="mr-1" />
                             Edit
                           </button>
-                          <button
+                          {/* <button
                             className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
                               model.id.toString().startsWith('fallback-')
                                 ? "text-gray-400 bg-gray-100 cursor-not-allowed"
@@ -2497,7 +2497,7 @@ const AllModels = () => {
                           >
                             <FaTrash className="mr-1" />
                             Delete
-                          </button>
+                          </button> */}
                         </div>
                       </td>
                     </tr>

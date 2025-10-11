@@ -162,7 +162,7 @@
 //       fieldErrors.push("Please select a category");
 //     }
     
-//     // Days validation
+//     // Days validation of
 //     if (!formData.days || formData.days === "") {
 //       errors.days = "Number of days is required";
 //       fieldErrors.push("Please enter number of days");
@@ -3319,14 +3319,14 @@ const PriceManagement = () => {
                             <FaEdit className="mr-1" />
                             Edit
                           </button>
-                          <button
+                          {/* <button
                             className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 text-red-700 bg-red-100 hover:bg-red-200"
                             onClick={() => setConfirmDeleteId(priceItem.id)}
                             title="Delete price list"
                           >
                             <FaTrash className="mr-1" />
                             Delete
-                          </button>
+                          </button> */}
                         </div>
                       </td>
                     </tr>
@@ -3409,7 +3409,7 @@ const PriceManagement = () => {
             </div>
           )}
           {/* Delete Confirmation Modal */}
-          {confirmDeleteId && (
+          {/* {confirmDeleteId && (
             <div className="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-50">
               <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
                 <div className="flex items-center mb-4">
@@ -3440,7 +3440,7 @@ const PriceManagement = () => {
                 </div>
               </div>
             </div>
-          )}
+          )} */}
         </div>
       )}
     </div>

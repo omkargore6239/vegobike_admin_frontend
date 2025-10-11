@@ -1694,7 +1694,7 @@ const StoreManagement = () => {
                                 )}
                             </div>
                             {/* City */}
-                            <div className="space-y-2">
+                            {/* <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">
                                     City <span className="text-red-500">*</span>
                                 </label>
@@ -1727,7 +1727,7 @@ const StoreManagement = () => {
                                 {citiesError && !validationErrors.city && (
                                     <p className="text-xs text-red-600 mt-1">{citiesError}</p>
                                 )}
-                            </div>
+                            </div> */}
                             {/* Address */}
                             <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">
