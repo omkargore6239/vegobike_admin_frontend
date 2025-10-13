@@ -400,8 +400,7 @@
 // export { apiClient };
 // export default api;
 
-
-// utils/apiClient.js - COMPLETE API CLIENT BASED ON YOUR CONTROLLER
+// utils/apiClient.js - COMPLETE API CLIENT
 import axios from 'axios';
 
 // Base URL configuration
@@ -513,10 +512,10 @@ apiClient.interceptors.response.use(
       localStorage.removeItem(STORAGE_KEYS.TOKEN);
       localStorage.removeItem(STORAGE_KEYS.USER);
       
-      if (window.location.pathname !== '/login') {
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/admin/login') {
         showNotification('Session expired. Please login again.', NOTIFICATION_TYPES.WARNING);
         setTimeout(() => {
-          window.location.href = '/login';
+          window.location.href = '/admin/login';
         }, 1500);
       }
     }
@@ -690,7 +689,7 @@ export const categoryAPI = {
   search: (name, params = {}) => api.get('/api/categories/search', { params: { name, ...params } }),
 };
 
-// ✅ CITY API - Matches CityController
+// ✅ CITY API
 export const cityAPI = {
   getAll: (params = {}) => apiClient.get('/api/cities', { params }),
   getById: (id) => apiClient.get(`/api/cities/${id}`),
@@ -700,9 +699,7 @@ export const cityAPI = {
     formData.append('cityDto', JSON.stringify(cityData));
     if (image) formData.append('image', image);
     return apiClient.post('/api/cities/add', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+      headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
   update: (id, cityData, image = null) => {
@@ -710,15 +707,13 @@ export const cityAPI = {
     formData.append('cityDto', JSON.stringify(cityData));
     if (image) formData.append('image', image);
     return apiClient.put(`/api/cities/${id}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+      headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
   toggleStatus: (id) => apiClient.patch(`/api/cities/${id}/toggle-status`)
 };
 
-// ✅ Late Charges API helper functions
+// ✅ Late Charges API
 export const lateChargesAPI = {
   getAll: () => api.get('/api/late-charges/all'),
   getById: (id) => api.get(`/api/late-charges/${id}`),
@@ -729,103 +724,313 @@ export const lateChargesAPI = {
   delete: (id) => api.delete(`/api/late-charges/${id}`),
 };
 
-// ✅ Booking API helper functions
+// ✅ BOOKING API - FULLY UPDATED
 export const bookingAPI = {
-  getAll: () => api.get('/api/booking-bikes/allBooking'),
-  getById: (id) => api.get(`/api/booking-bikes/getById/${id}`),
-  accept: (id) => api.post(`/api/booking-bikes/${id}/accept`),
-  cancel: (id) => api.post(`/api/booking-bikes/${id}/cancel`),
-  complete: (id) => api.post(`/api/booking-bikes/${id}/complete`),
-  updateCharges: (id, charges) => api.put(`/api/booking-bikes/${id}`, charges),
-};
-
-// ✅ CORRECTED: User API using YOUR AuthController endpoints
-export const userAPI = {
-  // Get current logged-in user's profile
-  // GET /api/auth/profile
-  getProfile: async () => {
+  // Get all bookings - GET /api/booking-bikes/allBooking
+  getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc') => {
     try {
-      const response = await api.get('/api/auth/profile');
-      // Your response format: { success: true, data: {...}, message: "...", timestamp: "..." }
+      console.log(`📋 [Booking API] Fetching bookings - Page: ${page}, Size: ${size}`);
+      const response = await api.get('/api/booking-bikes/allBooking', {
+        params: { page, size, sortBy, sortDirection }
+      });
+      console.log('✅ [Booking API] Response:', response.data);
+      
       return {
-        data: response.data.data || response.data // Handle both formats
+        data: response.data.bookings || [],
+        pagination: {
+          currentPage: response.data.currentPage,
+          totalItems: response.data.totalItems,
+          totalPages: response.data.totalPages,
+          pageSize: response.data.pageSize,
+          hasNext: response.data.hasNext,
+          hasPrevious: response.data.hasPrevious
+        }
       };
     } catch (error) {
-      console.error('❌ USER_API - Error fetching profile:', error);
+      console.error('❌ [Booking API] Error fetching bookings:', error);
+      throw error;
+    }
+  },
+
+   // Get all bookings without pagination (backward compatibility)
+  getAllNoPagination: async () => {
+    try {
+      console.log('📋 [Booking API] Fetching all bookings without pagination');
+      const response = await api.get('/api/booking-bikes/all');
+      console.log('✅ [Booking API] Response:', response.data);
+      return { data: Array.isArray(response.data) ? response.data : [] };
+    } catch (error) {
+      console.error('❌ [Booking API] Error fetching bookings:', error);
+      throw error;
+    }
+  },
+  // Get booking by ID - GET /api/booking-bikes/getById/{id}
+  getById: async (id) => {
+    try {
+      console.log(`📋 [Booking API] Fetching booking ID: ${id}`);
+      const response = await api.get(`/api/booking-bikes/getById/${id}`);
+      console.log(`✅ [Booking API] Booking ${id}:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error fetching booking ${id}:`, error);
       throw error;
     }
   },
   
-  // Get user by ID (for AllBookings component)
-  // GET /api/auth/profile/{userId}
+  // Accept booking - POST /api/booking-bikes/{bookingId}/accept
+  accept: async (bookingId) => {
+    try {
+      console.log(`📋 [Booking API] Accepting booking: ${bookingId}`);
+      const response = await api.post(`/api/booking-bikes/${bookingId}/accept`);
+      console.log(`✅ [Booking API] Booking accepted:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error accepting booking:`, error);
+      throw error;
+    }
+  },
+  
+  // Cancel booking - POST /api/booking-bikes/{bookingId}/cancel
+  cancel: async (bookingId) => {
+    try {
+      console.log(`📋 [Booking API] Cancelling booking: ${bookingId}`);
+      const response = await api.post(`/api/booking-bikes/${bookingId}/cancel`);
+      console.log(`✅ [Booking API] Booking cancelled:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error cancelling booking:`, error);
+      throw error;
+    }
+  },
+  
+  // Complete booking - POST /api/booking-bikes/{bookingId}/complete
+  complete: async (bookingId) => {
+    try {
+      console.log(`📋 [Booking API] Completing booking: ${bookingId}`);
+      const response = await api.post(`/api/booking-bikes/${bookingId}/complete`);
+      console.log(`✅ [Booking API] Booking completed:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error completing booking:`, error);
+      throw error;
+    }
+  },
+  
+  // Start trip - POST /api/booking-bikes/{bookingId}/start
+  startTrip: async (bookingId, images, startTripKm) => {
+    try {
+      const formData = new FormData();
+      if (images && images.length === 4) {
+        Array.from(images).forEach((image) => {
+          formData.append('images', image);
+        });
+      }
+      formData.append('startTripKm', startTripKm);
+      
+      console.log(`📋 [Booking API] Starting trip: ${bookingId}`);
+      const response = await api.post(`/api/booking-bikes/${bookingId}/start`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      console.log(`✅ [Booking API] Trip started:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error starting trip:`, error);
+      throw error;
+    }
+  },
+  
+  // End trip - POST /api/booking-bikes/{bookingId}/end
+  endTrip: async (bookingId, images, endTripKm) => {
+    try {
+      const formData = new FormData();
+      if (images && images.length === 4) {
+        Array.from(images).forEach((image) => {
+          formData.append('images', image);
+        });
+      }
+      formData.append('endTripKm', endTripKm);
+      
+      console.log(`📋 [Booking API] Ending trip: ${bookingId}`);
+      const response = await api.post(`/api/booking-bikes/${bookingId}/end`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      console.log(`✅ [Booking API] Trip ended:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error ending trip:`, error);
+      throw error;
+    }
+  },
+  
+  // Get bookings by customer - GET /api/booking-bikes/by-customer
+  getByCustomer: async (customerId, page = 0, size = 10, sortBy = 'latest') => {
+    try {
+      console.log(`📋 [Booking API] Fetching customer bookings: ${customerId}`);
+      const response = await api.get('/api/booking-bikes/by-customer', { 
+        params: { customerId, page, size, sortBy } 
+      });
+      console.log(`✅ [Booking API] Customer bookings:`, response.data);
+      return { data: Array.isArray(response.data) ? response.data : [] };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error fetching customer bookings:`, error);
+      throw error;
+    }
+  },
+  
+  // Admin register and book - POST /api/booking-bikes/admin/bookings/register-and-book
+  adminRegisterAndBook: async (data) => {
+    try {
+      console.log('📋 [Booking API] Admin register and book:', data);
+      const response = await api.post('/api/booking-bikes/admin/bookings/register-and-book', data);
+      console.log('✅ [Booking API] Admin booking created:', response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error('❌ [Booking API] Error in admin booking:', error);
+      throw error;
+    }
+  },
+  
+  // Confirm Razorpay payment - POST /api/booking-bikes/payment/razorpay/confirm
+  confirmRazorpayPayment: async (orderId, paymentId, signature) => {
+    try {
+      console.log('📋 [Booking API] Confirming payment:', { orderId, paymentId });
+      const response = await api.post('/api/booking-bikes/payment/razorpay/confirm', null, {
+        params: { orderId, paymentId, signature }
+      });
+      console.log('✅ [Booking API] Payment confirmed:', response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error('❌ [Booking API] Error confirming payment:', error);
+      throw error;
+    }
+  },
+  
+  // Update charges (if you have this endpoint)
+  updateCharges: (id, charges) => api.put(`/api/booking-bikes/${id}`, charges),
+};
+
+// ✅ User API
+export const userAPI = {
+  getProfile: async () => {
+    try {
+      const response = await api.get('/api/auth/profile');
+      return { data: response.data.data || response.data };
+    } catch (error) {
+      console.error('❌ [User API] Error fetching profile:', error);
+      throw error;
+    }
+  },
+  
   getById: async (userId) => {
     try {
-      console.log(`📋 USER_API - Fetching user profile for ID: ${userId}`);
+      console.log(`📋 [User API] Fetching user: ${userId}`);
       const response = await api.get(`/api/auth/profile/${userId}`);
-      
-      // Your response format: { success: true, data: {...}, message: "...", timestamp: "..." }
-      console.log(`✅ USER_API - User profile fetched for ID: ${userId}`);
-      
-      return {
-        data: response.data.data || response.data
-      };
+      console.log(`✅ [User API] User fetched:`, response.data);
+      return { data: response.data.data || response.data };
     } catch (error) {
-      console.error(`❌ USER_API - Error fetching user ${userId}:`, error);
-      
-      // Return minimal data if user not found
+      console.error(`❌ [User API] Error fetching user ${userId}:`, error);
       if (error.response?.status === 404) {
         return {
           data: {
             id: userId,
             name: 'N/A',
             phoneNumber: 'N/A',
-            email: 'N/A',
-            adhaarFrontStatus: 'PENDING',
-            adhaarBackStatus: 'PENDING',
-            drivingLicenseStatus: 'PENDING',
-            adhaarFrontUrl: null,
-            adhaarBackUrl: null,
-            drivingLicenseUrl: null,
+            email: 'N/A'
           }
         };
       }
-      
       throw error;
     }
   },
   
-  // Update current user's profile
-  // PUT /api/auth/profile
   updateProfile: async (data) => {
     try {
       const response = await api.put('/api/auth/profile', data);
-      return {
-        data: response.data.data || response.data
-      };
+      return { data: response.data.data || response.data };
     } catch (error) {
-      console.error('❌ USER_API - Error updating profile:', error);
+      console.error('❌ [User API] Error updating profile:', error);
       throw error;
     }
   },
   
-  // Get all users (if you have this endpoint)
   getAll: (params = {}) => api.get('/api/users/all', { params }),
 };
 
-// ✅ Document API helper functions
+// ✅ DOCUMENT API - FULLY UPDATED
+// utils/apiClient.js - UPDATED Document API
 export const documentAPI = {
   // Get documents by user ID
-  getByUserId: (userId) => api.get(`/api/documents/${userId}`),
+  getByUserId: async (userId) => {
+    try {
+      console.log(`📄 [Document API] Fetching documents for user: ${userId}`);
+      const response = await api.get(`/api/documents/${userId}`);
+      console.log(`✅ [Document API] Documents fetched:`, response.data);
+      return { data: response.data.data || response.data };
+    } catch (error) {
+      console.error(`❌ [Document API] Error fetching documents:`, error);
+      throw error;
+    }
+  },
   
-  // Upload documents
-  upload: (formData) => api.post('/api/documents/upload-files', formData),
+  // Upload documents - POST /api/documents/upload-files
+  upload: async (userId, adhaarFrontFile, adhaarBackFile, licenseFile) => {
+    try {
+      const formData = new FormData();
+      formData.append('userId', userId);
+      if (adhaarFrontFile) formData.append('adhaarFront', adhaarFrontFile);
+      if (adhaarBackFile) formData.append('adhaarBack', adhaarBackFile);
+      if (licenseFile) formData.append('drivingLicense', licenseFile);
+      
+      console.log(`📄 [Document API] Uploading documents for user: ${userId}`);
+      const response = await api.post('/api/documents/upload-files', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      console.log(`✅ [Document API] Documents uploaded:`, response.data);
+      return { data: response.data.data || response.data };
+    } catch (error) {
+      console.error(`❌ [Document API] Error uploading documents:`, error);
+      throw error;
+    }
+  },
   
-  // Verify document
-  verify: (userId, documentType, status) => 
-    api.put('/api/documents/verify', null, { 
-      params: { userId, documentType, status } 
-    }),
+  // ✅ FIXED: Changed from PUT to PATCH
+  // Update verification status - PATCH /api/documents/verify/{userId}
+  updateVerification: async (userId, adhaarFrontStatus, adhaarBackStatus, licenseStatus) => {
+    try {
+      const params = new URLSearchParams();
+      if (adhaarFrontStatus !== null && adhaarFrontStatus !== undefined) {
+        params.append('adhaarFrontStatus', adhaarFrontStatus);
+      }
+      if (adhaarBackStatus !== null && adhaarBackStatus !== undefined) {
+        params.append('adhaarBackStatus', adhaarBackStatus);
+      }
+      if (licenseStatus !== null && licenseStatus !== undefined) {
+        params.append('licenseStatus', licenseStatus);
+      }
+      
+      console.log(`📄 [Document API] Updating verification for user: ${userId}`, { 
+        adhaarFrontStatus, 
+        adhaarBackStatus, 
+        licenseStatus 
+      });
+      
+      // ✅ Changed from api.put to api.patch
+      const response = await api.patch(`/api/documents/verify/${userId}?${params.toString()}`);
+      
+      console.log(`✅ [Document API] Verification updated:`, response.data);
+      return { data: response.data.data || response.data };
+    } catch (error) {
+      console.error(`❌ [Document API] Error updating verification:`, error);
+      console.error(`❌ Error details:`, {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
+  },
 };
+
 
 // Export apiClient as default and named export
 export { apiClient };
