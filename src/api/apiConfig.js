@@ -1021,13 +1021,35 @@ export const authAPI = {
   deleteUser: (id) => apiClient.delete(`/api/auth/users/${id}`),
 };
 // ✅ DOCUMENT API
+// ✅ DOCUMENT API - FIXED TO MATCH BACKEND EXACTLY
 export const documentAPI = {
-  verify: (userId, fieldName, status) =>
-    apiClient.patch(`/api/documents/verify/${userId}`, null, {
-      params: { [fieldName]: status }
-    }),
-  getUserDocuments: (userId) => apiClient.get(`/api/documents/user/${userId}`),
+  // Get user documents
+  getUserDocuments: (userId) => apiClient.get(`/api/documents/${userId}`),
+  
+  // Upload documents with files
+  uploadFiles: (userId, adhaarFront, adhaarBack, drivingLicense) => {
+    const formData = new FormData();
+    formData.append('userId', userId);
+    if (adhaarFront) formData.append('adhaarFront', adhaarFront);
+    if (adhaarBack) formData.append('adhaarBack', adhaarBack);
+    if (drivingLicense) formData.append('drivingLicense', drivingLicense);
+    
+    return apiClient.post('/api/documents/upload-files', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+  
+  // Verify documents - FIXED: Use VerificationStatus enum values
+  verify: (userId, statusUpdates) => {
+    // statusUpdates format: { adhaarFrontStatus: 'APPROVED', adhaarBackStatus: 'REJECTED', etc. }
+    return apiClient.patch(`/api/documents/verify/${userId}`, null, {
+      params: statusUpdates
+    });
+  },
 };
+
 // ✅ BOOKING API
 export const bookingAPI = {
   getAll: (params = {}) => apiClient.get('/api/booking-bikes/allBooking', { params }),

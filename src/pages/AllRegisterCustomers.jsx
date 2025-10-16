@@ -1,4 +1,4 @@
-// AllRegisterCustomers.jsx - PROFESSIONAL MODERN UI/UX
+// AllRegisterCustomers.jsx - FULLY DEBUGGED & WORKING
 
 import React, { useEffect, useState } from "react";
 import { 
@@ -7,6 +7,7 @@ import {
   FaEnvelope, FaMapMarkerAlt, FaCreditCard, FaUniversity,
   FaCalendarAlt, FaShieldAlt, FaArrowLeft, FaIdCard
 } from "react-icons/fa";
+import { documentAPI } from "../api/apiConfig";
 import apiClient, { BASE_URL } from "../api/apiConfig";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -115,10 +116,13 @@ const AllRegisterCustomers = () => {
         params: { page, size }
       });
       
-      console.log("✅ Users response:", response.data);
+      console.log("✅ Users API Response:", response.data);
+      console.log("✅ Users Count:", response.data?.users?.length);
       
-      if (response.data && response.data.users) {
+      if (response.data && response.data.users && Array.isArray(response.data.users)) {
         const users = response.data.users;
+        
+        console.log("✅ Processing", users.length, "users");
         
         const processedUsers = users.map(user => ({
           id: user.id,
@@ -141,10 +145,12 @@ const AllRegisterCustomers = () => {
           aadharFrontSide: user.aadharFrontSide || null,
           aadharBackSide: user.aadharBackSide || null,
           drivingLicense: user.drivingLicense || null,
-          aadharFrontStatus: user.aadharFrontStatus || 'PENDING',
-          aadharBackStatus: user.aadharBackStatus || 'PENDING',
-          drivingLicenseStatus: user.drivingLicenseStatus || 'PENDING'
+          adhaarFrontStatus: user.adhaarFrontStatus || 'PENDING',
+          adhaarBackStatus: user.adhaarBackStatus || 'PENDING',
+          licenseStatus: user.licenseStatus || 'PENDING'
         }));
+        
+        console.log("✅ Processed Users:", processedUsers);
         
         setData(processedUsers);
         setFilteredData(processedUsers);
@@ -158,11 +164,13 @@ const AllRegisterCustomers = () => {
           setTimeout(() => setSuccess(""), 3000);
         }
       } else {
-        setError("No users found");
+        console.error("❌ Invalid response structure:", response.data);
+        setError("No users found or invalid response");
         setData([]);
         setFilteredData([]);
       }
     } catch (error) {
+      console.error("❌ Error fetching users:", error);
       showErrorNotification(error, "Failed to fetch users");
       setData([]);
       setFilteredData([]);
@@ -178,18 +186,31 @@ const AllRegisterCustomers = () => {
   };
 
   useEffect(() => {
+    console.log("🚀 Component mounted - fetching users...");
     fetchUsers(currentPage, itemsPerPage);
     window.scrollTo(0, 0);
   }, []);
 
+  // Debug logs
+  useEffect(() => {
+    console.log("📊 State Update:", {
+      viewMode,
+      dataLength: data.length,
+      filteredDataLength: filteredData.length,
+      loading,
+      error,
+      totalElements
+    });
+  }, [viewMode, data, filteredData, loading, error, totalElements]);
+
   const getUserVerificationStatus = (user) => {
     const statuses = [
-      user.aadharFrontStatus || 'PENDING',
-      user.aadharBackStatus || 'PENDING', 
-      user.drivingLicenseStatus || 'PENDING'
+      user.adhaarFrontStatus || 'PENDING',
+      user.adhaarBackStatus || 'PENDING', 
+      user.licenseStatus || 'PENDING'
     ];
     
-    if (statuses.every(status => status === 'APPROVED')) {
+    if (statuses.every(status => status === 'VERIFIED')) {
       return { status: "Verified", color: "green", icon: <FaCheckCircle />, gradient: "from-green-500 to-emerald-600" };
     } else if (statuses.some(status => status === 'REJECTED')) {
       return { status: "Rejected", color: "red", icon: <FaTimesCircle />, gradient: "from-red-500 to-rose-600" };
@@ -203,13 +224,14 @@ const AllRegisterCustomers = () => {
     setSelectedUser(user);
     setViewMode(true);
     setDocumentStatus({
-      aadharFrontSide: user.aadharFrontStatus || 'PENDING',
-      aadharBackSide: user.aadharBackStatus || 'PENDING',
-      drivingLicense: user.drivingLicenseStatus || 'PENDING',
+      aadharFrontSide: user.adhaarFrontStatus || 'PENDING',
+      aadharBackSide: user.adhaarBackStatus || 'PENDING',
+      drivingLicense: user.licenseStatus || 'PENDING',
     });
   };
 
   const handleBack = () => {
+    console.log('⬅️ Back to list');
     setViewMode(false);
     setSelectedUser(null);
   };
@@ -251,19 +273,11 @@ const AllRegisterCustomers = () => {
         throw new Error(`Invalid document type: ${docType}`);
       }
       
-      console.log(`📤 API Call: PATCH /api/documents/verify/${selectedUser.id}?${backendFieldName}=${action}`);
+      const statusUpdates = {
+        [backendFieldName]: action
+      };
       
-      const response = await apiClient.patch(
-        `/api/documents/verify/${selectedUser.id}`,
-        null,
-        {
-          params: {
-            [backendFieldName]: action
-          }
-        }
-      );
-
-      console.log('✅ Document update response:', response.data);
+      const response = await documentAPI.verify(selectedUser.id, statusUpdates);
 
       if (response.status === 200) {
         setDocumentStatus((prevStatus) => ({
@@ -273,17 +287,25 @@ const AllRegisterCustomers = () => {
         
         toast.success(
           <div>
-            <div className="font-medium">Document Verified</div>
-            <div className="text-sm opacity-90">{docType} {action.toLowerCase()} successfully</div>
+            <div className="font-medium">Document {action === 'VERIFIED' ? 'Verified' : 'Rejected'}</div>
+            <div className="text-sm opacity-90">{docType} updated successfully</div>
           </div>
         );
+        
+        const stateFieldMapping = {
+          'aadharFrontSide': 'adhaarFrontStatus',
+          'aadharBackSide': 'adhaarBackStatus',
+          'drivingLicense': 'licenseStatus'
+        };
+        
+        const stateField = stateFieldMapping[docType];
         
         setData((prevData) =>
           prevData.map((user) =>
             user.id === selectedUser.id
               ? {
                   ...user,
-                  [`${docType}Status`]: action,
+                  [stateField]: action,
                 }
               : user
           )
@@ -291,7 +313,7 @@ const AllRegisterCustomers = () => {
         
         setSelectedUser(prev => ({
           ...prev,
-          [`${docType}Status`]: action
+          [stateField]: action
         }));
         
         setTimeout(() => {
@@ -380,14 +402,15 @@ const AllRegisterCustomers = () => {
     }
   };
 
+  console.log("🎨 Rendering component - viewMode:", viewMode, "filteredData length:", filteredData.length);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 py-8 px-4">
       <ToastContainer position="top-right" />
       
-      {viewMode ? (
-        /* ✅ USER DETAIL VIEW - PROFESSIONAL CARD DESIGN */
+      {viewMode && selectedUser ? (
+        /* USER DETAIL VIEW */
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl shadow-2xl p-8 mb-8 text-white">
             <div className="flex items-center justify-between">
               <button
@@ -412,7 +435,6 @@ const AllRegisterCustomers = () => {
             </div>
           </div>
 
-          {/* Profile Card */}
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-8">
             <div className="bg-gradient-to-r from-indigo-500 to-blue-500 h-32"></div>
             <div className="px-8 pb-8">
@@ -466,7 +488,6 @@ const AllRegisterCustomers = () => {
                 </div>
               </div>
 
-              {/* Contact & Personal Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                 <InfoCard 
                   icon={<FaPhone size={18} />}
@@ -520,7 +541,6 @@ const AllRegisterCustomers = () => {
             </div>
           </div>
 
-          {/* Document Verification Section */}
           <div className="bg-white rounded-2xl shadow-xl p-8">
             <div className="flex items-center space-x-3 mb-6">
               <div className="bg-indigo-100 p-3 rounded-xl">
@@ -538,7 +558,7 @@ const AllRegisterCustomers = () => {
                 imageData={selectedUser.aadharFrontSide}
                 status={documentStatus.aadharFrontSide}
                 updating={documentUpdating.aadharFrontSide}
-                onVerify={() => handleDocumentAction('aadharFrontSide', 'APPROVED')}
+                onVerify={() => handleDocumentAction('aadharFrontSide', 'VERIFIED')}
                 onReject={() => handleDocumentAction('aadharFrontSide', 'REJECTED')}
                 onImageClick={handleImageClick}
               />
@@ -547,7 +567,7 @@ const AllRegisterCustomers = () => {
                 imageData={selectedUser.aadharBackSide}
                 status={documentStatus.aadharBackSide}
                 updating={documentUpdating.aadharBackSide}
-                onVerify={() => handleDocumentAction('aadharBackSide', 'APPROVED')}
+                onVerify={() => handleDocumentAction('aadharBackSide', 'VERIFIED')}
                 onReject={() => handleDocumentAction('aadharBackSide', 'REJECTED')}
                 onImageClick={handleImageClick}
               />
@@ -556,7 +576,7 @@ const AllRegisterCustomers = () => {
                 imageData={selectedUser.drivingLicense}
                 status={documentStatus.drivingLicense}
                 updating={documentUpdating.drivingLicense}
-                onVerify={() => handleDocumentAction('drivingLicense', 'APPROVED')}
+                onVerify={() => handleDocumentAction('drivingLicense', 'VERIFIED')}
                 onReject={() => handleDocumentAction('drivingLicense', 'REJECTED')}
                 onImageClick={handleImageClick}
               />
@@ -564,244 +584,280 @@ const AllRegisterCustomers = () => {
           </div>
         </div>
       ) : (
-        /* ✅ USER LIST VIEW */
+        /* USER LIST VIEW */
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+          <div className="bg-white rounded-2xl shadow-xl p-8 mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 space-y-4 md:space-y-0">
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-                  Customer Management
+                  All Registered Customers
                 </h1>
-                <p className="text-gray-500 mt-1">Manage and verify customer registrations</p>
+                <p className="text-gray-500 mt-1">Manage and verify customer documents</p>
               </div>
               
               <div className="flex items-center space-x-4">
-                <div className="bg-gradient-to-r from-indigo-500 to-blue-500 text-white px-6 py-3 rounded-xl shadow-lg">
-                  <div className="text-2xl font-bold">{totalElements}</div>
-                  <div className="text-xs opacity-90">Total Customers</div>
+                <div className="relative">
+                  <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search customers..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
                 </div>
+                
+                <button
+                  onClick={handleRetry}
+                  className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all"
+                >
+                  <FaRedo className={loading ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Search Bar */}
-          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-            <div className="relative">
-              <FaSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name, email, or phone number..."
-                className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Success/Error Messages */}
-          {success && (
-            <div className="mb-6 bg-green-50 border-l-4 border-green-500 rounded-r-xl p-4 shadow-sm animate-fade-in">
-              <div className="flex items-center">
-                <FaCheck className="text-green-500 mr-3 flex-shrink-0" />
-                <p className="text-green-700 font-medium">{success}</p>
-              </div>
-            </div>
-          )}
-          
-          {error && (
-            <div className="mb-6 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-4 shadow-sm animate-fade-in">
-              <div className="flex items-start">
-                <FaExclamationTriangle className="text-red-500 mr-3 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-red-700 font-medium">{error}</p>
-                  {error.includes("connect to server") && (
-                    <button
-                      onClick={handleRetry}
-                      className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-                    >
-                      <FaRedo className="mr-1" />
-                      Retry Connection
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Users Table */}
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Customer</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Contact</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Status</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Verification</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Joined</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {loading ? (
-                    <tr>
-                      <td colSpan="6" className="text-center py-16">
-                        <div className="flex flex-col items-center">
-                          <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                          <p className="text-gray-500 font-medium">Loading customers...</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : filteredData.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" className="text-center py-16">
-                        <div className="flex flex-col items-center">
-                          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                            <FaUser className="text-gray-400 text-3xl" />
-                          </div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-2">No customers found</h3>
-                          <p className="text-gray-500">
-                            {searchQuery ? `No results for "${searchQuery}"` : "No registered customers yet"}
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredData.map((user, index) => {
-                      const verificationStatus = getUserVerificationStatus(user);
-                      return (
-                        <tr
-                          key={user.id}
-                          className="hover:bg-indigo-50 transition-colors"
-                        >
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-3">
-                              {user.profileImage ? (
-                                <>
-                                  <img
-                                    src={user.profileImage}
-                                    alt={user.name}
-                                    className="w-12 h-12 rounded-xl object-cover ring-2 ring-gray-200"
-                                    onError={(e) => handleImageError(e, user.name)}
-                                    onLoad={(e) => handleImageLoad(e)}
-                                    style={{ display: 'block' }}
-                                  />
-                                  <div 
-                                    className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-100 to-blue-100 ring-2 ring-gray-200 flex items-center justify-center absolute"
-                                    style={{ display: 'none' }}
-                                  >
-                                    <FaUser className="text-indigo-400" />
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-100 to-blue-100 ring-2 ring-gray-200 flex items-center justify-center">
-                                  <FaUser className="text-indigo-400" />
-                                </div>
-                              )}
-                              <div>
-                                <p className="font-semibold text-gray-900">{user.name}</p>
-                                <p className="text-xs text-gray-500">ID: {user.id}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="space-y-1">
-                              <p className="text-sm text-gray-900 flex items-center">
-                                <FaPhone className="text-green-500 mr-2 text-xs" />
-                                {user.phoneNumber}
-                              </p>
-                              {user.email && (
-                                <p className="text-xs text-gray-500 flex items-center">
-                                  <FaEnvelope className="text-purple-500 mr-2 text-xs" />
-                                  {user.email}
-                                </p>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                              user.isActive === 1 
-                                ? 'bg-green-100 text-green-700' 
-                                : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-                                user.isActive === 1 ? 'bg-green-500' : 'bg-gray-500'
-                              }`}></span>
-                              {user.isActive === 1 ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-gradient-to-r ${verificationStatus.gradient} text-white shadow-sm`}>
-                              {verificationStatus.icon}
-                              <span className="ml-1.5">{verificationStatus.status}</span>
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="text-sm text-gray-600">{formatDate(user.createdAt)}</p>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => handleView(user)}
-                              className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all shadow-sm hover:shadow-md"
-                            >
-                              <FaEye className="mr-2" />
-                              View Details
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {!loading && !searchQuery && data.length > 0 && totalPages > 1 && (
-              <div className="border-t border-gray-100 px-6 py-4 bg-gray-50">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
-                    Showing <span className="font-semibold text-gray-900">{currentPage * itemsPerPage + 1}</span> to{" "}
-                    <span className="font-semibold text-gray-900">
-                      {Math.min((currentPage + 1) * itemsPerPage, totalElements)}
-                    </span>{" "}
-                    of <span className="font-semibold text-gray-900">{totalElements}</span> customers
+                  <div>
+                    <p className="text-xs font-medium text-blue-600 uppercase">Total Customers</p>
+                    <p className="text-2xl font-bold text-blue-900 mt-1">{totalElements}</p>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 0}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Previous
-                    </button>
-                    
-                    {getPageNumbers().map((pageNumber) => (
-                      <button
-                        key={pageNumber}
-                        onClick={() => handlePageChange(pageNumber)}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                          currentPage === pageNumber
-                            ? "bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md"
-                            : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
-                        }`}
-                      >
-                        {pageNumber + 1}
-                      </button>
-                    ))}
-                    
-                    <button
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage >= totalPages - 1}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Next
-                    </button>
-                  </div>
+                  <FaUser className="text-3xl text-blue-400" />
                 </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-green-600 uppercase">Verified</p>
+                    <p className="text-2xl font-bold text-green-900 mt-1">
+                      {data.filter(u => getUserVerificationStatus(u).status === 'Verified').length}
+                    </p>
+                  </div>
+                  <FaCheckCircle className="text-3xl text-green-400" />
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-yellow-600 uppercase">Pending</p>
+                    <p className="text-2xl font-bold text-yellow-900 mt-1">
+                      {data.filter(u => getUserVerificationStatus(u).status === 'Pending').length}
+                    </p>
+                  </div>
+                  <FaExclamationTriangle className="text-3xl text-yellow-400" />
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-4 border border-red-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-red-600 uppercase">Rejected</p>
+                    <p className="text-2xl font-bold text-red-900 mt-1">
+                      {data.filter(u => getUserVerificationStatus(u).status === 'Rejected').length}
+                    </p>
+                  </div>
+                  <FaTimesCircle className="text-3xl text-red-400" />
+                </div>
+              </div>
+            </div>
+
+            {/* Alerts */}
+            {error && (
+              <div className="mb-6 bg-red-50 border-l-4 border-red-500 rounded-xl p-4 flex items-start space-x-3">
+                <FaExclamationTriangle className="text-red-500 text-xl flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-800">{error}</p>
+                  {retryCount > 0 && (
+                    <p className="text-xs text-red-600 mt-1">Retry attempt {retryCount}/3</p>
+                  )}
+                </div>
+                <button onClick={() => setError("")} className="text-red-400 hover:text-red-600">
+                  <FaTimes />
+                </button>
               </div>
             )}
+
+            {success && (
+              <div className="mb-6 bg-green-50 border-l-4 border-green-500 rounded-xl p-4 flex items-start space-x-3">
+                <FaCheckCircle className="text-green-500 text-xl flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-green-800">{success}</p>
+                </div>
+                <button onClick={() => setSuccess("")} className="text-green-400 hover:text-green-600">
+                  <FaTimes />
+                </button>
+              </div>
+            )}
+
+            {/* CUSTOMER TABLE */}
+            <div className="overflow-x-auto bg-white rounded-lg shadow">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+                  <p className="text-gray-600 font-medium">Loading customers...</p>
+                </div>
+              ) : filteredData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <FaUser className="text-6xl text-gray-300 mb-4" />
+                  <p className="text-gray-600 font-medium text-lg mb-2">No customers found</p>
+                  <p className="text-gray-500 text-sm">
+                    {searchQuery ? `No results for "${searchQuery}"` : "No registered customers yet"}
+                  </p>
+                  <button
+                    onClick={() => fetchUsers(0, itemsPerPage)}
+                    className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                  >
+                    <FaRedo className="inline mr-2" />
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-indigo-50 to-blue-50 border-y border-indigo-100">
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-indigo-900 uppercase tracking-wider">Customer</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-indigo-900 uppercase tracking-wider">Contact</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-indigo-900 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-indigo-900 uppercase tracking-wider">Verification</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-indigo-900 uppercase tracking-wider">Joined</th>
+                        <th className="px-6 py-4 text-center text-xs font-semibold text-indigo-900 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredData.map((user) => {
+                        const verificationStatus = getUserVerificationStatus(user);
+                        return (
+                          <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center space-x-3">
+                                {user.profileImage ? (
+                                  <>
+                                    <img
+                                      src={user.profileImage}
+                                      alt={user.name}
+                                      className="w-10 h-10 rounded-full object-cover"
+                                      onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling.style.display = 'flex';
+                                      }}
+                                      style={{ display: 'block' }}
+                                    />
+                                    <div 
+                                      className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-blue-100 flex items-center justify-center"
+                                      style={{ display: 'none' }}
+                                    >
+                                      <FaUser className="text-indigo-400" />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-blue-100 flex items-center justify-center">
+                                    <FaUser className="text-indigo-400" />
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="font-semibold text-gray-900">{user.name}</p>
+                                  <p className="text-xs text-gray-500">ID: {user.id}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="space-y-1">
+                                <p className="text-sm text-gray-900 flex items-center">
+                                  <FaPhone className="mr-2 text-green-500 text-xs" />
+                                  {user.phoneNumber || 'N/A'}
+                                </p>
+                                <p className="text-xs text-gray-500 flex items-center">
+                                  <FaEnvelope className="mr-2 text-blue-500 text-xs" />
+                                  {user.email || 'N/A'}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                user.isActive === 1 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}>
+                                {user.isActive === 1 ? '● Active' : '● Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className={`flex items-center space-x-2 px-3 py-1 rounded-full bg-gradient-to-r ${verificationStatus.gradient} text-white w-fit`}>
+                                {verificationStatus.icon}
+                                <span className="text-xs font-semibold">{verificationStatus.status}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="text-sm text-gray-900">{formatDate(user.createdAt)}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button
+                                onClick={() => handleView(user)}
+                                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all flex items-center space-x-2 mx-auto shadow-md hover:shadow-lg"
+                              >
+                                <FaEye />
+                                <span className="text-sm font-medium">View Details</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* PAGINATION */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+                      <p className="text-sm text-gray-600">
+                        Showing <span className="font-semibold">{(currentPage * itemsPerPage) + 1}</span> to{' '}
+                        <span className="font-semibold">
+                          {Math.min((currentPage + 1) * itemsPerPage, totalElements)}
+                        </span>{' '}
+                        of <span className="font-semibold">{totalElements}</span> customers
+                      </p>
+
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 0}
+                          className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium text-gray-700"
+                        >
+                          Previous
+                        </button>
+
+                        {getPageNumbers().map((pageNum) => (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-4 py-2 rounded-lg font-medium transition-all text-sm ${
+                              currentPage === pageNum
+                                ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md'
+                                : 'border border-gray-300 hover:bg-gray-50 text-gray-700'
+                            }`}
+                          >
+                            {pageNum + 1}
+                          </button>
+                        ))}
+
+                        <button
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage >= totalPages - 1}
+                          className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium text-gray-700"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -853,7 +909,7 @@ const AllRegisterCustomers = () => {
   );
 };
 
-// ✅ Professional Document Card Component
+// Document Card Component
 const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, onImageClick }) => {
   const getImageSource = () => {
     if (!imageData) return null;
@@ -875,7 +931,7 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
   };
 
   const statusConfig = {
-    'APPROVED': { bg: 'bg-green-100', text: 'text-green-700', badge: 'bg-green-500' },
+    'VERIFIED': { bg: 'bg-green-100', text: 'text-green-700', badge: 'bg-green-500' },
     'REJECTED': { bg: 'bg-red-100', text: 'text-red-700', badge: 'bg-red-500' },
     'PENDING': { bg: 'bg-yellow-100', text: 'text-yellow-700', badge: 'bg-yellow-500' }
   };
@@ -921,9 +977,9 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
         <div className="mt-4 flex gap-2">
           <button
             onClick={onVerify}
-            disabled={status === 'APPROVED' || updating}
+            disabled={status === 'VERIFIED' || updating}
             className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all flex items-center justify-center ${
-              status === 'APPROVED' || updating
+              status === 'VERIFIED' || updating
                 ? 'bg-green-200 text-green-600 cursor-not-allowed'
                 : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-md hover:shadow-lg'
             }`}
@@ -938,7 +994,7 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
             ) : (
               <>
                 <FaCheck className="mr-2" />
-                Approve
+                Verify
               </>
             )}
           </button>
