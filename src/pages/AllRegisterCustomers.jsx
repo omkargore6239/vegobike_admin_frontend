@@ -1,4 +1,4 @@
-// AllRegisterCustomers.jsx - FULLY DEBUGGED & WORKING
+// AllRegisterCustomers.jsx - COMPLETE WITH SERVER-SIDE SEARCH
 
 import React, { useEffect, useState } from "react";
 import { 
@@ -18,6 +18,7 @@ const AllRegisterCustomers = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [retryCount, setRetryCount] = useState(0);
@@ -93,36 +94,35 @@ const AllRegisterCustomers = () => {
   }, [success, error]);
 
   useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredData(data);
-    } else {
-      const filtered = data.filter((user) =>
-        user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.phoneNumber?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredData(filtered);
-    }
-  }, [searchQuery, data]);
+    const delaySearch = setTimeout(() => {
+      if (searchQuery.trim() === "") {
+        fetchUsers(currentPage, itemsPerPage);
+      } else {
+        handleSearch(searchQuery);
+      }
+    }, 500);
 
-  const fetchUsers = async (page = 0, size = 10, retryAttempt = 0) => {
-    setLoading(true);
+    return () => clearTimeout(delaySearch);
+  }, [searchQuery]);
+
+  const handleSearch = async (query) => {
+    if (!query || query.trim() === "") {
+      fetchUsers(currentPage, itemsPerPage);
+      return;
+    }
+
+    setIsSearching(true);
     setError("");
-    
+
     try {
-      console.log(`🔄 Fetching users: page=${page}, size=${size}`);
+      console.log(`🔍 Searching users with query: "${query}"`);
       
-      const response = await apiClient.get("/api/auth/users", {
-        params: { page, size }
+      const response = await apiClient.get("/api/auth/search", {
+        params: { searchText: query.trim() }
       });
       
-      console.log("✅ Users API Response:", response.data);
-      console.log("✅ Users Count:", response.data?.users?.length);
-      
-      if (response.data && response.data.users && Array.isArray(response.data.users)) {
-        const users = response.data.users;
-        
-        console.log("✅ Processing", users.length, "users");
+      if (response.data && Array.isArray(response.data)) {
+        const users = response.data;
         
         const processedUsers = users.map(user => ({
           id: user.id,
@@ -150,7 +150,69 @@ const AllRegisterCustomers = () => {
           licenseStatus: user.licenseStatus || 'PENDING'
         }));
         
-        console.log("✅ Processed Users:", processedUsers);
+        setData(processedUsers);
+        setFilteredData(processedUsers);
+        setTotalElements(processedUsers.length);
+        setTotalPages(1);
+        setCurrentPage(0);
+        
+        if (processedUsers.length > 0) {
+          toast.success(`🔍 Found ${processedUsers.length} customer(s)`, { autoClose: 2000 });
+        } else {
+          toast.info(`ℹ️ No customers found`, { autoClose: 2000 });
+        }
+      }
+    } catch (error) {
+      console.error("❌ Error searching users:", error);
+      showErrorNotification(error, "Search failed");
+      setData([]);
+      setFilteredData([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const fetchUsers = async (page = 0, size = 10, retryAttempt = 0) => {
+    setLoading(true);
+    setError("");
+    
+    try {
+      console.log(`🔄 Fetching users: page=${page}, size=${size}`);
+      
+      const response = await apiClient.get("/api/auth/users", {
+        params: { page, size }
+      });
+      
+      console.log("✅ Users API Response:", response.data);
+      
+      if (response.data && response.data.users && Array.isArray(response.data.users)) {
+        const users = response.data.users;
+        
+        const processedUsers = users.map(user => ({
+          id: user.id,
+          name: user.name || 'N/A',
+          email: user.email || user.username || '',
+          phoneNumber: user.phoneNumber || '',
+          alternateNumber: user.alternateNumber || '',
+          address: user.address || '',
+          isActive: user.isActive,
+          isDocumentVerified: user.isDocumentVerified || 0,
+          roleId: user.roleId,
+          storeId: user.storeId,
+          accountNumber: user.accountNumber || '',
+          ifsc: user.ifsc || '',
+          upiId: user.upiId || '',
+          firebaseToken: user.firebaseToken || '',
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          profileImage: user.profileImage ? getImageUrl(user.profileImage, 'profile') : null,
+          aadharFrontSide: user.aadharFrontSide || null,
+          aadharBackSide: user.aadharBackSide || null,
+          drivingLicense: user.drivingLicense || null,
+          adhaarFrontStatus: user.adhaarFrontStatus || 'PENDING',
+          adhaarBackStatus: user.adhaarBackStatus || 'PENDING',
+          licenseStatus: user.licenseStatus || 'PENDING'
+        }));
         
         setData(processedUsers);
         setFilteredData(processedUsers);
@@ -176,7 +238,6 @@ const AllRegisterCustomers = () => {
       setFilteredData([]);
       
       if (retryAttempt < 2) {
-        console.log(`🔄 Retrying users fetch (attempt ${retryAttempt + 1}/3)...`);
         setRetryCount(retryAttempt + 1);
         setTimeout(() => fetchUsers(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
       }
@@ -186,22 +247,9 @@ const AllRegisterCustomers = () => {
   };
 
   useEffect(() => {
-    console.log("🚀 Component mounted - fetching users...");
     fetchUsers(currentPage, itemsPerPage);
     window.scrollTo(0, 0);
   }, []);
-
-  // Debug logs
-  useEffect(() => {
-    console.log("📊 State Update:", {
-      viewMode,
-      dataLength: data.length,
-      filteredDataLength: filteredData.length,
-      loading,
-      error,
-      totalElements
-    });
-  }, [viewMode, data, filteredData, loading, error, totalElements]);
 
   const getUserVerificationStatus = (user) => {
     const statuses = [
@@ -220,7 +268,6 @@ const AllRegisterCustomers = () => {
   };
 
   const handleView = (user) => {
-    console.log('👁️ Viewing user:', user);
     setSelectedUser(user);
     setViewMode(true);
     setDocumentStatus({
@@ -231,7 +278,6 @@ const AllRegisterCustomers = () => {
   };
 
   const handleBack = () => {
-    console.log('⬅️ Back to list');
     setViewMode(false);
     setSelectedUser(null);
   };
@@ -259,8 +305,6 @@ const AllRegisterCustomers = () => {
     setDocumentUpdating(prev => ({ ...prev, [docType]: true }));
 
     try {
-      console.log(`🔄 Updating document ${docType} to ${action} for user ${selectedUser.id}`);
-      
       const fieldMapping = {
         'aadharFrontSide': 'adhaarFrontStatus',
         'aadharBackSide': 'adhaarBackStatus',
@@ -303,10 +347,7 @@ const AllRegisterCustomers = () => {
         setData((prevData) =>
           prevData.map((user) =>
             user.id === selectedUser.id
-              ? {
-                  ...user,
-                  [stateField]: action,
-                }
+              ? { ...user, [stateField]: action }
               : user
           )
         );
@@ -317,7 +358,11 @@ const AllRegisterCustomers = () => {
         }));
         
         setTimeout(() => {
-          fetchUsers(currentPage, itemsPerPage);
+          if (searchQuery.trim()) {
+            handleSearch(searchQuery);
+          } else {
+            fetchUsers(currentPage, itemsPerPage);
+          }
         }, 1000);
         
       } else {
@@ -325,8 +370,7 @@ const AllRegisterCustomers = () => {
       }
     } catch (error) {
       console.error("❌ Error updating document status:", error);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to update document verification';
-      toast.error(errorMessage);
+      toast.error(error.response?.data?.message || error.message || 'Failed to update document verification');
     } finally {
       setDocumentUpdating(prev => ({ ...prev, [docType]: false }));
     }
@@ -334,13 +378,16 @@ const AllRegisterCustomers = () => {
 
   const handleRetry = () => {
     setError("");
+    setSearchQuery("");
     fetchUsers(currentPage, itemsPerPage);
   };
 
   const handlePageChange = (newPage) => {
     if (newPage >= 0 && newPage < totalPages) {
       setCurrentPage(newPage);
-      fetchUsers(newPage, itemsPerPage);
+      if (!searchQuery.trim()) {
+        fetchUsers(newPage, itemsPerPage);
+      }
     }
   };
 
@@ -385,25 +432,6 @@ const AllRegisterCustomers = () => {
     </div>
   );
 
-  const handleImageError = (e, userName) => {
-    console.error(`Profile image failed to load for user "${userName}":`, e.target.src);
-    e.target.style.display = 'none';
-    const fallbackDiv = e.target.nextElementSibling;
-    if (fallbackDiv) {
-      fallbackDiv.style.display = 'flex';
-    }
-  };
-
-  const handleImageLoad = (e) => {
-    e.target.style.display = 'block';
-    const fallbackDiv = e.target.nextElementSibling;
-    if (fallbackDiv) {
-      fallbackDiv.style.display = 'none';
-    }
-  };
-
-  console.log("🎨 Rendering component - viewMode:", viewMode, "filteredData length:", filteredData.length);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 py-8 px-4">
       <ToastContainer position="top-right" />
@@ -425,7 +453,7 @@ const AllRegisterCustomers = () => {
                 {(() => {
                   const status = getUserVerificationStatus(selectedUser);
                   return (
-                    <div className={`flex items-center space-x-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-sm`}>
+                    <div className="flex items-center space-x-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-sm">
                       {status.icon}
                       <span className="font-semibold">{status.status}</span>
                     </div>
@@ -446,8 +474,10 @@ const AllRegisterCustomers = () => {
                         src={selectedUser.profileImage}
                         alt={selectedUser.name}
                         className="w-32 h-32 rounded-2xl object-cover border-4 border-white shadow-xl"
-                        onError={(e) => handleImageError(e, selectedUser.name)}
-                        onLoad={(e) => handleImageLoad(e)}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
                         style={{ display: 'block' }}
                       />
                       <div 
@@ -482,7 +512,7 @@ const AllRegisterCustomers = () => {
                       {selectedUser.isActive === 1 ? '● Active' : '● Inactive'}
                     </span>
                     <span className="text-gray-400 text-sm">
-                      Joined {formatDate(selectedUser.createdAt)}
+                      Joined: {formatDate(selectedUser.createdAt)}
                     </span>
                   </div>
                 </div>
@@ -490,50 +520,50 @@ const AllRegisterCustomers = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                 <InfoCard 
-                  icon={<FaPhone size={18} />}
-                  label="Primary Phone"
+                  icon={<FaPhone size={18} />} 
+                  label="Primary Phone" 
                   value={selectedUser.phoneNumber}
                   colorClass="text-green-600"
                 />
                 <InfoCard 
-                  icon={<FaPhone size={18} />}
-                  label="Alternate Phone"
+                  icon={<FaPhone size={18} />} 
+                  label="Alternate Phone" 
                   value={selectedUser.alternateNumber}
                   colorClass="text-blue-600"
                 />
                 <InfoCard 
-                  icon={<FaEnvelope size={18} />}
-                  label="Email Address"
+                  icon={<FaEnvelope size={18} />} 
+                  label="Email Address" 
                   value={selectedUser.email}
                   colorClass="text-purple-600"
                 />
                 <InfoCard 
-                  icon={<FaMapMarkerAlt size={18} />}
-                  label="Address"
+                  icon={<FaMapMarkerAlt size={18} />} 
+                  label="Address" 
                   value={selectedUser.address}
                   colorClass="text-red-600"
                 />
                 <InfoCard 
-                  icon={<FaCreditCard size={18} />}
-                  label="Account Number"
+                  icon={<FaCreditCard size={18} />} 
+                  label="Account Number" 
                   value={selectedUser.accountNumber}
                   colorClass="text-indigo-600"
                 />
                 <InfoCard 
-                  icon={<FaUniversity size={18} />}
-                  label="IFSC Code"
+                  icon={<FaUniversity size={18} />} 
+                  label="IFSC Code" 
                   value={selectedUser.ifsc}
                   colorClass="text-cyan-600"
                 />
                 <InfoCard 
-                  icon={<FaCreditCard size={18} />}
-                  label="UPI ID"
+                  icon={<FaCreditCard size={18} />} 
+                  label="UPI ID" 
                   value={selectedUser.upiId}
                   colorClass="text-orange-600"
                 />
                 <InfoCard 
-                  icon={<FaCalendarAlt size={18} />}
-                  label="Last Updated"
+                  icon={<FaCalendarAlt size={18} />} 
+                  label="Last Updated" 
                   value={formatDate(selectedUser.updatedAt)}
                   colorClass="text-gray-600"
                 />
@@ -551,7 +581,7 @@ const AllRegisterCustomers = () => {
                 <p className="text-gray-500 text-sm">Review and verify customer documents</p>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <DocumentCard
                 label="Aadhar Front Side"
@@ -603,21 +633,52 @@ const AllRegisterCustomers = () => {
                     placeholder="Search customers..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-64"
                   />
+                  {isSearching && (
+                    <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                    </div>
+                  )}
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <FaTimes />
+                    </button>
+                  )}
                 </div>
                 
                 <button
                   onClick={handleRetry}
-                  className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all"
+                  disabled={loading || isSearching}
+                  className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all disabled:opacity-50"
                 >
-                  <FaRedo className={loading ? 'animate-spin' : ''} />
+                  <FaRedo className={(loading || isSearching) ? 'animate-spin' : ''} />
                   <span>Refresh</span>
                 </button>
               </div>
             </div>
 
-            {/* Stats Cards */}
+            {searchQuery && !isSearching && (
+              <div className="mb-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <FaSearch className="text-blue-600" />
+                  <p className="text-sm text-blue-800">
+                    Search results for: <span className="font-semibold">"{searchQuery}"</span>
+                    {filteredData.length > 0 && ` (${filteredData.length} found)`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                >
+                  Clear Search
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
                 <div className="flex items-center justify-between">
@@ -666,7 +727,6 @@ const AllRegisterCustomers = () => {
               </div>
             </div>
 
-            {/* Alerts */}
             {error && (
               <div className="mb-6 bg-red-50 border-l-4 border-red-500 rounded-xl p-4 flex items-start space-x-3">
                 <FaExclamationTriangle className="text-red-500 text-xl flex-shrink-0 mt-0.5" />
@@ -694,12 +754,13 @@ const AllRegisterCustomers = () => {
               </div>
             )}
 
-            {/* CUSTOMER TABLE */}
             <div className="overflow-x-auto bg-white rounded-lg shadow">
-              {loading ? (
+              {loading || isSearching ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                  <p className="text-gray-600 font-medium">Loading customers...</p>
+                  <p className="text-gray-600 font-medium">
+                    {isSearching ? 'Searching customers...' : 'Loading customers...'}
+                  </p>
                 </div>
               ) : filteredData.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16">
@@ -709,11 +770,20 @@ const AllRegisterCustomers = () => {
                     {searchQuery ? `No results for "${searchQuery}"` : "No registered customers yet"}
                   </p>
                   <button
-                    onClick={() => fetchUsers(0, itemsPerPage)}
+                    onClick={() => searchQuery ? setSearchQuery("") : fetchUsers(0, itemsPerPage)}
                     className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                   >
-                    <FaRedo className="inline mr-2" />
-                    Retry
+                    {searchQuery ? (
+                      <>
+                        <FaTimes className="inline mr-2" />
+                        Clear Search
+                      </>
+                    ) : (
+                      <>
+                        <FaRedo className="inline mr-2" />
+                        Retry
+                      </>
+                    )}
                   </button>
                 </div>
               ) : (
@@ -811,8 +881,7 @@ const AllRegisterCustomers = () => {
                     </tbody>
                   </table>
 
-                  {/* PAGINATION */}
-                  {totalPages > 1 && (
+                  {totalPages > 1 && !searchQuery && (
                     <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
                       <p className="text-sm text-gray-600">
                         Showing <span className="font-semibold">{(currentPage * itemsPerPage) + 1}</span> to{' '}
@@ -862,10 +931,9 @@ const AllRegisterCustomers = () => {
         </div>
       )}
 
-      {/* Image Modal */}
       {isModalOpen && (
         <div 
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={handleCloseModal}
         >
           <div 
@@ -888,7 +956,7 @@ const AllRegisterCustomers = () => {
                   alt="Document"
                   className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg"
                   onError={(e) => {
-                    e.target.style.display = "none";
+                    e.target.style.display = 'none';
                     const errorDiv = document.createElement('div');
                     errorDiv.className = 'text-red-500 text-center';
                     errorDiv.innerHTML = '<p class="text-lg font-semibold">Unable to load image</p>';
@@ -909,11 +977,10 @@ const AllRegisterCustomers = () => {
   );
 };
 
-// Document Card Component
 const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, onImageClick }) => {
   const getImageSource = () => {
     if (!imageData) return null;
-    if (typeof imageData === "string" && imageData.startsWith("data:image/")) {
+    if (typeof imageData === 'string' && imageData.startsWith('data:image')) {
       return imageData;
     }
     return `data:image/png;base64,${imageData}`;
@@ -924,7 +991,7 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
       toast.warning("No image available to preview");
       return;
     }
-    const base64Data = typeof imageData === "string" && imageData.startsWith("data:image/")
+    const base64Data = typeof imageData === 'string' && imageData.startsWith('data:image')
       ? imageData.split(',')[1]
       : imageData;
     onImageClick(base64Data);
@@ -948,10 +1015,11 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
             {status}
           </span>
         </div>
-        
-        <div
-          className={`w-full h-56 bg-gray-100 border-2 ${imageData ? 'border-indigo-200 hover:border-indigo-400' : 'border-gray-200'}
-            flex items-center justify-center rounded-xl overflow-hidden transition-all cursor-pointer hover:shadow-md`}
+
+        <div 
+          className={`w-full h-56 bg-gray-100 border-2 ${
+            imageData ? 'border-indigo-200 hover:border-indigo-400' : 'border-gray-200'
+          } flex items-center justify-center rounded-xl overflow-hidden transition-all cursor-pointer hover:shadow-md`}
           onClick={handleImageClick}
         >
           {imageData ? (
@@ -960,8 +1028,8 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
               alt={label}
               className="w-full h-full object-cover"
               onError={(e) => {
-                e.target.style.display = "none";
-                const errorDiv = document.createElement("div");
+                e.target.style.display = 'none';
+                const errorDiv = document.createElement('div');
                 errorDiv.innerHTML = '<div class="text-center"><p class="text-red-500 font-medium">Invalid image</p></div>';
                 e.target.parentNode.appendChild(errorDiv);
               }}
@@ -973,7 +1041,7 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
             </div>
           )}
         </div>
-        
+
         <div className="mt-4 flex gap-2">
           <button
             onClick={onVerify}
@@ -998,6 +1066,7 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
               </>
             )}
           </button>
+
           <button
             onClick={onReject}
             disabled={status === 'REJECTED' || updating}

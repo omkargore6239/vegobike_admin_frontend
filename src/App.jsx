@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import Bikes from "./pages/Bikes";
+import SellBikes from "./pages/SellBikes"; // ✅ NEW IMPORT FOR SELL BIKES
 import DeliveryAtLocationPrices from "./pages/PriceMaster/DeliveryAtLocationPrices";
 import PickUpTariffPlan from "./pages/PriceMaster/PickUpTariffPlan";
 import LateCharges from "./pages/PriceMaster/LateCharges";
@@ -23,14 +24,16 @@ import Login from "./pages/AdminLogin";
 import TimeSlot from "./pages/TimeSlot";
 import BikeServices from "./pages/BikeServices";
 import SpareParts from "./pages/SpareParts";
-import ServiceOrders from "./components/ServiceOrders";
+import ServiceOrders from "./pages/ServiceOrders";
 import TrackVehicle from "./pages/TrackVehicle";
 import StoreManagers from "./pages/StoreManagers";
 import AddBikeForm from "./pages/Addbikeform";
 
+
 // Authentication Context Component
 const AuthWrapper = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(null); // null = checking, true/false = determined
+
 
   useEffect(() => {
     const checkAuth = () => {
@@ -39,22 +42,27 @@ const AuthWrapper = ({ children }) => {
       setIsAuthenticated(isLoggedIn === "true");
     };
 
+
     checkAuth();
+
 
     // Listen for storage changes
     const handleStorageChange = () => {
       checkAuth();
     };
 
+
     window.addEventListener('storage', handleStorageChange);
     // Custom event for when login happens
     window.addEventListener('authChange', handleStorageChange);
+
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('authChange', handleStorageChange);
     };
   }, []);
+
 
   // Show loading while checking authentication
   if (isAuthenticated === null) {
@@ -65,8 +73,10 @@ const AuthWrapper = ({ children }) => {
     );
   }
 
+
   return children;
 };
+
 
 // Simple Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -79,6 +89,7 @@ const ProtectedRoute = ({ children }) => {
   
   return <Navigate to="/" replace />;
 };
+
 
 function App() {
   return (
@@ -94,6 +105,7 @@ function App() {
           <Route path="/" element={<Login />} />
           <Route path="/trackvehicle" element={<TrackVehicle />} />
 
+
           {/* Protected routes */}
           <Route
             path="/dashboard"
@@ -105,6 +117,7 @@ function App() {
           >
             <Route index element={<Home />} />
             <Route path="allBikes" element={<Bikes />} />
+            <Route path="sellBikes" element={<SellBikes />} /> {/* ✅ NEW SELL BIKES ROUTE */}
             <Route path="addBike" element={<AddBikeForm />} />
             <Route path="allBookings" element={<AllBookings />} />
             <Route path="storeMaster" element={<StoreMaster />} />
@@ -114,6 +127,7 @@ function App() {
             <Route path="bikeServices" element={<BikeServices />} />
             <Route path="spareParts" element={<SpareParts />} />
             <Route path="serviceOrders" element={<ServiceOrders />} />
+
 
             {/* Price Master Submenu Routes */}
             <Route
@@ -128,6 +142,7 @@ function App() {
               path="priceMaster/lateCharges" 
               element={<LateCharges />} 
             />
+
 
             {/* Master Records Submenu Routes */}
             <Route
@@ -154,6 +169,7 @@ function App() {
             <Route path="allReport/salesReport" element={<SalesReport />} />
           </Route>
 
+
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -161,5 +177,6 @@ function App() {
     </AuthWrapper>
   );
 }
+
 
 export default App;

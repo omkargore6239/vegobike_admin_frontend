@@ -1,18 +1,24 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom'; // ✅ ADD THIS
+
 import {
   FaEye, FaMapMarkerAlt, FaMotorcycle, FaCreditCard, FaCalendarAlt,
   FaUser, FaPhone, FaHashtag, FaClock, FaMoneyBillWave, FaShieldAlt,
   FaSearch, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaEdit, FaSave,
-  FaUpload, FaDownload, FaFileAlt, FaPlus, FaTimes, FaSync, FaExclamationTriangle
+  FaUpload, FaDownload, FaFileAlt, FaPlus, FaTimes, FaSync, FaExclamationTriangle,
+  FaImage, FaCamera
 } from "react-icons/fa";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { bookingAPI, documentAPI } from '../utils/apiClient';
 
+
+
 const AllBookings = () => {
+  const navigate = useNavigate(); 
   const [bookings, setBookings] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(0); // Changed to 0-based for backend
+  const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
@@ -23,6 +29,7 @@ const AllBookings = () => {
   const [error, setError] = useState(null);
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState('desc');
+  const [isSearching, setIsSearching] = useState(false);
 
   // ✅ Fetch bookings with server-side pagination
   const fetchBookings = useCallback(async () => {
@@ -35,7 +42,7 @@ const AllBookings = () => {
       const response = await bookingAPI.getAll(currentPage, pageSize, sortBy, sortDirection);
       
       console.log('✅ Bookings fetched:', response.data?.length || 0);
-      console.log('📊 Pagination:', response.pagination);
+      console.log('📊 Raw booking data:', response.data);
 
       setBookings(response.data || []);
       setTotalPages(response.pagination?.totalPages || 0);
@@ -64,10 +71,61 @@ const AllBookings = () => {
     }
   }, [currentPage, pageSize, sortBy, sortDirection]);
 
+  // ✅ NEW: Server-side search function
+  const handleSearchBookings = useCallback(async (query) => {
+    if (!query || query.trim() === '') {
+      fetchBookings();
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+    
+    try {
+      console.log(`🔍 Searching bookings with query: "${query}"`);
+
+      const response = await bookingAPI.searchBookings(query.trim());
+      
+      console.log('✅ Search results:', response.data?.length || 0);
+      console.log('📊 Search data:', response.data);
+
+      setBookings(response.data || []);
+      setTotalItems(response.data?.length || 0);
+      setTotalPages(1);
+      setCurrentPage(0);
+      
+      if (response.data && response.data.length > 0) {
+        toast.success(`🔍 Found ${response.data.length} booking(s) matching "${query}"`);
+      } else {
+        toast.info(`ℹ️ No bookings found for "${query}"`);
+      }
+
+    } catch (error) {
+      console.error('❌ Error searching bookings:', error);
+      setError(error);
+      
+      if (error.response?.status === 401) {
+        toast.error('🔐 Authentication required. Please login again.');
+      } else if (error.response?.status === 403) {
+        toast.error('🚫 Access denied. Admin privileges required.');
+      } else if (error.response?.status === 500) {
+        const errorMessage = error.response?.data?.message || 'Server error occurred';
+        toast.error(`💥 ${errorMessage}`);
+      } else {
+        toast.error('❌ Failed to search bookings. Please try again.');
+      }
+      
+      setBookings([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [fetchBookings]);
+
   // ✅ Manual refresh
   const handleRefresh = async () => {
     setRefreshing(true);
     toast.info('🔄 Refreshing bookings...');
+    setSearchQuery("");
     await fetchBookings();
     setRefreshing(false);
   };
@@ -76,48 +134,39 @@ const AllBookings = () => {
     fetchBookings();
   }, [fetchBookings]);
 
-  // Handle search query changes
+  // ✅ Handle search query changes with debounce
   const handleSearchChange = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
-    setCurrentPage(0); // Reset to first page when searching
+    
+    if (window.searchTimeout) {
+      clearTimeout(window.searchTimeout);
+    }
+
+    window.searchTimeout = setTimeout(() => {
+      if (query.trim() === '') {
+        fetchBookings();
+      } else {
+        handleSearchBookings(query);
+      }
+    }, 500);
   };
 
-  // Client-side filter for current page
-  const filteredBookings = useMemo(() => {
-    if (!searchQuery.trim()) return bookings;
+  // ✅ Clear search and reload all bookings
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    fetchBookings();
+  };
 
-    const query = searchQuery.toLowerCase();
-    return bookings.filter((booking) => {
-      const bookingId = booking.bookingId || booking.id || '';
-      const customerName = booking.customerName || booking.userName || '';
-      const customerNumber = booking.customerNumber || booking.phoneNumber || booking.customerPhone || '';
-      const vehicleNumber = booking.bikeDetails?.registrationNumber || 
-                           booking.vehicleNumber || 
-                           booking.registrationNumber || '';
-      const status = booking.status || '';
-      const customerId = booking.customerId || '';
-
-      return bookingId.toString().toLowerCase().includes(query) ||
-             customerName.toLowerCase().includes(query) ||
-             customerNumber.includes(query) ||
-             vehicleNumber.toLowerCase().includes(query) ||
-             status.toLowerCase().includes(query) ||
-             customerId.toString().includes(query);
-    });
-  }, [bookings, searchQuery]);
-
-  // Handle page change
   const handlePageChange = (newPage) => {
     if (newPage >= 0 && newPage < totalPages) {
       setCurrentPage(newPage);
     }
   };
 
-  // Handle page size change
   const handlePageSizeChange = (e) => {
     setPageSize(parseInt(e.target.value));
-    setCurrentPage(0); // Reset to first page
+    setCurrentPage(0);
   };
 
   // ✅ Handle view booking details
@@ -153,7 +202,6 @@ const AllBookings = () => {
     setSelectedBooking(null);
   };
 
-  // ✅ Status color mapping
   const getStatusColor = (status) => {
     const statusMap = {
       'Pending': 'from-yellow-500 to-amber-500',
@@ -191,6 +239,39 @@ const AllBookings = () => {
     }).format(amount || 0);
   };
 
+  // ✅ Helper function to get customer display name
+  const getCustomerDisplay = (booking) => {
+    // Priority order: customerName -> userName -> fallback to ID
+    return booking.customerName || 
+           booking.userName || 
+           `Customer #${booking.customerId || 'Unknown'}`;
+  };
+
+  // ✅ Helper function to get customer phone
+  const getCustomerPhone = (booking) => {
+    return booking.customerNumber || 
+           booking.phoneNumber || 
+           booking.customerPhone || 
+           'N/A';
+  };
+
+  // ✅ Helper function to get vehicle registration number
+  const getVehicleNumber = (booking) => {
+    // Priority order: bikeDetails.registrationNumber -> vehicleNumber -> registrationNumber -> fallback
+    return booking.bikeDetails?.registrationNumber || 
+           booking.vehicleNumber || 
+           booking.registrationNumber || 
+           'N/A';
+  };
+
+  // ✅ Helper function to get vehicle details
+  const getVehicleDetails = (booking) => {
+    if (booking.bikeDetails?.brand && booking.bikeDetails?.model) {
+      return `${booking.bikeDetails.brand} ${booking.bikeDetails.model}`;
+    }
+    return `Vehicle ID: ${booking.vehicleId || 'N/A'}`;
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 py-1 px-1">
       <ToastContainer position="top-right" autoClose={3000} />
@@ -206,13 +287,19 @@ const AllBookings = () => {
             getPaymentMethodIcon={getPaymentMethodIcon}
             refreshBookings={fetchBookings}
             setBookings={setBookings}
+            getCustomerDisplay={getCustomerDisplay}
+            getCustomerPhone={getCustomerPhone}
+            getVehicleNumber={getVehicleNumber}
+            getVehicleDetails={getVehicleDetails}
           />
         ) : (
           <BookingListView
-            bookings={filteredBookings}
+            bookings={bookings}
             searchQuery={searchQuery}
             setSearchQuery={handleSearchChange}
+            handleClearSearch={handleClearSearch}
             loading={loading}
+            isSearching={isSearching}
             refreshing={refreshing}
             error={error}
             currentPage={currentPage}
@@ -227,6 +314,11 @@ const AllBookings = () => {
             formatCurrency={formatCurrency}
             getStatusColor={getStatusColor}
             getPaymentMethodIcon={getPaymentMethodIcon}
+            getCustomerDisplay={getCustomerDisplay}
+            getCustomerPhone={getCustomerPhone}
+            getVehicleNumber={getVehicleNumber}
+            getVehicleDetails={getVehicleDetails}
+            navigate={navigate} 
           />
         )}
       </div>
@@ -234,12 +326,14 @@ const AllBookings = () => {
   );
 };
 
-// ✅ Booking List View Component
+// ✅ Booking List View Component - UPDATED
 const BookingListView = ({
   bookings,
   searchQuery,
   setSearchQuery,
+  handleClearSearch,
   loading,
+  isSearching,
   refreshing,
   error,
   currentPage,
@@ -253,41 +347,56 @@ const BookingListView = ({
   formatDate,
   formatCurrency,
   getStatusColor,
-  getPaymentMethodIcon
+  getPaymentMethodIcon,
+  getCustomerDisplay,
+  getCustomerPhone,
+  getVehicleNumber,
+  getVehicleDetails,
+   navigate
 }) => {
   return (
     <div className="space-y-2">
       {/* Header */}
       <div className="bg-white rounded-xl shadow-lg p-3">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
-          <div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-              All Bookings
-            </h1>
-            <p className="text-gray-500 text-xs">Manage and track all bike rentals</p>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing || loading}
-              className={`flex items-center px-3 py-1.5 rounded-lg shadow-md transition-all ${
-                refreshing || loading
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
-              } text-white text-sm`}
-            >
-              <FaSync className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
-            
-            <div className="bg-gradient-to-r from-indigo-500 to-blue-500 text-white px-3 py-1.5 rounded-lg shadow-lg">
-              <div className="text-lg font-bold">{totalItems}</div>
-              <div className="text-xs opacity-90">Total Bookings</div>
-            </div>
-          </div>
-        </div>
+  <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
+    <div>
+      <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+        All Bookings
+      </h1>
+      <p className="text-gray-500 text-xs">Manage and track all bike rentals</p>
+    </div>
+    
+    <div className="flex items-center space-x-3">
+      {/* ✅ NEW: Create Booking Button */}
+      <button
+  onClick={() => navigate('/dashboard/bookings/create')}  // ✅ Use full path from root
+  className="flex items-center px-4 py-2 rounded-lg shadow-md transition-all bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold hover:shadow-lg"
+>
+  <FaPlus className="mr-2" />
+  Create Booking
+</button>
+
+      <button
+        onClick={handleRefresh}
+        disabled={refreshing || loading}
+        className={`flex items-center px-3 py-1.5 rounded-lg shadow-md transition-all ${
+          refreshing || loading
+            ? 'bg-gray-400 cursor-not-allowed'
+            : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+        } text-white text-sm`}
+      >
+        <FaSync className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+        {refreshing ? 'Refreshing...' : 'Refresh'}
+      </button>
+      
+      <div className="bg-gradient-to-r from-indigo-500 to-blue-500 text-white px-3 py-1.5 rounded-lg shadow-lg">
+        <div className="text-lg font-bold">{totalItems}</div>
+        <div className="text-xs opacity-90">Total Bookings</div>
       </div>
+    </div>
+  </div>
+</div>
+
 
       {/* Error Display */}
       {error && (
@@ -324,10 +433,24 @@ const BookingListView = ({
             <input
               type="text"
               placeholder="Search by booking ID, customer name, phone, or vehicle number..."
-              className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 transition-all text-sm"
+              className="w-full pl-8 pr-20 py-1.5 border border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 transition-all text-sm"
               value={searchQuery}
               onChange={setSearchQuery}
             />
+            {isSearching && (
+              <div className="absolute right-12 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+              </div>
+            )}
+            {searchQuery && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-colors"
+                title="Clear search"
+              >
+                <FaTimes className="text-xs" />
+              </button>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <label className="text-xs text-gray-600 whitespace-nowrap">Items per page:</label>
@@ -344,6 +467,12 @@ const BookingListView = ({
             </select>
           </div>
         </div>
+        {searchQuery && !isSearching && (
+          <div className="mt-2 text-xs text-gray-600 flex items-center">
+            <FaSearch className="mr-1" />
+            Showing search results for: <span className="font-semibold ml-1">"{searchQuery}"</span>
+          </div>
+        )}
       </div>
 
       {/* Bookings Table */}
@@ -362,12 +491,14 @@ const BookingListView = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {loading ? (
+              {loading || isSearching ? (
                 <tr>
                   <td colSpan="7" className="text-center py-8">
                     <div className="flex flex-col items-center">
                       <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-2"></div>
-                      <p className="text-gray-500 text-sm">Loading bookings...</p>
+                      <p className="text-gray-500 text-sm">
+                        {isSearching ? 'Searching bookings...' : 'Loading bookings...'}
+                      </p>
                     </div>
                   </td>
                 </tr>
@@ -382,6 +513,14 @@ const BookingListView = ({
                       <p className="text-gray-500 text-xs">
                         {searchQuery ? `No results for "${searchQuery}"` : error ? "Unable to load bookings" : "No bookings available"}
                       </p>
+                      {searchQuery && (
+                        <button
+                          onClick={handleClearSearch}
+                          className="mt-3 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded transition-colors"
+                        >
+                          Clear Search
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -396,24 +535,19 @@ const BookingListView = ({
                     </td>
                     <td className="px-3 py-2">
                       <div className="font-medium text-gray-900 text-sm">
-                        {booking.customerName || booking.userName || `Customer #${booking.customerId}`}
+                        {getCustomerDisplay(booking)}
                       </div>
                       <div className="text-xs text-gray-500 flex items-center">
                         <FaPhone className="mr-1 text-xs" />
-                        {booking.customerNumber || booking.phoneNumber || booking.customerPhone || 'N/A'}
+                        {getCustomerPhone(booking)}
                       </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="font-medium text-gray-900 text-sm">
-                        {booking.bikeDetails?.registrationNumber || 
-                         booking.vehicleNumber || 
-                         booking.registrationNumber || 
-                         'N/A'}
+                        {getVehicleNumber(booking)}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {booking.bikeDetails?.brand && booking.bikeDetails?.model 
-                          ? `${booking.bikeDetails.brand} ${booking.bikeDetails.model}`
-                          : `Vehicle ID: ${booking.vehicleId || 'N/A'}`}
+                        {getVehicleDetails(booking)}
                       </div>
                     </td>
                     <td className="px-3 py-2">
@@ -453,7 +587,7 @@ const BookingListView = ({
         </div>
 
         {/* Pagination */}
-        {!loading && bookings.length > 0 && totalPages > 1 && (
+        {!loading && !isSearching && bookings.length > 0 && totalPages > 1 && !searchQuery && (
           <div className="border-t border-gray-100 px-3 py-2 bg-gray-50">
             <div className="flex items-center justify-between">
               <div className="text-xs text-gray-600">
@@ -508,7 +642,7 @@ const BookingListView = ({
 
 
 
-// ✅ Booking Detail View Component
+// ✅ Booking Detail View Component with Trip Images
 const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings }) => {
   const [formData, setFormData] = useState({});
   const [additionalCharges, setAdditionalCharges] = useState([]);
@@ -516,7 +650,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
   const [isUpdating, setIsUpdating] = useState(false);
   const [isSavingCharges, setIsSavingCharges] = useState(false);
   
-  // Document state
   const [userDocuments, setUserDocuments] = useState(null);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [verifyingDocument, setVerifyingDocument] = useState(null);
@@ -540,17 +673,17 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         totalRideFair: booking.finalAmount || booking.totalRideFair || 0,
         paymentMode: booking.paymentType === 2 ? 'ONLINE' : 'CASH',
         currentBookingStatus: booking.status || 'Confirmed',
-        bookingStatus: booking.status || 'Accepted'
+        bookingStatus: booking.status || 'Accepted',
+        startTripKm: booking.startTripKm || null,
+        endTripKm: booking.endTripKm || null
       });
 
-      // Fetch user documents
       if (booking.customerId) {
         fetchUserDocuments(booking.customerId);
       }
     }
   }, [booking]);
 
-  // ✅ Fetch user documents
   const fetchUserDocuments = async (userId) => {
     if (!userId) {
       console.warn('⚠️ No user ID provided for document fetch');
@@ -580,7 +713,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // ✅ Handle document verification
   const handleDocumentVerification = async (documentType, status) => {
     if (!booking?.customerId) {
       toast.error('❌ User ID not found');
@@ -616,7 +748,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
 
       console.log('✅ Verification updated:', response.data);
 
-      // Update local state
       setUserDocuments(prevDocs => ({
         ...prevDocs,
         [`${documentType}Status`]: verificationStatus
@@ -624,7 +755,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
 
       toast.success(`✅ Document ${verificationStatus.toLowerCase()} successfully`);
 
-      // Refresh documents
       setTimeout(() => {
         fetchUserDocuments(booking.customerId);
       }, 500);
@@ -637,17 +767,14 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // ✅ Open image in modal
   const openImageModal = (imageUrl, documentName) => {
     setSelectedImage({ url: imageUrl, name: documentName });
   };
 
-  // ✅ Close image modal
   const closeImageModal = () => {
     setSelectedImage(null);
   };
 
-  // ✅ Get verification status badge
   const getVerificationBadge = (status) => {
     const badges = {
       'VERIFIED': { color: 'bg-green-500', text: '✅ Verified', icon: FaCheckCircle },
@@ -666,7 +793,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     );
   };
 
-  // ✅ Document card component
   const DocumentCard = ({ documentType, imageUrl, status, label }) => {
     const hasDocument = imageUrl && imageUrl.trim() !== '';
 
@@ -753,7 +879,51 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     );
   };
 
-  // Only allow booking status to be changed
+  // ✅ NEW: Trip Image Card Component
+  const TripImageCard = ({ imageUrl, index, label }) => {
+    const hasImage = imageUrl && imageUrl.trim() !== '';
+
+    return (
+      <div className="text-center">
+        <div 
+          className={`w-full h-32 rounded-lg mb-2 flex items-center justify-center relative border-2 transition-all cursor-pointer ${
+            hasImage 
+              ? 'border-purple-400 hover:border-purple-600 bg-gray-50' 
+              : 'border-dashed border-gray-300 bg-gray-100'
+          }`}
+          onClick={() => hasImage && openImageModal(imageUrl, `${label} - Image ${index + 1}`)}
+        >
+          {hasImage ? (
+            <>
+              <img 
+                src={imageUrl} 
+                alt={`${label} ${index + 1}`}
+                className="max-h-full max-w-full object-contain rounded-lg"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999">No Image</text></svg>';
+                }}
+              />
+              <div className="absolute top-2 right-2 bg-purple-500 text-white px-2 py-1 rounded text-xs font-medium">
+                #{index + 1}
+              </div>
+              <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 text-gray-800 px-2 py-1 rounded text-xs font-medium shadow">
+                <FaEye className="inline mr-1" />
+                Click to view
+              </div>
+            </>
+          ) : (
+            <div className="text-center">
+              <FaCamera className="mx-auto text-gray-400 text-3xl mb-2" />
+              <p className="text-gray-500 text-xs">No image</p>
+            </div>
+          )}
+        </div>
+        <p className="text-xs font-semibold text-gray-700">{label} - Image {index + 1}</p>
+      </div>
+    );
+  };
+
   const handleInputChange = (field, value) => {
     if (field === 'bookingStatus') {
       setFormData(prev => ({
@@ -763,7 +933,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // Add charge
   const handleAddMore = () => {
     if (newCharge.type !== 'Additional Charges' && newCharge.amount && !isNaN(parseFloat(newCharge.amount))) {
       const charge = {
@@ -796,7 +965,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // Save charges
   const handleSaveCharges = async () => {
     if (additionalCharges.length === 0) {
       toast.warning('⚠️ No additional charges to save');
@@ -807,7 +975,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     try {
       console.log('💾 Saving additional charges:', additionalCharges);
       
-      // TODO: Implement API call to save additional charges
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       toast.success('💾 Additional charges saved successfully!');
@@ -824,7 +991,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // ✅ Update booking status using backend API
   const handleUpdateBookingDetails = async () => {
     if (!booking?.id) {
       toast.error('❌ Booking ID not found');
@@ -846,7 +1012,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
 
       let response;
       
-      // Call appropriate API based on status change
       if (formData.bookingStatus === 'Accepted') {
         response = await bookingAPI.accept(booking.id);
       } else if (formData.bookingStatus === 'Cancelled') {
@@ -854,7 +1019,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
       } else if (formData.bookingStatus === 'Completed') {
         response = await bookingAPI.complete(booking.id);
       } else {
-        // For other status changes, you might need a generic update endpoint
         toast.warning('⚠️ Status update not implemented for this status');
         return;
       }
@@ -862,7 +1026,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
       const updatedBooking = response.data.data || response.data;
       console.log('✅ Booking status updated:', updatedBooking);
 
-      // Update local state
       setFormData(prev => ({
         ...prev,
         currentBookingStatus: formData.bookingStatus
@@ -873,7 +1036,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         { autoClose: 4000 }
       );
 
-      // Refresh bookings list
       if (refreshBookings) {
         setTimeout(() => {
           refreshBookings();
@@ -889,7 +1051,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         toast.error('❌ Failed to update booking status');
       }
 
-      // Revert to previous status
       setFormData(prev => ({
         ...prev,
         bookingStatus: prev.currentBookingStatus
@@ -900,7 +1061,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  // Calculate total additional charges
   const totalAdditionalCharges = additionalCharges.reduce((sum, charge) => sum + charge.amount, 0);
 
   return (
@@ -910,6 +1070,8 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         <div className="bg-white border-b px-3 py-1.5">
           <div className="flex items-center justify-between">
             <h1 className="text-base font-medium text-gray-900">View Booking Details</h1>
+
+            
             <button
               onClick={onBack}
               className="text-gray-500 hover:text-gray-700 text-lg"
@@ -931,7 +1093,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
             </div>
           </div>
 
-          {/* Form Grid - 4 fields per row */}
+          {/* Form Grid */}
           <div className="grid grid-cols-4 gap-2 mb-2">
             {/* Row 1 */}
             <div>
@@ -1278,7 +1440,101 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
             </div>
           </div>
 
-          {/* ✅ View Customer Documents Section */}
+          {/* ✅ NEW: START TRIP IMAGES SECTION */}
+          {booking.startTripImages && booking.startTripImages.length > 0 && (
+            <div className="border-t pt-3 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-900 flex items-center">
+                  <FaCamera className="mr-2 text-purple-600" />
+                  Start Trip Images
+                  <span className="ml-2 bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs font-medium">
+                    {booking.startTripImages.length} Images
+                  </span>
+                </h2>
+                {formData.startTripKm !== null && (
+                  <div className="bg-purple-50 border border-purple-200 px-3 py-1 rounded-md">
+                    <span className="text-xs text-purple-700 font-medium">
+                      Start KM: <span className="font-bold">{formData.startTripKm} km</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-4 gap-4">
+                {booking.startTripImages.map((imageUrl, index) => (
+                  <TripImageCard
+                    key={`start-${index}`}
+                    imageUrl={imageUrl}
+                    index={index}
+                    label="Start Trip"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ✅ NEW: END TRIP IMAGES SECTION */}
+          {booking.endTripImages && booking.endTripImages.length > 0 && (
+            <div className="border-t pt-3 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-900 flex items-center">
+                  <FaCamera className="mr-2 text-orange-600" />
+                  End Trip Images
+                  <span className="ml-2 bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full text-xs font-medium">
+                    {booking.endTripImages.length} Images
+                  </span>
+                </h2>
+                {formData.endTripKm !== null && (
+                  <div className="bg-orange-50 border border-orange-200 px-3 py-1 rounded-md">
+                    <span className="text-xs text-orange-700 font-medium">
+                      End KM: <span className="font-bold">{formData.endTripKm} km</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-4 gap-4">
+                {booking.endTripImages.map((imageUrl, index) => (
+                  <TripImageCard
+                    key={`end-${index}`}
+                    imageUrl={imageUrl}
+                    index={index}
+                    label="End Trip"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ✅ KM Details Summary (if both start and end KM exist) */}
+          {formData.startTripKm !== null && formData.endTripKm !== null && (
+            <div className="border-t pt-3 mt-4">
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-blue-900 mb-3 flex items-center">
+                  <FaMotorcycle className="mr-2" />
+                  Trip Distance Summary
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-white rounded-lg p-3 border border-blue-100">
+                    <p className="text-xs text-gray-600 mb-1">Start KM</p>
+                    <p className="text-lg font-bold text-purple-600">{formData.startTripKm} km</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-blue-100">
+                    <p className="text-xs text-gray-600 mb-1">End KM</p>
+                    <p className="text-lg font-bold text-orange-600">{formData.endTripKm} km</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-blue-100">
+                    <p className="text-xs text-gray-600 mb-1">Total Distance</p>
+                    <p className="text-lg font-bold text-green-600">
+                      {(formData.endTripKm - formData.startTripKm).toFixed(2)} km
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* View Customer Documents Section */}
           <div className="border-t pt-3 mt-4">
             <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
               <FaFileAlt className="mr-2" />
@@ -1325,7 +1581,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         </div>
       </div>
 
-      {/* ✅ Image Modal */}
+      {/* Image Modal */}
       {selectedImage && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"

@@ -1,4 +1,4 @@
-// Bikes.jsx - FULLY FIXED ✅
+// Bikes.jsx - WITH SERVER-SIDE PAGINATION ✅
 
 import React, { useEffect, useState } from "react";
 import { FaEdit, FaTrash, FaSearch, FaPlus, FaMotorcycle, FaEye, FaExclamationTriangle, FaRedo, FaCheck } from "react-icons/fa";
@@ -22,10 +22,12 @@ const Bikes = () => {
   const [success, setSuccess] = useState("");
   const [retryCount, setRetryCount] = useState(0);
   
-  // Search and pagination
+  // Search and pagination - UPDATED
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(0); // ✅ Backend uses 0-based index
+  const [itemsPerPage, setItemsPerPage] = useState(10); // ✅ Can be changed
+  const [totalPages, setTotalPages] = useState(0); // ✅ From backend
+  const [totalElements, setTotalElements] = useState(0); // ✅ From backend
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   // ✅ Helper function to match IDs
@@ -61,24 +63,8 @@ const Bikes = () => {
     }
   }, [success, error]);
 
-  // Handle search
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredBikes(processedBikes);
-    } else {
-      const filtered = processedBikes.filter((bike) => {
-        const searchTerm = searchQuery.toLowerCase();
-        return (
-          bike.brandName?.toLowerCase().includes(searchTerm) ||
-          bike.modelName?.toLowerCase().includes(searchTerm) ||
-          bike.registrationNumber?.toLowerCase().includes(searchTerm) ||
-          bike.categoryName?.toLowerCase().includes(searchTerm)
-        );
-      });
-      setFilteredBikes(filtered);
-    }
-    setCurrentPage(1);
-  }, [searchQuery, processedBikes]);
+  // ✅ REMOVED: Client-side search filtering
+  // Now search happens on backend
 
   // ✅ STEP 1: Fetch reference data with retry logic
   const fetchReferenceData = async (retryAttempt = 0) => {
@@ -139,16 +125,32 @@ const Bikes = () => {
     }
   };
 
-  // ✅ STEP 2: Fetch bikes with NEW API
-  const fetchBikes = async (retryAttempt = 0) => {
+  // ✅ STEP 2: Fetch bikes with SERVER-SIDE PAGINATION
+  const fetchBikes = async (page = 0, size = 10, retryAttempt = 0) => {
     try {
-      console.log("🚲 Fetching bikes...");
+      setLoading(true);
+      console.log(`🚲 Fetching bikes: page=${page}, size=${size}`);
       
-      const response = await bikeAPI.getAll(); // ✅ Uses /api/bikes/all
-      const bikesData = Array.isArray(response.data) ? response.data : [];
+      const response = await bikeAPI.getAll({ page, size });
       
-      console.log("✅ Bikes loaded:", bikesData.length);
-      setRawBikes(bikesData);
+      console.log("✅ Backend response:", response.data);
+      
+      // ✅ Handle paginated response from backend
+      if (response.data?.content) {
+        const bikesData = response.data.content;
+        setRawBikes(bikesData);
+        setTotalPages(response.data.totalPages || 0);
+        setTotalElements(response.data.totalElements || bikesData.length);
+        setCurrentPage(response.data.number || page); // Backend returns current page number
+        
+        console.log(`✅ Loaded ${bikesData.length} bikes (Page ${page + 1}/${response.data.totalPages})`);
+      } else if (Array.isArray(response.data)) {
+        // Fallback for non-paginated response
+        setRawBikes(response.data);
+        setTotalPages(1);
+        setTotalElements(response.data.length);
+      }
+      
       setRetryCount(0);
       
     } catch (error) {
@@ -159,8 +161,10 @@ const Bikes = () => {
       if (retryAttempt < 2) {
         console.log(`🔄 Retrying (${retryAttempt + 1}/3)...`);
         setRetryCount(retryAttempt + 1);
-        setTimeout(() => fetchBikes(retryAttempt + 1), 3000);
+        setTimeout(() => fetchBikes(page, size, retryAttempt + 1), 3000);
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -223,9 +227,6 @@ const Bikes = () => {
     console.log(`✅ Processed ${processed.length} bikes`);
     setProcessedBikes(processed);
     setFilteredBikes(processed);
-    setLoading(false);
-    setSuccess(`Successfully loaded ${processed.length} bikes`);
-    setTimeout(() => setSuccess(""), 3000);
 
   }, [rawBikes, brands, categories, models, referencesLoaded]);
 
@@ -233,50 +234,36 @@ const Bikes = () => {
   useEffect(() => {
     const loadData = async () => {
       console.log("🚀 Starting data load...");
-      setLoading(true);
       await fetchReferenceData();
-      await fetchBikes();
+      await fetchBikes(currentPage, itemsPerPage);
     };
     
     loadData();
     window.scrollTo(0, 0);
   }, []);
 
-  // ✅ Delete bike with NEW API
-  // const handleDeleteBike = async (id) => {
-  //   if (!id) {
-  //     setError("Invalid bike ID");
-  //     setConfirmDeleteId(null);
-  //     return;
-  //   }
+  // ✅ Handle page change
+  const handlePageChange = (newPage) => {
+    if (newPage >= 0 && newPage < totalPages) {
+      setCurrentPage(newPage);
+      fetchBikes(newPage, itemsPerPage);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
-  //   try {
-  //     console.log(`🗑️ Deleting bike: ${id}`);
-  //     await bikeAPI.delete(id); // ✅ Uses /api/bikes/{id}
-      
-  //     setSuccess("Bike deleted successfully!");
-  //     toast.success("Bike deleted successfully!");
-  //     setConfirmDeleteId(null);
-  //     await fetchBikes();
-      
-  //   } catch (error) {
-  //     console.error("❌ Error deleting bike:", error);
-  //     toast.error("Failed to delete bike");
-  //     setConfirmDeleteId(null);
-  //   }
-  // };
+  // ✅ Handle page size change
+  const handlePageSizeChange = (newSize) => {
+    setItemsPerPage(newSize);
+    setCurrentPage(0); // Reset to first page
+    fetchBikes(0, newSize);
+  };
 
-  // // Retry function
-  // const handleRetry = () => {
-  //   setError("");
-  //   setRetryCount(0);
-  //   const loadData = async () => {
-  //     setLoading(true);
-  //     await fetchReferenceData();
-  //     await fetchBikes();
-  //   };
-  //   loadData();
-  // };
+  // Retry function
+  const handleRetry = () => {
+    setError("");
+    setRetryCount(0);
+    fetchBikes(currentPage, itemsPerPage);
+  };
 
   // Navigation handlers
   const handleAddBike = () => navigate("/dashboard/addBike");
@@ -308,27 +295,15 @@ const Bikes = () => {
     }
   };
 
-  // Pagination
-  const totalPages = Math.ceil(filteredBikes.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentBikes = filteredBikes.slice(startIndex, endIndex);
-
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
+  // ✅ Updated pagination helpers
   const getPageNumbers = () => {
     const pages = [];
     const maxVisible = 5;
-    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-    let end = Math.min(totalPages, start + maxVisible - 1);
+    let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages - 1, start + maxVisible - 1);
     
     if (end - start + 1 < maxVisible) {
-      start = Math.max(1, end - maxVisible + 1);
+      start = Math.max(0, end - maxVisible + 1);
     }
     
     for (let i = start; i <= end; i++) {
@@ -362,17 +337,31 @@ const Bikes = () => {
                 All Bikes
               </h1>
               <p className="text-gray-500 mt-1">
-                Manage your bike inventory ({filteredBikes.length} bikes)
+                Manage your bike inventory ({totalElements} bikes)
               </p>
             </div>
             
-            <button
-              onClick={handleAddBike}
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl hover:from-indigo-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl"
-            >
-              <FaPlus className="mr-2" />
-              Add New Bike
-            </button>
+            <div className="flex items-center space-x-4">
+              {/* ✅ Page Size Selector */}
+              <select
+                value={itemsPerPage}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+              >
+                <option value={5}>5 per page</option>
+                <option value={10}>10 per page</option>
+                <option value={20}>20 per page</option>
+                <option value={50}>50 per page</option>
+              </select>
+
+              <button
+                onClick={handleAddBike}
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl hover:from-indigo-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl"
+              >
+                <FaPlus className="mr-2" />
+                Add New Bike
+              </button>
+            </div>
           </div>
         </div>
 
@@ -392,33 +381,17 @@ const Bikes = () => {
               <FaExclamationTriangle className="text-red-500 mr-3 mt-0.5" />
               <div className="flex-1">
                 <p className="text-red-700 font-medium">{error}</p>
-                {error.includes("connect") && (
-                  <button
-                    onClick={handleRetry}
-                    className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                  >
-                    <FaRedo className="mr-1" />
-                    Retry
-                  </button>
-                )}
+                <button
+                  onClick={handleRetry}
+                  className="mt-2 inline-flex items-center px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                >
+                  <FaRedo className="mr-1" />
+                  Retry
+                </button>
               </div>
             </div>
           </div>
         )}
-
-        {/* Search Bar */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          <div className="relative">
-            <FaSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by brand, model, or registration number..."
-              className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
 
         {/* Bikes Table */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -446,7 +419,7 @@ const Bikes = () => {
                       </div>
                     </td>
                   </tr>
-                ) : currentBikes.length === 0 ? (
+                ) : filteredBikes.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="text-center py-16">
                       <div className="flex flex-col items-center">
@@ -454,18 +427,17 @@ const Bikes = () => {
                           <FaMotorcycle className="text-gray-400 text-3xl" />
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">No bikes found</h3>
-                        <p className="text-gray-500">
-                          {searchQuery ? `No results for "${searchQuery}"` : "Get started by adding your first bike"}
-                        </p>
+                        <p className="text-gray-500">Get started by adding your first bike</p>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  currentBikes.map((bike, index) => {
+                  filteredBikes.map((bike, index) => {
                     const statusInfo = getStatusDisplay(bike.vehicleStatus);
+                    const globalIndex = (currentPage * itemsPerPage) + index + 1;
                     return (
                       <tr key={bike.id} className="hover:bg-indigo-50 transition-colors">
-                        <td className="px-6 py-4 font-medium">{startIndex + index + 1}</td>
+                        <td className="px-6 py-4 font-medium">{globalIndex}</td>
                         <td className="px-6 py-4">
                           <div className="flex-shrink-0 h-16 w-20 relative">
                             {bike.bikeImage ? (
@@ -522,13 +494,6 @@ const Bikes = () => {
                             >
                               <FaEdit />
                             </button>
-                            {/* <button
-                              onClick={() => setConfirmDeleteId(bike.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <FaTrash />
-                            </button> */}
                           </div>
                         </td>
                       </tr>
@@ -539,20 +504,20 @@ const Bikes = () => {
             </table>
           </div>
 
-          {/* Pagination */}
-          {!loading && currentBikes.length > 0 && totalPages > 1 && (
+          {/* ✅ UPDATED Pagination */}
+          {!loading && filteredBikes.length > 0 && totalPages > 1 && (
             <div className="border-t border-gray-100 px-6 py-4 bg-gray-50">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  Showing <span className="font-semibold">{startIndex + 1}</span> to{" "}
-                  <span className="font-semibold">{Math.min(endIndex, filteredBikes.length)}</span> of{" "}
-                  <span className="font-semibold">{filteredBikes.length}</span> bikes
+                  Showing <span className="font-semibold">{(currentPage * itemsPerPage) + 1}</span> to{" "}
+                  <span className="font-semibold">{Math.min((currentPage + 1) * itemsPerPage, totalElements)}</span> of{" "}
+                  <span className="font-semibold">{totalElements}</span> bikes
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={currentPage === 0}
+                    className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Previous
                   </button>
@@ -560,19 +525,19 @@ const Bikes = () => {
                     <button
                       key={pageNum}
                       onClick={() => handlePageChange(pageNum)}
-                      className={`px-4 py-2 text-sm rounded-lg ${
+                      className={`px-4 py-2 text-sm rounded-lg transition-colors ${
                         currentPage === pageNum
-                          ? "bg-gradient-to-r from-indigo-600 to-blue-600 text-white"
+                          ? "bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md"
                           : "bg-white border hover:bg-gray-50"
                       }`}
                     >
-                      {pageNum}
+                      {pageNum + 1}
                     </button>
                   ))}
                   <button
                     onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={currentPage >= totalPages - 1}
+                    className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Next
                   </button>
@@ -582,38 +547,6 @@ const Bikes = () => {
           )}
         </div>
       </div>
-
-      {/* Delete Confirmation Modal */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FaTrash className="text-red-600 text-2xl" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Bike?</h3>
-              <p className="text-gray-500 mb-6">
-                This action cannot be undone. The bike will be permanently removed.
-              </p>
-            </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteBike(confirmDeleteId)}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-        
-      )}
     </div>
   );
 };
