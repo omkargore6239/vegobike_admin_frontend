@@ -1,37 +1,88 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom'; // ✅ ADD THIS
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import {
   FaEye, FaMapMarkerAlt, FaMotorcycle, FaCreditCard, FaCalendarAlt,
   FaUser, FaPhone, FaHashtag, FaClock, FaMoneyBillWave, FaShieldAlt,
   FaSearch, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaEdit, FaSave,
   FaUpload, FaDownload, FaFileAlt, FaPlus, FaTimes, FaSync, FaExclamationTriangle,
-  FaImage, FaCamera
+  FaImage, FaCamera, FaFileInvoice
 } from "react-icons/fa";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { bookingAPI, documentAPI } from '../utils/apiClient';
 
-
-
 const AllBookings = () => {
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const [bookings, setBookings] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(0);
+  const [currentPage, setCurrentPage] = useState(() => {
+    // Restore page from sessionStorage on refresh
+    const saved = sessionStorage.getItem('bookingsCurrentPage');
+    return saved ? parseInt(saved) : 0;
+  });
   const [loading, setLoading] = useState(true);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = sessionStorage.getItem('bookingsPageSize');
+    return saved ? parseInt(saved) : 10;
+  });
   const [totalPages, setTotalPages] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
   const [selectedBooking, setSelectedBooking] = useState(null);
-  const [viewMode, setViewMode] = useState(false);
+  const [viewMode, setViewMode] = useState(() => {
+    // Restore viewMode from sessionStorage
+    const saved = sessionStorage.getItem('bookingsViewMode');
+    return saved === 'true';
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState('desc');
   const [isSearching, setIsSearching] = useState(false);
 
-  // ✅ Fetch bookings with server-side pagination
+  // Save state to sessionStorage when it changes
+  useEffect(() => {
+    sessionStorage.setItem('bookingsCurrentPage', currentPage.toString());
+  }, [currentPage]);
+
+  useEffect(() => {
+    sessionStorage.setItem('bookingsPageSize', pageSize.toString());
+  }, [pageSize]);
+
+  useEffect(() => {
+    sessionStorage.setItem('bookingsViewMode', viewMode.toString());
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (selectedBooking) {
+      sessionStorage.setItem('selectedBookingId', selectedBooking.id.toString());
+    }
+  }, [selectedBooking]);
+
+  // Restore selected booking on page refresh
+  useEffect(() => {
+    const savedViewMode = sessionStorage.getItem('bookingsViewMode') === 'true';
+    const savedBookingId = sessionStorage.getItem('selectedBookingId');
+    
+    if (savedViewMode && savedBookingId && !selectedBooking) {
+      // Fetch the booking details to restore view
+      const restoreBooking = async () => {
+        try {
+          const response = await bookingAPI.getById(parseInt(savedBookingId));
+          setSelectedBooking(response.data || response.data.data);
+        } catch (error) {
+          console.error('Failed to restore booking:', error);
+          sessionStorage.removeItem('bookingsViewMode');
+          sessionStorage.removeItem('selectedBookingId');
+          setViewMode(false);
+        }
+      };
+      restoreBooking();
+    }
+  }, []);
+
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -42,27 +93,24 @@ const AllBookings = () => {
       const response = await bookingAPI.getAll(currentPage, pageSize, sortBy, sortDirection);
       
       console.log('✅ Bookings fetched:', response.data?.length || 0);
-      console.log('📊 Raw booking data:', response.data);
 
       setBookings(response.data || []);
       setTotalPages(response.pagination?.totalPages || 0);
       setTotalItems(response.pagination?.totalItems || 0);
       
-      toast.success(`📋 Loaded ${response.data?.length || 0} bookings (Page ${currentPage + 1}/${response.pagination?.totalPages || 1})`);
+      toast.success(`📋 Loaded ${response.data?.length || 0} bookings`);
 
     } catch (error) {
       console.error('❌ Error fetching bookings:', error);
       setError(error);
       
       if (error.response?.status === 401) {
-        toast.error('🔐 Authentication required. Please login again.');
+        toast.error('🔐 Session expired. Please login again.');
+        setTimeout(() => navigate('/login'), 2000);
       } else if (error.response?.status === 403) {
-        toast.error('🚫 Access denied. Admin privileges required.');
-      } else if (error.response?.status === 500) {
-        const errorMessage = error.response?.data?.message || 'Server error occurred';
-        toast.error(`💥 ${errorMessage}`);
+        toast.error('🚫 Access denied.');
       } else {
-        toast.error('❌ Failed to load bookings. Please try again.');
+        toast.error('❌ Failed to load bookings.');
       }
       
       setBookings([]);
@@ -71,7 +119,6 @@ const AllBookings = () => {
     }
   }, [currentPage, pageSize, sortBy, sortDirection]);
 
-  // ✅ NEW: Server-side search function
   const handleSearchBookings = useCallback(async (query) => {
     if (!query || query.trim() === '') {
       fetchBookings();
@@ -82,46 +129,22 @@ const AllBookings = () => {
     setError(null);
     
     try {
-      console.log(`🔍 Searching bookings with query: "${query}"`);
-
       const response = await bookingAPI.searchBookings(query.trim());
-      
-      console.log('✅ Search results:', response.data?.length || 0);
-      console.log('📊 Search data:', response.data);
-
       setBookings(response.data || []);
       setTotalItems(response.data?.length || 0);
       setTotalPages(1);
       setCurrentPage(0);
       
-      if (response.data && response.data.length > 0) {
-        toast.success(`🔍 Found ${response.data.length} booking(s) matching "${query}"`);
-      } else {
-        toast.info(`ℹ️ No bookings found for "${query}"`);
-      }
-
+      toast.success(`🔍 Found ${response.data?.length || 0} booking(s)`);
     } catch (error) {
       console.error('❌ Error searching bookings:', error);
-      setError(error);
-      
-      if (error.response?.status === 401) {
-        toast.error('🔐 Authentication required. Please login again.');
-      } else if (error.response?.status === 403) {
-        toast.error('🚫 Access denied. Admin privileges required.');
-      } else if (error.response?.status === 500) {
-        const errorMessage = error.response?.data?.message || 'Server error occurred';
-        toast.error(`💥 ${errorMessage}`);
-      } else {
-        toast.error('❌ Failed to search bookings. Please try again.');
-      }
-      
+      toast.error('❌ Failed to search bookings.');
       setBookings([]);
     } finally {
       setIsSearching(false);
     }
   }, [fetchBookings]);
 
-  // ✅ Manual refresh
   const handleRefresh = async () => {
     setRefreshing(true);
     toast.info('🔄 Refreshing bookings...');
@@ -131,10 +154,11 @@ const AllBookings = () => {
   };
 
   useEffect(() => {
-    fetchBookings();
-  }, [fetchBookings]);
+    if (!viewMode) {
+      fetchBookings();
+    }
+  }, [fetchBookings, viewMode]);
 
-  // ✅ Handle search query changes with debounce
   const handleSearchChange = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
@@ -152,7 +176,6 @@ const AllBookings = () => {
     }, 500);
   };
 
-  // ✅ Clear search and reload all bookings
   const handleClearSearch = () => {
     setSearchQuery("");
     fetchBookings();
@@ -169,26 +192,24 @@ const AllBookings = () => {
     setCurrentPage(0);
   };
 
-  // ✅ Handle view booking details
   const handleView = async (booking) => {
     console.log('👁️ Viewing booking:', booking);
 
     try {
       setLoading(true);
       
-      console.log(`📋 Fetching details for booking ID: ${booking.id}`);
       const response = await bookingAPI.getById(booking.id);
-      
       const fullBooking = response.data || booking;
       
       console.log('✅ Full booking data fetched:', fullBooking);
 
       setSelectedBooking(fullBooking);
       setViewMode(true);
+      sessionStorage.setItem('selectedBookingId', fullBooking.id.toString());
       
     } catch (error) {
       console.error('❌ Error fetching booking details:', error);
-      toast.error('Failed to load booking details. Using available data.');
+      toast.error('Failed to load booking details.');
       
       setSelectedBooking(booking);
       setViewMode(true);
@@ -200,6 +221,10 @@ const AllBookings = () => {
   const handleBack = () => {
     setViewMode(false);
     setSelectedBooking(null);
+    sessionStorage.removeItem('bookingsViewMode');
+    sessionStorage.removeItem('selectedBookingId');
+    // Refresh bookings list to get latest data
+    fetchBookings();
   };
 
   const getStatusColor = (status) => {
@@ -239,15 +264,12 @@ const AllBookings = () => {
     }).format(amount || 0);
   };
 
-  // ✅ Helper function to get customer display name
   const getCustomerDisplay = (booking) => {
-    // Priority order: customerName -> userName -> fallback to ID
     return booking.customerName || 
            booking.userName || 
            `Customer #${booking.customerId || 'Unknown'}`;
   };
 
-  // ✅ Helper function to get customer phone
   const getCustomerPhone = (booking) => {
     return booking.customerNumber || 
            booking.phoneNumber || 
@@ -255,16 +277,13 @@ const AllBookings = () => {
            'N/A';
   };
 
-  // ✅ Helper function to get vehicle registration number
   const getVehicleNumber = (booking) => {
-    // Priority order: bikeDetails.registrationNumber -> vehicleNumber -> registrationNumber -> fallback
     return booking.bikeDetails?.registrationNumber || 
            booking.vehicleNumber || 
            booking.registrationNumber || 
            'N/A';
   };
 
-  // ✅ Helper function to get vehicle details
   const getVehicleDetails = (booking) => {
     if (booking.bikeDetails?.brand && booking.bikeDetails?.model) {
       return `${booking.bikeDetails.brand} ${booking.bikeDetails.model}`;
@@ -291,6 +310,7 @@ const AllBookings = () => {
             getCustomerPhone={getCustomerPhone}
             getVehicleNumber={getVehicleNumber}
             getVehicleDetails={getVehicleDetails}
+            navigate={navigate}
           />
         ) : (
           <BookingListView
@@ -318,7 +338,7 @@ const AllBookings = () => {
             getCustomerPhone={getCustomerPhone}
             getVehicleNumber={getVehicleNumber}
             getVehicleDetails={getVehicleDetails}
-            navigate={navigate} 
+            navigate={navigate}
           />
         )}
       </div>
@@ -326,7 +346,7 @@ const AllBookings = () => {
   );
 };
 
-// ✅ Booking List View Component - UPDATED
+// Booking List View Component
 const BookingListView = ({
   bookings,
   searchQuery,
@@ -352,51 +372,49 @@ const BookingListView = ({
   getCustomerPhone,
   getVehicleNumber,
   getVehicleDetails,
-   navigate
+  navigate
 }) => {
   return (
     <div className="space-y-2">
       {/* Header */}
       <div className="bg-white rounded-xl shadow-lg p-3">
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
-    <div>
-      <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-        All Bookings
-      </h1>
-      <p className="text-gray-500 text-xs">Manage and track all bike rentals</p>
-    </div>
-    
-    <div className="flex items-center space-x-3">
-      {/* ✅ NEW: Create Booking Button */}
-      <button
-  onClick={() => navigate('/dashboard/bookings/create')}  // ✅ Use full path from root
-  className="flex items-center px-4 py-2 rounded-lg shadow-md transition-all bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold hover:shadow-lg"
->
-  <FaPlus className="mr-2" />
-  Create Booking
-</button>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
+          <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+              All Bookings
+            </h1>
+            <p className="text-gray-500 text-xs">Manage and track all bike rentals</p>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => navigate('/dashboard/bookings/create')}
+              className="flex items-center px-4 py-2 rounded-lg shadow-md transition-all bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold hover:shadow-lg"
+            >
+              <FaPlus className="mr-2" />
+              Create Booking
+            </button>
 
-      <button
-        onClick={handleRefresh}
-        disabled={refreshing || loading}
-        className={`flex items-center px-3 py-1.5 rounded-lg shadow-md transition-all ${
-          refreshing || loading
-            ? 'bg-gray-400 cursor-not-allowed'
-            : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
-        } text-white text-sm`}
-      >
-        <FaSync className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-        {refreshing ? 'Refreshing...' : 'Refresh'}
-      </button>
-      
-      <div className="bg-gradient-to-r from-indigo-500 to-blue-500 text-white px-3 py-1.5 rounded-lg shadow-lg">
-        <div className="text-lg font-bold">{totalItems}</div>
-        <div className="text-xs opacity-90">Total Bookings</div>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className={`flex items-center px-3 py-1.5 rounded-lg shadow-md transition-all ${
+                refreshing || loading
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+              } text-white text-sm`}
+            >
+              <FaSync className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            
+            <div className="bg-gradient-to-r from-indigo-500 to-blue-500 text-white px-3 py-1.5 rounded-lg shadow-lg">
+              <div className="text-lg font-bold">{totalItems}</div>
+              <div className="text-xs opacity-90">Total Bookings</div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</div>
-
 
       {/* Error Display */}
       {error && (
@@ -408,12 +426,6 @@ const BookingListView = ({
               <p className="text-xs text-red-700 mb-2">
                 {error.response?.data?.message || error.message || 'An unexpected error occurred'}
               </p>
-              {error.response?.status === 500 && (
-                <p className="text-xs text-red-600 bg-red-100 p-2 rounded">
-                  <strong>Server Error (500):</strong> The backend server encountered an error. 
-                  Please check your backend logs for more details.
-                </p>
-              )}
               <button
                 onClick={handleRefresh}
                 className="mt-2 text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded transition-colors"
@@ -467,12 +479,6 @@ const BookingListView = ({
             </select>
           </div>
         </div>
-        {searchQuery && !isSearching && (
-          <div className="mt-2 text-xs text-gray-600 flex items-center">
-            <FaSearch className="mr-1" />
-            Showing search results for: <span className="font-semibold ml-1">"{searchQuery}"</span>
-          </div>
-        )}
       </div>
 
       {/* Bookings Table */}
@@ -506,21 +512,11 @@ const BookingListView = ({
                 <tr>
                   <td colSpan="7" className="text-center py-8">
                     <div className="flex flex-col items-center">
-                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-2">
-                        <FaMotorcycle className="text-gray-400 text-lg" />
-                      </div>
+                      <FaMotorcycle className="text-gray-400 text-4xl mb-2" />
                       <h3 className="text-sm font-semibold text-gray-900 mb-1">No bookings found</h3>
                       <p className="text-gray-500 text-xs">
-                        {searchQuery ? `No results for "${searchQuery}"` : error ? "Unable to load bookings" : "No bookings available"}
+                        {searchQuery ? `No results for "${searchQuery}"` : "No bookings available"}
                       </p>
-                      {searchQuery && (
-                        <button
-                          onClick={handleClearSearch}
-                          className="mt-3 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded transition-colors"
-                        >
-                          Clear Search
-                        </button>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -552,7 +548,7 @@ const BookingListView = ({
                     </td>
                     <td className="px-3 py-2">
                       <div className="font-bold text-gray-900 text-sm">
-                        {formatCurrency(booking.finalAmount || booking.totalRideFair || booking.charges || 0)}
+                        {formatCurrency(booking.finalAmount || booking.totalRideFair || 0)}
                       </div>
                       <div className={`text-xs ${
                         booking.paymentStatus === 'PAID' ? 'text-green-600' : 'text-yellow-600'
@@ -571,13 +567,17 @@ const BookingListView = ({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <button
-                        onClick={() => handleView(booking)}
-                        className="inline-flex items-center px-2 py-1 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded hover:from-indigo-700 hover:to-blue-700 transition-all shadow-sm text-xs"
-                      >
-                        <FaEye className="mr-1 text-xs" />
-                        View
-                      </button>
+  <button
+    onClick={() => handleView(booking)}
+    className="inline-flex items-center px-2 py-1 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded hover:from-indigo-700 hover:to-blue-700 transition-all shadow-sm text-xs"
+  >
+    <FaEye className="mr-1 text-xs" />
+    View
+  </button>
+</td>
+
+                    <td>
+                      
                     </td>
                   </tr>
                 ))
@@ -640,10 +640,8 @@ const BookingListView = ({
   );
 };
 
-
-
-// ✅ Booking Detail View Component with Trip Images
-const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings }) => {
+// Booking Detail View Component
+const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings, navigate }) => {
   const [formData, setFormData] = useState({});
   const [additionalCharges, setAdditionalCharges] = useState([]);
   const [newCharge, setNewCharge] = useState({ type: 'Additional Charges', amount: '' });
@@ -685,28 +683,17 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
   }, [booking]);
 
   const fetchUserDocuments = async (userId) => {
-    if (!userId) {
-      console.warn('⚠️ No user ID provided for document fetch');
-      return;
-    }
+    if (!userId) return;
 
     setLoadingDocuments(true);
     try {
-      console.log(`📄 Fetching documents for user ID: ${userId}`);
       const response = await documentAPI.getByUserId(userId);
-      
       const documents = response.data.data || response.data;
-      console.log('✅ Documents fetched:', documents);
       setUserDocuments(documents);
-      
     } catch (error) {
       console.error('❌ Error fetching user documents:', error);
-      
       if (error.response?.status === 404) {
         toast.info('ℹ️ No documents found for this user');
-        setUserDocuments(null);
-      } else {
-        toast.error('❌ Failed to load user documents');
       }
     } finally {
       setLoadingDocuments(false);
@@ -719,46 +706,30 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
       return;
     }
 
-    const statusMapping = {
-      'VERIFIED': 'VERIFIED',
-      'REJECTED': 'REJECTED',
-      'PENDING': 'PENDING'
-    };
-
-    const verificationStatus = statusMapping[status];
-
     setVerifyingDocument(documentType);
     try {
-      console.log(`🔄 Verifying ${documentType} as ${verificationStatus} for user ${booking.customerId}`);
-
       let adhaarFrontStatus = null;
       let adhaarBackStatus = null;
       let licenseStatus = null;
 
-      if (documentType === 'adhaarFront') adhaarFrontStatus = verificationStatus;
-      if (documentType === 'adhaarBack') adhaarBackStatus = verificationStatus;
-      if (documentType === 'license') licenseStatus = verificationStatus;
+      if (documentType === 'adhaarFront') adhaarFrontStatus = status;
+      if (documentType === 'adhaarBack') adhaarBackStatus = status;
+      if (documentType === 'license') licenseStatus = status;
 
-      const response = await documentAPI.updateVerification(
+      await documentAPI.updateVerification(
         booking.customerId,
         adhaarFrontStatus,
         adhaarBackStatus,
         licenseStatus
       );
 
-      console.log('✅ Verification updated:', response.data);
-
       setUserDocuments(prevDocs => ({
         ...prevDocs,
-        [`${documentType}Status`]: verificationStatus
+        [`${documentType}Status`]: status
       }));
 
-      toast.success(`✅ Document ${verificationStatus.toLowerCase()} successfully`);
-
-      setTimeout(() => {
-        fetchUserDocuments(booking.customerId);
-      }, 500);
-
+      toast.success(`✅ Document ${status.toLowerCase()} successfully`);
+      setTimeout(() => fetchUserDocuments(booking.customerId), 500);
     } catch (error) {
       console.error('❌ Error verifying document:', error);
       toast.error('❌ Failed to update verification status');
@@ -879,7 +850,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     );
   };
 
-  // ✅ NEW: Trip Image Card Component
   const TripImageCard = ({ imageUrl, index, label }) => {
     const hasImage = imageUrl && imageUrl.trim() !== '';
 
@@ -1023,9 +993,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
         return;
       }
 
-      const updatedBooking = response.data.data || response.data;
-      console.log('✅ Booking status updated:', updatedBooking);
-
       setFormData(prev => ({
         ...prev,
         currentBookingStatus: formData.bookingStatus
@@ -1061,23 +1028,48 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
+  const handleViewInvoice = () => {
+  console.log('📄 Opening invoice for booking:', booking.id);
+  
+  // Navigate to invoice page with proper state
+  navigate(`/dashboard/invoice/${booking.id}`, { 
+    state: { 
+      from: '/dashboard/allBookings',  // ✅ Fixed path
+      booking: booking 
+    }
+  });
+};
+
+
   const totalAdditionalCharges = additionalCharges.reduce((sum, charge) => sum + charge.amount, 0);
 
   return (
     <div className="max-w-7xl mx-auto">
       <div className="bg-white rounded-lg shadow-sm border">
-        {/* Header */}
+        {/* Header with Back and Invoice buttons */}
         <div className="bg-white border-b px-3 py-1.5">
           <div className="flex items-center justify-between">
-            <h1 className="text-base font-medium text-gray-900">View Booking Details</h1>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={onBack}
+                className="flex items-center px-3 py-1.5 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-sm font-medium"
+              >
+                <FaArrowLeft className="mr-2" />
+                Back to List
+              </button>
+              <h1 className="text-base font-medium text-gray-900">View Booking Details</h1>
+            </div>
 
-            
-            <button
-              onClick={onBack}
-              className="text-gray-500 hover:text-gray-700 text-lg"
-            >
-              ✕
-            </button>
+            {/* View Invoice Button - Only show if completed */}
+            {(booking.status === 'Completed' || booking.bookingStatus === 5) && (
+              <button
+                onClick={handleViewInvoice}
+                className="flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all shadow-md text-sm font-semibold"
+              >
+                <FaFileInvoice className="mr-2" />
+                View Invoice
+              </button>
+            )}
           </div>
         </div>
 
@@ -1440,7 +1432,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
             </div>
           </div>
 
-          {/* ✅ NEW: START TRIP IMAGES SECTION */}
+          {/* START TRIP IMAGES SECTION */}
           {booking.startTripImages && booking.startTripImages.length > 0 && (
             <div className="border-t pt-3 mt-4">
               <div className="flex items-center justify-between mb-3">
@@ -1473,7 +1465,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
             </div>
           )}
 
-          {/* ✅ NEW: END TRIP IMAGES SECTION */}
+          {/* END TRIP IMAGES SECTION */}
           {booking.endTripImages && booking.endTripImages.length > 0 && (
             <div className="border-t pt-3 mt-4">
               <div className="flex items-center justify-between mb-3">
@@ -1506,7 +1498,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
             </div>
           )}
 
-          {/* ✅ KM Details Summary (if both start and end KM exist) */}
+          {/* KM Details Summary */}
           {formData.startTripKm !== null && formData.endTripKm !== null && (
             <div className="border-t pt-3 mt-4">
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
@@ -1553,7 +1545,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                 <FaFileAlt className="mx-auto text-4xl text-gray-400 mb-2" />
                 <p className="text-gray-600 text-sm font-medium">No documents found for this user</p>
-                <p className="text-gray-500 text-xs mt-1">User hasn't uploaded any documents yet</p>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-4">
@@ -1614,16 +1605,18 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               >
                 Close
               </button>
-              <a
+              <button>
+              {/* <a
                 href={selectedImage.url}
                 download
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium flex items-center"
-              >
+              > */}
+                
                 <FaDownload className="mr-2" />
                 Download
-              </a>
+              </button>
             </div>
           </div>
         </div>

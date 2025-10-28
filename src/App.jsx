@@ -28,6 +28,7 @@ import ServiceOrders from "./pages/ServiceOrders";
 import TrackVehicle from "./pages/TrackVehicle";
 import StoreManagers from "./pages/StoreManagers";
 import AddBikeForm from "./pages/Addbikeform";
+import AdminInvoice from './components/AdminInvoice';
 
 
 // Authentication Context Component
@@ -127,6 +128,7 @@ function App() {
             <Route path="bikeServices" element={<BikeServices />} />
             <Route path="spareParts" element={<SpareParts />} />
             <Route path="serviceOrders" element={<ServiceOrders />} />
+            <Route path="/dashboard/invoice/:bookingId" element={<AdminInvoice />} />
 
 
             {/* Price Master Submenu Routes */}

@@ -469,6 +469,8 @@ export const bookingAPI = {
       throw error;
     }
   },
+
+  
   
   // Start trip
   startTrip: async (bookingId, images, startTripKm) => {
@@ -622,6 +624,33 @@ export const userAPI = {
   search: (searchText) => api.get('/api/auth/search', { 
     params: { searchText } 
   }),
+
+  complete: async (bookingId, endTripKm = null) => {
+    const params = endTripKm ? `?endTripKm=${endTripKm}` : '';
+    const response = await api.post(`/api/v1/admin/bookings/${bookingId}/complete${params}`);
+    return response.data;
+  },
+  
+  // Get invoice for completed booking
+  getInvoice: async (bookingId) => {
+    const response = await api.get(`/api/v1/admin/bookings/${bookingId}/invoice`);
+    return response.data;
+  }
+};
+
+export const invoiceAPI = {
+  // Get invoice by booking ID
+  getByBookingId: async (bookingId) => {
+    try {
+      console.log(`📄 [Invoice API] Fetching invoice for booking: ${bookingId}`);
+      const response = await api.get(`/api/invoices/${bookingId}`);
+      console.log(`✅ [Invoice API] Invoice fetched:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Invoice API] Error fetching invoice:`, error);
+      throw error;
+    }
+  }
 };
 
 // ✅ DOCUMENT API - FULLY UPDATED
