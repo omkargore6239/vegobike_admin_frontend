@@ -1,9 +1,10 @@
-import { BrowserRouter, Route, Routes, Navigate, Router } from "react-router-dom";
+// App.jsx
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import Bikes from "./pages/Bikes";
-import SellBikes from "./pages/SellBikes"; // ✅ NEW IMPORT FOR SELL BIKES
+import SellBikes from "./pages/SellBikes";
 import DeliveryAtLocationPrices from "./pages/PriceMaster/DeliveryAtLocationPrices";
 import PickUpTariffPlan from "./pages/PriceMaster/PickUpTariffPlan";
 import LateCharges from "./pages/PriceMaster/LateCharges";
@@ -11,7 +12,7 @@ import AllCategories from "./pages/MasterRecords/AllCategories";
 import AllBrands from "./pages/MasterRecords/AllBrands";
 import AllModels from "./pages/MasterRecords/AllModels";
 import AllCity from "./pages/MasterRecords/AllCity";
-import AllVehicleTypes from "./pages/MasterRecords/AllVechicleTypes"; // ✅ NEW IMPORT
+import AllVehicleTypes from "./pages/MasterRecords/AllVechicleTypes";
 import AllBookings from "./pages/AllBookings";
 import StoreMaster from "./pages/StoreMaster";
 import AllUsers from "./pages/AllUsers";
@@ -20,7 +21,7 @@ import AllRegisterCustomers from "./pages/AllRegisterCustomers";
 import BookingReport from "./pages/AllReport/BookingReport";
 import GstReport from "./pages/AllReport/GstReport";
 import SalesReport from "./pages/AllReport/SalesReport";
-import Login from "./pages/AdminLogin";
+import AdminLogin from "./pages/AdminLogin";
 import TimeSlot from "./pages/TimeSlot";
 import BikeServices from "./pages/BikeServices";
 import SpareParts from "./pages/SpareParts";
@@ -29,34 +30,69 @@ import TrackVehicle from "./pages/TrackVehicle";
 import StoreManagers from "./pages/StoreManagers";
 import AddBikeForm from "./pages/Addbikeform";
 import AdminInvoice from './components/AdminInvoice';
+import Unauthorized from "./pages/storemanager/Unauthorized";
+import CreateBooking from "./pages/AdminBooking/CreateBooking";
 
+// ✅ UPDATED: Store Manager now has more permissions
+const ROLE_PERMISSIONS = {
+  1: { // Admin
+    name: "Admin",
+    allowedRoutes: [
+      'dashboard',
+      'home',
+      'allBikes',
+      'sellBikes',
+      'addBike',
+      'allBookings',
+      'createBooking',
+      'storeMaster',
+      'allUsers',
+      'allOffers',
+      'timeslot',
+      'bikeServices',
+      'spareParts',
+      'serviceOrders',
+      'invoice',
+      'priceMaster',
+      'masterRecords',
+      'allRegisterCustomers',
+      'storeManger',
+      'verifiedUsers',
+      'unverifiedUsers',
+      'allReport'
+    ]
+  },
+  2: { // Store Manager - EXPANDED permissions
+    name: "Store Manager",
+    allowedRoutes: [
+      'dashboard',
+      'home',
+      'allBookings',     // ✅ View all bookings
+      'allBikes',        // ✅ View all bikes
+      'addBike',         // ✅ NEW: Can add bikes
+      'createBooking',   // ✅ NEW: Can create bookings
+      'invoice'          // ✅ NEW: Can view invoices
+    ]
+  }
+};
 
-// Authentication Context Component
 const AuthWrapper = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(null); // null = checking, true/false = determined
-
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
 
   useEffect(() => {
     const checkAuth = () => {
       const isLoggedIn = localStorage.getItem("isLoggedIn");
-      console.log("AuthWrapper - checking auth:", isLoggedIn);
       setIsAuthenticated(isLoggedIn === "true");
     };
 
-
     checkAuth();
 
-
-    // Listen for storage changes
     const handleStorageChange = () => {
       checkAuth();
     };
 
-
     window.addEventListener('storage', handleStorageChange);
-    // Custom event for when login happens
     window.addEventListener('authChange', handleStorageChange);
-
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -64,8 +100,6 @@ const AuthWrapper = ({ children }) => {
     };
   }, []);
 
-
-  // Show loading while checking authentication
   if (isAuthenticated === null) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -74,23 +108,31 @@ const AuthWrapper = ({ children }) => {
     );
   }
 
-
   return children;
 };
 
-
-// Simple Protected Route Component
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, routeName }) => {
   const isLoggedIn = localStorage.getItem("isLoggedIn");
-  console.log("ProtectedRoute check:", isLoggedIn);
+  const userRole = parseInt(localStorage.getItem("userRole"));
   
-  if (isLoggedIn === "true") {
-    return children;
+  if (isLoggedIn !== "true") {
+    return <Navigate to="/" replace />;
   }
-  
-  return <Navigate to="/" replace />;
-};
 
+  if (!ROLE_PERMISSIONS[userRole]) {
+    return <Navigate to="/" replace />;
+  }
+
+  const rolePermissions = ROLE_PERMISSIONS[userRole];
+  const hasAccess = rolePermissions.allowedRoutes.includes(routeName);
+  
+  if (!hasAccess) {
+    console.warn(`❌ Access Denied: Role ${userRole} cannot access route "${routeName}"`);
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+};
 
 function App() {
   return (
@@ -103,82 +145,278 @@ function App() {
       >
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<Login />} />
+          <Route path="/" element={<AdminLogin />} />
           <Route path="/trackvehicle" element={<TrackVehicle />} />
+          <Route path="/unauthorized" element={<Unauthorized />} />
 
-
-          {/* Protected routes */}
+          {/* Protected Dashboard */}
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute routeName="dashboard">
                 <Layout />
               </ProtectedRoute>
             }
           >
-            <Route index element={<Home />} />
-            <Route path="allBikes" element={<Bikes />} />
-            <Route path="sellBikes" element={<SellBikes />} /> {/* ✅ NEW SELL BIKES ROUTE */}
-            <Route path="addBike" element={<AddBikeForm />} />
-            <Route path="allBookings" element={<AllBookings />} />
-            <Route path="storeMaster" element={<StoreMaster />} />
-            <Route path="allUsers" element={<AllUsers />} />
-            <Route path="allOffers" element={<AllOffers />} />
-            <Route path="timeslot" element={<TimeSlot />} />
-            <Route path="bikeServices" element={<BikeServices />} />
-            <Route path="spareParts" element={<SpareParts />} />
-            <Route path="serviceOrders" element={<ServiceOrders />} />
-            <Route path="/dashboard/invoice/:bookingId" element={<AdminInvoice />} />
+            {/* Dashboard Home */}
+            <Route 
+              index 
+              element={
+                <ProtectedRoute routeName="home">
+                  <Home />
+                </ProtectedRoute>
+              } 
+            />
 
+            
 
-            {/* Price Master Submenu Routes */}
+            {/* ✅ ALL BOOKINGS - Admin & Store Manager */}
+            <Route 
+              path="allBookings" 
+              element={
+                <ProtectedRoute routeName="allBookings">
+                  <AllBookings />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* ✅ ALL BIKES - Admin & Store Manager */}
+            <Route 
+              path="allBikes" 
+              element={
+                <ProtectedRoute routeName="allBikes">
+                  <Bikes />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* ✅ ADD BIKE - Admin & Store Manager */}
+            <Route 
+              path="addBike" 
+              element={
+                <ProtectedRoute routeName="addBike">
+                  <AddBikeForm />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+  path="createBooking" 
+  element={
+    <ProtectedRoute routeName="createBooking">
+      <CreateBooking />
+    </ProtectedRoute>
+  } 
+/>
+
+            {/* ✅ INVOICE - Admin & Store Manager */}
+            <Route 
+              path="invoice/:bookingId" 
+              element={
+                <ProtectedRoute routeName="invoice">
+                  <AdminInvoice />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* ❌ ADMIN ONLY ROUTES */}
+            <Route 
+              path="sellBikes" 
+              element={
+                <ProtectedRoute routeName="sellBikes">
+                  <SellBikes />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="storeMaster" 
+              element={
+                <ProtectedRoute routeName="storeMaster">
+                  <StoreMaster />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="allUsers" 
+              element={
+                <ProtectedRoute routeName="allUsers">
+                  <AllUsers />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="allOffers" 
+              element={
+                <ProtectedRoute routeName="allOffers">
+                  <AllOffers />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="timeslot" 
+              element={
+                <ProtectedRoute routeName="timeslot">
+                  <TimeSlot />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="bikeServices" 
+              element={
+                <ProtectedRoute routeName="bikeServices">
+                  <BikeServices />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="spareParts" 
+              element={
+                <ProtectedRoute routeName="spareParts">
+                  <SpareParts />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="serviceOrders" 
+              element={
+                <ProtectedRoute routeName="serviceOrders">
+                  <ServiceOrders />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Price Master */}
             <Route
               path="priceMaster/deliveryAtLocationPrices"
-              element={<DeliveryAtLocationPrices />}
+              element={
+                <ProtectedRoute routeName="priceMaster">
+                  <DeliveryAtLocationPrices />
+                </ProtectedRoute>
+              }
             />
             <Route
               path="priceMaster/pickUpTariffPlan"
-              element={<PickUpTariffPlan />}
+              element={
+                <ProtectedRoute routeName="priceMaster">
+                  <PickUpTariffPlan />
+                </ProtectedRoute>
+              }
             />
             <Route
               path="priceMaster/lateCharges" 
-              element={<LateCharges />} 
+              element={
+                <ProtectedRoute routeName="priceMaster">
+                  <LateCharges />
+                </ProtectedRoute>
+              }
             />
 
-
-            {/* Master Records Submenu Routes */}
+            {/* Master Records */}
             <Route
               path="masterRecords/allCategories"
-              element={<AllCategories />}
+              element={
+                <ProtectedRoute routeName="masterRecords">
+                  <AllCategories />
+                </ProtectedRoute>
+              }
             />
-            <Route path="masterRecords/allBrands" element={<AllBrands />} />
-            <Route path="masterRecords/allModels" element={<AllModels />} />
-            <Route path="masterRecords/allCity" element={<AllCity />} />
-            <Route path="masterRecords/allVehicleTypes" element={<AllVehicleTypes />} /> {/* ✅ NEW ROUTE */}
+            <Route 
+              path="masterRecords/allBrands" 
+              element={
+                <ProtectedRoute routeName="masterRecords">
+                  <AllBrands />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="masterRecords/allModels" 
+              element={
+                <ProtectedRoute routeName="masterRecords">
+                  <AllModels />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="masterRecords/allCity" 
+              element={
+                <ProtectedRoute routeName="masterRecords">
+                  <AllCity />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="masterRecords/allVehicleTypes" 
+              element={
+                <ProtectedRoute routeName="masterRecords">
+                  <AllVehicleTypes />
+                </ProtectedRoute>
+              } 
+            />
             
             <Route
               path="allRegisterCustomers"
-              element={<AllRegisterCustomers />}
+              element={
+                <ProtectedRoute routeName="allRegisterCustomers">
+                  <AllRegisterCustomers />
+                </ProtectedRoute>
+              }
             />
-            <Route path="storeManger" element={<StoreManagers />} />
-            <Route path="verifiedUsers" element={<AllUsers />} />
-            <Route path="unverifiedUsers" element={<AllUsers />} />
+            <Route 
+              path="storeManger" 
+              element={
+                <ProtectedRoute routeName="storeManger">
+                  <StoreManagers />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="verifiedUsers" 
+              element={
+                <ProtectedRoute routeName="verifiedUsers">
+                  <AllUsers />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="unverifiedUsers" 
+              element={
+                <ProtectedRoute routeName="unverifiedUsers">
+                  <AllUsers />
+                </ProtectedRoute>
+              } 
+            />
             <Route
               path="allReport/bookingReport"
-              element={<BookingReport />}
+              element={
+                <ProtectedRoute routeName="allReport">
+                  <BookingReport />
+                </ProtectedRoute>
+              }
             />
-            <Route path="allReport/gstReport" element={<GstReport />} />
-            <Route path="allReport/salesReport" element={<SalesReport />} />
+            <Route 
+              path="allReport/gstReport" 
+              element={
+                <ProtectedRoute routeName="allReport">
+                  <GstReport />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="allReport/salesReport" 
+              element={
+                <ProtectedRoute routeName="allReport">
+                  <SalesReport />
+                </ProtectedRoute>
+              } 
+            />
           </Route>
 
-
-          {/* Catch all route */}
+          {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthWrapper>
   );
 }
-
 
 export default App;

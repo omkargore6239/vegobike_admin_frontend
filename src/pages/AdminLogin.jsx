@@ -1,12 +1,15 @@
+// pages/AdminLogin.jsx
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import apiClient, { BASE_URL } from "../api/apiConfig"; // Import BASE_URL from apiConfig
+import apiClient, { BASE_URL } from "../api/apiConfig";
+
 
 const AdminLogin = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [userType, setUserType] = useState("admin"); // admin or store-manager
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -14,7 +17,7 @@ const AdminLogin = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [validationErrors, setValidationErrors] = useState({});
 
-  // ✅ PROFESSIONAL ERROR HANDLING UTILITIES
+
   const ErrorTypes = {
     NETWORK: 'NETWORK',
     VALIDATION: 'VALIDATION',
@@ -24,6 +27,7 @@ const AdminLogin = () => {
     UNKNOWN: 'UNKNOWN'
   };
 
+
   const getErrorInfo = (error) => {
     let type = ErrorTypes.UNKNOWN;
     let message = "An unexpected error occurred";
@@ -32,18 +36,16 @@ const AdminLogin = () => {
 
     if (!error) return { type, message, isRetryable, suggestions };
 
-    // Network errors
     if (error.code === 'ERR_NETWORK' || error.message?.toLowerCase().includes('network')) {
       type = ErrorTypes.NETWORK;
       message = `Unable to connect to server at ${BASE_URL}`;
       isRetryable = true;
       suggestions = [
         "Check your internet connection",
-        "Verify the backend server is running on port 8081",
+        "Verify the backend server is running on port 8080",
         "Ensure CORS is properly configured"
       ];
     }
-    // HTTP status errors
     else if (error.response?.status) {
       const status = error.response.status;
       const serverMessage = error.response.data?.message || error.response.data?.error;
@@ -51,35 +53,20 @@ const AdminLogin = () => {
       switch (status) {
         case 400:
           type = ErrorTypes.VALIDATION;
-          if (error.response.data?.error === "VALIDATION_FAILED") {
-            if (error.response.data?.details && typeof error.response.data.details === 'object') {
-              const validationErrors = Object.values(error.response.data.details).join(", ");
-              message = `Please fix the following: ${validationErrors}`;
-            } else {
-              message = serverMessage || "Please check your input and try again";
-            }
-          } else {
-            message = serverMessage || "Invalid request data";
-          }
+          message = serverMessage || "Invalid request data";
           suggestions = ["Please verify your email and password"];
           break;
         case 401:
           type = ErrorTypes.AUTHENTICATION;
-          if (error.response.data?.error === "INVALID_CREDENTIALS") {
-            message = "Invalid email or password. Please check your credentials and try again";
-          } else {
-            message = "Authentication failed. Please verify your login details";
-          }
-          suggestions = ["Double-check your email and password", "Contact administrator if you forgot credentials"];
+          message = "Invalid email or password. Please check your credentials and try again";
+          suggestions = ["Double-check your email and password"];
           break;
         case 403:
           type = ErrorTypes.AUTHORIZATION;
-          if (error.response.data?.error === "ACCESS_DENIED") {
-            message = "Admin privileges required. Please contact your administrator for access";
-          } else {
-            message = "Access denied. You don't have permission to access this resource";
-          }
-          suggestions = ["Contact your administrator for admin access"];
+          message = userType === "admin" 
+            ? "Admin privileges required. Please contact your administrator for access"
+            : "Store manager privileges required. Please contact your administrator for access";
+          suggestions = ["Contact your administrator for proper access"];
           break;
         case 500:
         case 502:
@@ -98,7 +85,7 @@ const AdminLogin = () => {
       type = ErrorTypes.NETWORK;
       message = "Connection refused. Please check if the backend server is running";
       isRetryable = true;
-      suggestions = ["Ensure backend server is running on port 8081"];
+      suggestions = ["Ensure backend server is running on port 8080"];
     }
     else if (error.message) {
       message = error.message;
@@ -106,6 +93,7 @@ const AdminLogin = () => {
 
     return { type, message, isRetryable, suggestions };
   };
+
 
   const showErrorNotification = (error, context = "") => {
     const errorInfo = getErrorInfo(error);
@@ -136,7 +124,7 @@ const AdminLogin = () => {
     return errorInfo;
   };
 
-  // ✅ ENHANCED FORM VALIDATION
+
   const validateEmail = (email) => {
     if (!email) return "Email is required";
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -144,11 +132,13 @@ const AdminLogin = () => {
     return "";
   };
 
+
   const validatePassword = (password) => {
     if (!password) return "Password is required";
     if (password.length < 6) return "Password must be at least 6 characters";
     return "";
   };
+
 
   const validateForm = () => {
     const errors = {};
@@ -163,48 +153,56 @@ const AdminLogin = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // Handle input changes with validation
+
   const handleEmailChange = (e) => {
     const value = e.target.value;
     setEmail(value);
     
-    // Clear validation error for this field
     if (validationErrors.email) {
       setValidationErrors(prev => ({ ...prev, email: undefined }));
     }
     
-    // Clear general error
     if (error) setError("");
   };
+
 
   const handlePasswordChange = (e) => {
     const value = e.target.value;
     setPassword(value);
     
-    // Clear validation error for this field
     if (validationErrors.password) {
       setValidationErrors(prev => ({ ...prev, password: undefined }));
     }
     
-    // Clear general error
     if (error) setError("");
   };
 
+
+  const handleUserTypeChange = (type) => {
+    setUserType(type);
+    setEmail("");
+    setPassword("");
+    setError("");
+    setValidationErrors({});
+  };
+
+
   useEffect(() => {
     setIsVisible(true);
-    
-    // Check backend connection and authentication status
     checkBackendConnection();
     checkAuthStatus();
   }, [navigate]);
 
+
   const checkAuthStatus = () => {
     const token = localStorage.getItem("token");
     const isLoggedIn = localStorage.getItem("isLoggedIn");
+    
     if (isLoggedIn === "true" && token) {
       navigate("/dashboard", { replace: true });
     }
   };
+
 
   const checkBackendConnection = async (retryAttempt = 0) => {
     try {
@@ -217,7 +215,6 @@ const AdminLogin = () => {
       setConnectionStatus("disconnected");
       console.error("❌ Backend connection failed:", error.message);
       
-      // Auto-retry logic
       if (retryAttempt < 2) {
         console.log(`🔄 Auto-retrying connection (attempt ${retryAttempt + 1}/3)...`);
         setRetryCount(retryAttempt + 1);
@@ -226,53 +223,60 @@ const AdminLogin = () => {
     }
   };
 
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
 
-    // Client-side validation
     if (!validateForm()) {
       setIsLoading(false);
       return;
     }
 
+    const endpoint = userType === "admin" 
+      ? '/api/auth/admin/login' 
+      : '/api/auth/store-manager/login';
+
     console.log("🔄 Login attempt started...");
-    console.log("Using API URL:", `${BASE_URL}/api/auth/admin/login`);
+    console.log("Using API URL:", `${BASE_URL}${endpoint}`);
+    console.log("User Type:", userType);
 
     try {
-      const response = await apiClient.post('/api/auth/admin/login', {
+      const response = await apiClient.post(endpoint, {
         email: email.trim(),
         password: password
       });
 
       console.log("✅ Login successful:", response.data);
       
-      // Clear any existing auth data first
       localStorage.clear();
       
-      // Set authentication data from backend response
       const userData = response.data.user;
       const token = response.data.token;
       
       localStorage.setItem("isLoggedIn", "true");
       localStorage.setItem("token", token);
-      localStorage.setItem("authToken", token); // Keep for compatibility
+      localStorage.setItem("authToken", token);
       localStorage.setItem("userEmail", userData.email);
       localStorage.setItem("userName", userData.name);
       localStorage.setItem("userId", userData.id.toString());
       localStorage.setItem("userRole", userData.roleId.toString());
+      localStorage.setItem("userType", userType);
+      
+      if (userData.storeId) {
+        localStorage.setItem("storeId", userData.storeId.toString());
+      }
+      
       localStorage.setItem("loginTime", Date.now().toString());
       
-      // Dispatch auth change event
       window.dispatchEvent(new Event('authChange'));
       
       console.log("✅ Authentication data stored, navigating to dashboard...");
       
-      // Show success message
-      toast.success("Login successful! Welcome to the admin dashboard.");
+      const roleLabel = userType === "admin" ? "Admin" : "Store Manager";
+      toast.success(`Login successful! Welcome to the ${roleLabel} dashboard.`);
       
-      // Navigate to dashboard
       navigate("/dashboard", { replace: true });
       
     } catch (error) {
@@ -281,12 +285,10 @@ const AdminLogin = () => {
       
       const errorInfo = showErrorNotification(error, "Login failed");
       
-      // Update connection status if network error
       if (errorInfo.type === ErrorTypes.NETWORK) {
         setConnectionStatus("disconnected");
       }
       
-      // Add shake animation to form
       const form = document.getElementById("login-form");
       if (form) {
         form.classList.add("animate-shake");
@@ -297,11 +299,13 @@ const AdminLogin = () => {
     }
   };
 
+
   const retryConnection = () => {
     setConnectionStatus("checking");
     setError("");
     checkBackendConnection();
   };
+
 
   const getStatusColor = () => {
     switch (connectionStatus) {
@@ -310,6 +314,7 @@ const AdminLogin = () => {
       default: return "bg-yellow-100 text-yellow-700 border-yellow-500";
     }
   };
+
 
   const getStatusIcon = () => {
     switch (connectionStatus) {
@@ -334,6 +339,7 @@ const AdminLogin = () => {
     }
   };
 
+
   const getStatusMessage = () => {
     switch (connectionStatus) {
       case "connected": return `✓ Connected to backend server`;
@@ -342,9 +348,23 @@ const AdminLogin = () => {
     }
   };
 
+
   const isFormValid = () => {
     return email.trim() && password.trim() && Object.keys(validationErrors).length === 0;
   };
+
+
+  const getLoginTitle = () => {
+    return userType === "admin" ? "VegoBike Admin Login" : "VegoBike Store Manager Login";
+  };
+
+
+  const getLoginSubtitle = () => {
+    return userType === "admin" 
+      ? "Enter your admin credentials to access the dashboard"
+      : "Enter your store manager credentials to access your store dashboard";
+  };
+
 
   return (
     <div
@@ -379,11 +399,42 @@ const AdminLogin = () => {
             </svg>
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-center text-gray-800 dark:text-white mb-6">
-          VegoBike Admin Login
-        </h2>
         
-        {/* Enhanced Connection Status */}
+        <h2 className="text-2xl font-bold text-center text-gray-800 dark:text-white mb-2">
+          {getLoginTitle()}
+        </h2>
+
+        {/* ✅ USER TYPE SELECTOR - TABS */}
+        <div className="flex gap-3 mb-6 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
+          <button
+            type="button"
+            onClick={() => handleUserTypeChange("admin")}
+            className={`flex-1 py-2 px-3 rounded-md font-medium text-sm transition-all ${
+              userType === "admin"
+                ? "bg-indigo-600 text-white shadow-md"
+                : "bg-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            }`}
+          >
+            👨‍💼 Admin
+          </button>
+          <button
+            type="button"
+            onClick={() => handleUserTypeChange("store-manager")}
+            className={`flex-1 py-2 px-3 rounded-md font-medium text-sm transition-all ${
+              userType === "store-manager"
+                ? "bg-indigo-600 text-white shadow-md"
+                : "bg-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            }`}
+          >
+            🏪 Store Manager
+          </button>
+        </div>
+
+        <p className="text-center text-sm text-gray-600 dark:text-gray-400 mb-4">
+          {getLoginSubtitle()}
+        </p>
+        
+        {/* Connection Status */}
         <div className={`mb-4 p-3 rounded-md border-l-4 text-sm ${getStatusColor()}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center">
@@ -422,7 +473,7 @@ const AdminLogin = () => {
           </div>
         )}
         
-        {/* Enhanced Error State */}
+        {/* Error State */}
         {error && (
           <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-md border-l-4 border-red-500 animate-fadeIn">
             <div className="flex">
@@ -440,49 +491,32 @@ const AdminLogin = () => {
               </svg>
               <div className="flex-1">
                 <div className="font-medium">{error}</div>
-                {error.includes("connect to server") && (
-                  <div className="mt-2">
-                    <p className="text-xs">
-                      💡 <strong>Troubleshooting tips:</strong>
-                    </p>
-                    <ul className="text-xs mt-1 ml-4 list-disc">
-                      <li>Ensure your backend server is running on {BASE_URL}</li>
-                      <li>Check your network connection</li>
-                      <li>Verify CORS settings in your backend</li>
-                    </ul>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         )}
         
-        {/* Enhanced Login Form */}
+        {/* Login Form */}
         <form id="login-form" onSubmit={handleLogin} className="space-y-6">
           <div className="transition-all duration-300 transform delay-100">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Email Address <span className="text-red-500">*</span>
             </label>
-            <div className="relative">
-              <input
-                type="email"
-                className={`w-full pl-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:text-white transition-all ${
-                  validationErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300 dark:border-gray-600'
-                }`}
-                placeholder="Enter your admin email"
-                value={email}
-                onChange={handleEmailChange}
-                disabled={isLoading || connectionStatus === "disconnected"}
-                required
-                autoComplete="email"
-                autoFocus
-                aria-describedby={validationErrors.email ? "email-error" : undefined}
-              />
-            </div>
+            <input
+              type="email"
+              className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:text-white transition-all ${
+                validationErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300 dark:border-gray-600'
+              }`}
+              placeholder="Enter your email"
+              value={email}
+              onChange={handleEmailChange}
+              disabled={isLoading || connectionStatus === "disconnected"}
+              required
+              autoComplete="email"
+              autoFocus
+            />
             {validationErrors.email && (
-              <p id="email-error" className="text-xs text-red-600 mt-1" role="alert">
-                {validationErrors.email}
-              </p>
+              <p className="text-xs text-red-600 mt-1">{validationErrors.email}</p>
             )}
           </div>
           
@@ -490,25 +524,20 @@ const AdminLogin = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Password <span className="text-red-500">*</span>
             </label>
-            <div className="relative">
-              <input
-                type="password"
-                className={`w-full pl-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:text-white transition-all ${
-                  validationErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300 dark:border-gray-600'
-                }`}
-                placeholder="Enter your password"
-                value={password}
-                onChange={handlePasswordChange}
-                disabled={isLoading || connectionStatus === "disconnected"}
-                required
-                autoComplete="current-password"
-                aria-describedby={validationErrors.password ? "password-error" : undefined}
-              />
-            </div>
+            <input
+              type="password"
+              className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:text-white transition-all ${
+                validationErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300 dark:border-gray-600'
+              }`}
+              placeholder="Enter your password"
+              value={password}
+              onChange={handlePasswordChange}
+              disabled={isLoading || connectionStatus === "disconnected"}
+              required
+              autoComplete="current-password"
+            />
             {validationErrors.password && (
-              <p id="password-error" className="text-xs text-red-600 mt-1" role="alert">
-                {validationErrors.password}
-              </p>
+              <p className="text-xs text-red-600 mt-1">{validationErrors.password}</p>
             )}
           </div>
           
@@ -548,16 +577,16 @@ const AdminLogin = () => {
             ) : connectionStatus === "disconnected" ? (
               "Server Unavailable"
             ) : !isFormValid() ? (
-              "Please fill in all fields correctly"
+              "Please fill in all fields"
             ) : (
               "Sign In"
             )}
           </button>
         </form>
         
-        {/* Enhanced Footer */}
+        {/* Footer */}
         <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-          <p>Enter your admin credentials to access the dashboard</p>
+          <p>Enter your credentials to access your dashboard</p>
           <p className="mt-2 text-xs">
             Backend: {BASE_URL}
           </p>
@@ -569,7 +598,6 @@ const AdminLogin = () => {
         </div>
       </div>
 
-      {/* Add custom styles for shake animation */}
       <style jsx>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }

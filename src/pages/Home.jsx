@@ -92,23 +92,62 @@ const Home = () => {
       }
     };
 
-    const fetchStores = async () => {
-      try {
-        const response = await apiClient.get("/store/all");
-        setStores(response.data.content);
-      } catch (error) {
-        console.error("Error fetching stores data:", error);
-      }
-    };
+    // ✅ FIXED - Fetch Stores
+const fetchStores = async () => {
+  try {
+    console.log("🔄 Fetching stores...");
+    const response = await apiClient.get("/store/all");
+    
+    console.log("✅ Stores response:", response.data);
+    
+    // ✅ Handle response properly - check if data exists
+    if (response.data && response.data.content) {
+      setStores(response.data.content);
+      console.log("✅ Stores loaded from .content:", response.data.content.length);
+    } else if (response.data && Array.isArray(response.data)) {
+      setStores(response.data);
+      console.log("✅ Stores loaded direct array:", response.data.length);
+    } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+      setStores(response.data.data);
+      console.log("✅ Stores loaded from .data:", response.data.data.length);
+    } else {
+      setStores([]);
+      console.warn("⚠️ No stores data found in response");
+    }
+  } catch (error) {
+    console.error("❌ Error fetching stores data:", error);
+    setStores([]);
+  }
+};
 
-    const fetchBikes = async () => {
-      try {
-        const response = await apiClient.get("/vehicle/all");
-        setBikes(response.data.content);
-      } catch (error) {
-        console.error("Error fetching bikes data:", error);
-      }
-    };
+// ✅ FIXED - Fetch Bikes
+const fetchBikes = async () => {
+  try {
+    console.log("🔄 Fetching bikes...");
+    const response = await apiClient.get("/vehicle/all");
+    
+    console.log("✅ Bikes response:", response.data);
+    
+    // ✅ Handle response properly - check if data exists
+    if (response.data && response.data.content) {
+      setBikes(response.data.content);
+      console.log("✅ Bikes loaded from .content:", response.data.content.length);
+    } else if (response.data && Array.isArray(response.data)) {
+      setBikes(response.data);
+      console.log("✅ Bikes loaded direct array:", response.data.length);
+    } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+      setBikes(response.data.data);
+      console.log("✅ Bikes loaded from .data:", response.data.data.length);
+    } else {
+      setBikes([]);
+      console.warn("⚠️ No bikes data found in response");
+    }
+  } catch (error) {
+    console.error("❌ Error fetching bikes data:", error);
+    setBikes([]);
+  }
+};
+
 
     fetchUsers();
     fetchBookings();
@@ -152,7 +191,7 @@ const Home = () => {
   const stats = [
   {
     title: "Today's Bookings",
-    count: todaysBookings.length,
+    count: todaysBookings?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-indigo-700 to-blue-600",
     icon: "📅",
     hasButton: true,
@@ -160,7 +199,7 @@ const Home = () => {
   },
   {
     title: "Ongoing Bookings",
-    count: ongoingBookings.length,
+    count: ongoingBookings?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-yellow-400 to-yellow-300",
     icon: "🔄",
     hasButton: true,
@@ -168,15 +207,15 @@ const Home = () => {
   },
   {
     title: "Cancelled Bookings",
-    count: bookings.filter(b => b.status === 'CANCELLED').length,
+    count: bookings?.filter(b => b.status === 'CANCELLED')?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-red-500 to-red-400",
     icon: "❌",
-    hasButton: true, // Updated to true
-    onClick: () => navigate("/dashboard/allBookings"), // Added navigation
+    hasButton: true,
+    onClick: () => navigate("/dashboard/allBookings"),
   },
   {
     title: "Total Users",
-    count: users.length,
+    count: users?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-cyan-500 to-cyan-400",
     icon: "👥",
     hasButton: true,
@@ -184,7 +223,7 @@ const Home = () => {
   },
   {
     title: "Total Verified Users",
-    count: verifiedUsers.length,
+    count: verifiedUsers?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-green-500 to-green-400",
     icon: "✅",
     hasButton: true,
@@ -192,7 +231,7 @@ const Home = () => {
   },
   {
     title: "Total Unverified Users",
-    count: unverifiedUsers.length,
+    count: unverifiedUsers?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-yellow-400 to-yellow-300",
     icon: "⚠️",
     hasButton: true,
@@ -200,19 +239,19 @@ const Home = () => {
   },
   {
     title: "Users With 0 Bookings",
-    count: users.filter(user => user.bookingCount === 0).length,
+    count: users?.filter(user => user.bookingCount === 0)?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-red-500 to-red-400",
     icon: "❗",
-    hasButton: true, // Updated to true
-    onClick: () => navigate("/dashboard/allBookings"), // Added navigation
+    hasButton: true,
+    onClick: () => navigate("/dashboard/allBookings"),
   },
   {
     title: "Total Service Orders",
     count: 62,
     gradient: "bg-gradient-to-br from-indigo-700 to-blue-600",
     icon: "⚙️",
-    hasButton: true, // Updated to true
-    onClick: () => navigate("/dashboard/serviceOrders"), // Added navigation
+    hasButton: true,
+    onClick: () => navigate("/dashboard/serviceOrders"),
   },
   {
     title: "Total Bike Sales",
@@ -224,7 +263,7 @@ const Home = () => {
   },
   {
     title: "Total Bookings",
-    count: bookings.length,
+    count: bookings?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-teal-500 to-teal-400",
     icon: "📚",
     hasButton: true,
@@ -232,7 +271,7 @@ const Home = () => {
   },
   {
     title: "Total Stores",
-    count: stores.length,
+    count: stores?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-red-600 to-red-500",
     icon: "🏪",
     hasButton: true,
@@ -240,13 +279,14 @@ const Home = () => {
   },
   {
     title: "Total Bikes",
-    count: bikes.length,
+    count: bikes?.length || 0,  // ✅ Add safety
     gradient: "bg-gradient-to-br from-red-700 to-red-600",
     icon: "🏍️",
     hasButton: true,
     onClick: handleViewAllBikes,
   },
 ];
+
 
 
   const useCounter = (end, duration = 2000) => {

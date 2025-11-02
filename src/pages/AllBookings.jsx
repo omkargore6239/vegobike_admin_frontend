@@ -10,7 +10,7 @@ import {
 } from "react-icons/fa";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { bookingAPI, documentAPI } from '../utils/apiClient';
+import { bookingAPI, documentAPI, additionalChargeAPI } from '../utils/apiClient';
 
 const AllBookings = () => {
   const navigate = useNavigate();
@@ -19,10 +19,13 @@ const AllBookings = () => {
   const [bookings, setBookings] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(() => {
-    // Restore page from sessionStorage on refresh
     const saved = sessionStorage.getItem('bookingsCurrentPage');
     return saved ? parseInt(saved) : 0;
   });
+  // ✅ ADD THESE NEW STATES
+const [showEndTripKmModal, setShowEndTripKmModal] = useState(false);
+const [endTripKmValue, setEndTripKmValue] = useState('');
+
   const [loading, setLoading] = useState(true);
   const [pageSize, setPageSize] = useState(() => {
     const saved = sessionStorage.getItem('bookingsPageSize');
@@ -32,7 +35,6 @@ const AllBookings = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [viewMode, setViewMode] = useState(() => {
-    // Restore viewMode from sessionStorage
     const saved = sessionStorage.getItem('bookingsViewMode');
     return saved === 'true';
   });
@@ -41,8 +43,10 @@ const AllBookings = () => {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState('desc');
   const [isSearching, setIsSearching] = useState(false);
+  // Add these new state variables at the top with other states
 
-  // Save state to sessionStorage when it changes
+
+
   useEffect(() => {
     sessionStorage.setItem('bookingsCurrentPage', currentPage.toString());
   }, [currentPage]);
@@ -61,13 +65,11 @@ const AllBookings = () => {
     }
   }, [selectedBooking]);
 
-  // Restore selected booking on page refresh
   useEffect(() => {
     const savedViewMode = sessionStorage.getItem('bookingsViewMode') === 'true';
     const savedBookingId = sessionStorage.getItem('selectedBookingId');
     
     if (savedViewMode && savedBookingId && !selectedBooking) {
-      // Fetch the booking details to restore view
       const restoreBooking = async () => {
         try {
           const response = await bookingAPI.getById(parseInt(savedBookingId));
@@ -223,7 +225,6 @@ const AllBookings = () => {
     setSelectedBooking(null);
     sessionStorage.removeItem('bookingsViewMode');
     sessionStorage.removeItem('selectedBookingId');
-    // Refresh bookings list to get latest data
     fetchBookings();
   };
 
@@ -311,6 +312,10 @@ const AllBookings = () => {
             getVehicleNumber={getVehicleNumber}
             getVehicleDetails={getVehicleDetails}
             navigate={navigate}
+            showEndTripKmModal={showEndTripKmModal}
+    setShowEndTripKmModal={setShowEndTripKmModal}
+    endTripKmValue={endTripKmValue}
+    setEndTripKmValue={setEndTripKmValue}
           />
         ) : (
           <BookingListView
@@ -346,7 +351,7 @@ const AllBookings = () => {
   );
 };
 
-// Booking List View Component
+// Booking List View Component (unchanged)
 const BookingListView = ({
   bookings,
   searchQuery,
@@ -387,13 +392,13 @@ const BookingListView = ({
           </div>
           
           <div className="flex items-center space-x-3">
-            <button
-              onClick={() => navigate('/dashboard/bookings/create')}
+            {/* <button
+              onClick={() => navigate('/dashboard/createBooking')}
               className="flex items-center px-4 py-2 rounded-lg shadow-md transition-all bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold hover:shadow-lg"
             >
               <FaPlus className="mr-2" />
               Create Booking
-            </button>
+            </button> */}
 
             <button
               onClick={handleRefresh}
@@ -567,17 +572,13 @@ const BookingListView = ({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-center">
-  <button
-    onClick={() => handleView(booking)}
-    className="inline-flex items-center px-2 py-1 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded hover:from-indigo-700 hover:to-blue-700 transition-all shadow-sm text-xs"
-  >
-    <FaEye className="mr-1 text-xs" />
-    View
-  </button>
-</td>
-
-                    <td>
-                      
+                      <button
+                        onClick={() => handleView(booking)}
+                        className="inline-flex items-center px-2 py-1 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded hover:from-indigo-700 hover:to-blue-700 transition-all shadow-sm text-xs"
+                      >
+                        <FaEye className="mr-1 text-xs" />
+                        View
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -640,18 +641,56 @@ const BookingListView = ({
   );
 };
 
-// Booking Detail View Component
-const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings, navigate }) => {
+// Booking Detail View Component - UPDATED ADDITIONAL CHARGES SECTION ONLY
+const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings, navigate, showEndTripKmModal,
+  setShowEndTripKmModal,
+  endTripKmValue,
+  setEndTripKmValue }) => {
   const [formData, setFormData] = useState({});
   const [additionalCharges, setAdditionalCharges] = useState([]);
   const [newCharge, setNewCharge] = useState({ type: 'Additional Charges', amount: '' });
   const [isUpdating, setIsUpdating] = useState(false);
   const [isSavingCharges, setIsSavingCharges] = useState(false);
+  const [loadingCharges, setLoadingCharges] = useState(false);
   
   const [userDocuments, setUserDocuments] = useState(null);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [verifyingDocument, setVerifyingDocument] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
+
+  // ✅ NEW: Fetch additional charges when booking changes
+  useEffect(() => {
+    if (booking?.id) {
+      fetchAdditionalCharges(booking.id);
+    }
+  }, [booking?.id]);
+
+  // ✅ NEW: Fetch charges from backend
+  const fetchAdditionalCharges = async (bookingId) => {
+    setLoadingCharges(true);
+    try {
+      console.log('🔍 Fetching additional charges for booking:', bookingId);
+      const response = await additionalChargeAPI.getByBookingId(bookingId);
+      const charges = response.data || [];
+      
+      const mappedCharges = charges.map(charge => ({
+        id: charge.id,
+        type: charge.chargeType,
+        amount: parseFloat(charge.amount),
+        savedToBackend: true
+      }));
+      
+      setAdditionalCharges(mappedCharges);
+      console.log('✅ Loaded', mappedCharges.length, 'additional charges');
+    } catch (error) {
+      console.error('❌ Error fetching additional charges:', error);
+      if (error.response?.status !== 404) {
+        toast.error('Failed to load additional charges');
+      }
+    } finally {
+      setLoadingCharges(false);
+    }
+  };
 
   useEffect(() => {
     if (booking) {
@@ -903,12 +942,14 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
+  // ✅ UPDATED: Add charge to local state with unsaved flag
   const handleAddMore = () => {
     if (newCharge.type !== 'Additional Charges' && newCharge.amount && !isNaN(parseFloat(newCharge.amount))) {
       const charge = {
         id: Date.now(),
         type: newCharge.type,
-        amount: parseFloat(newCharge.amount)
+        amount: parseFloat(newCharge.amount),
+        savedToBackend: false // Mark as unsaved
       };
       
       setAdditionalCharges(prev => [...prev, charge]);
@@ -926,122 +967,229 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
     }
   };
 
-  const handleRemoveCharge = (id) => {
-    const chargeToRemove = additionalCharges.find(charge => charge.id === id);
-    setAdditionalCharges(prev => prev.filter(charge => charge.id !== id));
+  // ✅ UPDATED: Remove charge (from backend if saved, or just from state)
+  const handleRemoveCharge = async (chargeId, savedToBackend) => {
+    const chargeToRemove = additionalCharges.find(charge => charge.id === chargeId);
     
-    if (chargeToRemove) {
-      toast.success(`🗑️ Removed ${chargeToRemove.type}: ₹${chargeToRemove.amount}`);
+    if (savedToBackend) {
+      try {
+        console.log('🗑️ Removing charge from backend:', chargeId);
+        await additionalChargeAPI.remove(chargeId);
+        toast.success(`🗑️ Removed ${chargeToRemove.type}: ₹${chargeToRemove.amount}`);
+        
+        await fetchAdditionalCharges(booking.id);
+        
+        if (refreshBookings) {
+          refreshBookings();
+        }
+      } catch (error) {
+        console.error('❌ Error removing charge:', error);
+        toast.error('Failed to remove charge');
+      }
+    } else {
+      setAdditionalCharges(prev => prev.filter(charge => charge.id !== chargeId));
+      if (chargeToRemove) {
+        toast.success(`🗑️ Removed ${chargeToRemove.type}: ₹${chargeToRemove.amount}`);
+      }
     }
   };
 
+  // ✅ UPDATED: Save charges to backend API
   const handleSaveCharges = async () => {
-    if (additionalCharges.length === 0) {
-      toast.warning('⚠️ No additional charges to save');
+    const unsavedCharges = additionalCharges.filter(charge => !charge.savedToBackend);
+    
+    if (unsavedCharges.length === 0) {
+      toast.info('ℹ️ All charges are already saved');
       return;
     }
 
     setIsSavingCharges(true);
     try {
-      console.log('💾 Saving additional charges:', additionalCharges);
+      console.log('💾 Saving additional charges to backend:', unsavedCharges);
       
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const chargesType = unsavedCharges.map(charge => charge.type);
+      const chargesAmount = unsavedCharges.map(charge => charge.amount);
 
-      toast.success('💾 Additional charges saved successfully!');
+      const response = await additionalChargeAPI.save(
+        booking.id,
+        chargesType,
+        chargesAmount
+      );
+
+      console.log('✅ Backend response:', response.data);
+      toast.success(`💾 Saved ${unsavedCharges.length} additional charge(s) successfully!`);
       
-      const totalAdditional = additionalCharges.reduce((sum, charge) => sum + charge.amount, 0);
-      const newTotal = parseFloat(formData.totalRideFair) + totalAdditional;
-      setFormData(prev => ({ ...prev, totalRideFair: newTotal }));
+      await fetchAdditionalCharges(booking.id);
+      
+      if (refreshBookings) {
+        setTimeout(() => {
+          refreshBookings();
+        }, 500);
+      }
 
     } catch (error) {
       console.error('❌ Error saving additional charges:', error);
-      toast.error('❌ Failed to save additional charges');
+      
+      if (error.response?.data?.message) {
+        toast.error(`❌ ${error.response.data.message}`);
+      } else {
+        toast.error('❌ Failed to save additional charges');
+      }
     } finally {
       setIsSavingCharges(false);
     }
   };
 
   const handleUpdateBookingDetails = async () => {
-    if (!booking?.id) {
-      toast.error('❌ Booking ID not found');
-      return;
-    }
+  if (!booking?.id) {
+    toast.error('Booking ID not found');
+    return;
+  }
 
-    if (formData.bookingStatus === formData.currentBookingStatus) {
-      toast.info('ℹ️ Status is already up to date');
-      return;
-    }
+  if (formData.bookingStatus === formData.currentBookingStatus) {
+    toast.info('Status is already up to date');
+    return;
+  }
 
-    setIsUpdating(true);
-    try {
-      console.log('🔄 Updating booking status:', {
-        bookingId: booking.id,
-        newStatus: formData.bookingStatus,
-        previousStatus: formData.currentBookingStatus
-      });
+  // ✅ Check if completing trip without endTripKm
+  if (formData.bookingStatus === 'Completed' && !formData.endTripKm) {
+    setShowEndTripKmModal(true);
+    return;
+  }
 
-      let response;
-      
-      if (formData.bookingStatus === 'Accepted') {
-        response = await bookingAPI.accept(booking.id);
-      } else if (formData.bookingStatus === 'Cancelled') {
-        response = await bookingAPI.cancel(booking.id);
-      } else if (formData.bookingStatus === 'Completed') {
-        response = await bookingAPI.complete(booking.id);
-      } else {
-        toast.warning('⚠️ Status update not implemented for this status');
-        return;
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        currentBookingStatus: formData.bookingStatus
-      }));
-
-      toast.success(
-        `🎉 Status changed from "${formData.currentBookingStatus}" to "${formData.bookingStatus}"`,
-        { autoClose: 4000 }
-      );
-
-      if (refreshBookings) {
-        setTimeout(() => {
-          refreshBookings();
-        }, 1500);
-      }
-
-    } catch (error) {
-      console.error('❌ Error updating booking status:', error);
-      
-      if (error.response?.data?.message) {
-        toast.error(`❌ ${error.response.data.message}`);
-      } else {
-        toast.error('❌ Failed to update booking status');
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        bookingStatus: prev.currentBookingStatus
-      }));
-
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleViewInvoice = () => {
-  console.log('📄 Opening invoice for booking:', booking.id);
+  setIsUpdating(true);
   
-  // Navigate to invoice page with proper state
-  navigate(`/dashboard/invoice/${booking.id}`, { 
-    state: { 
-      from: '/dashboard/allBookings',  // ✅ Fixed path
-      booking: booking 
+  try {
+    console.log('Updating booking status', {
+      bookingId: booking.id,
+      newStatus: formData.bookingStatus,
+      previousStatus: formData.currentBookingStatus,
+      endTripKm: formData.endTripKm
+    });
+
+    let response;
+
+    if (formData.bookingStatus === 'Accepted') {
+      response = await bookingAPI.accept(booking.id);
+    } else if (formData.bookingStatus === 'Cancelled') {
+      response = await bookingAPI.cancel(booking.id);
+    } else if (formData.bookingStatus === 'Completed') {
+      // ✅ Pass endTripKm when completing
+      response = await bookingAPI.complete(booking.id, formData.endTripKm);
+    } else {
+      toast.warning('Status update not implemented for this status');
+      return;
     }
-  });
+
+    setFormData(prev => ({ ...prev, currentBookingStatus: formData.bookingStatus }));
+    
+    toast.success(`Status changed from ${formData.currentBookingStatus} to ${formData.bookingStatus}`, {
+      autoClose: 4000
+    });
+
+    if (refreshBookings) {
+      setTimeout(() => { refreshBookings(); }, 1500);
+    }
+
+  } catch (error) {
+    console.error('❌ Error updating booking status:', error);
+    
+    // ✅ Check if backend requires endTripKm
+    if (error.response?.data?.requireEndTripKm === true) {
+      toast.warning(error.response.data.message || 'End Trip KM is required');
+      setShowEndTripKmModal(true);
+      return;
+    }
+    
+    if (error.response?.data?.message) {
+      toast.error(error.response.data.message);
+    } else {
+      toast.error('Failed to update booking status');
+    }
+    
+    setFormData(prev => ({ ...prev, bookingStatus: prev.currentBookingStatus }));
+  } finally {
+    setIsUpdating(false);
+  }
+};
+
+// Add this new function after handleUpdateBookingDetails
+const handleSubmitEndTripKm = async () => {
+  console.log('🔴 handleSubmitEndTripKm called');
+  console.log('📌 endTripKmValue from state:', endTripKmValue);
+  
+  const kmValue = parseFloat(endTripKmValue);
+  
+  if (!endTripKmValue || isNaN(kmValue) || kmValue <= 0) {
+    toast.error('Please enter a valid End Trip KM');
+    return;
+  }
+
+  if (formData.startTripKm && kmValue < parseFloat(formData.startTripKm)) {
+    toast.error('End Trip KM cannot be less than Start Trip KM');
+    return;
+  }
+
+  setIsUpdating(true);
+  
+  try {
+    console.log('✅ Submitting with:');
+    console.log('   - bookingId:', booking.id);
+    console.log('   - kmValue:', kmValue);
+    
+    // ✅ Pass endTripKm as second parameter - matches user-side
+    const response = await bookingAPI.complete(booking.id, kmValue);
+    
+    console.log('✅ API Response:', response);
+    
+    setFormData(prev => ({ 
+      ...prev, 
+      currentBookingStatus: 'Completed',
+      bookingStatus: 'Completed',
+      endTripKm: kmValue
+    }));
+    
+    setShowEndTripKmModal(false);
+    setEndTripKmValue('');
+    
+    toast.success('Trip completed successfully!', { autoClose: 4000 });
+
+    if (refreshBookings) {
+      setTimeout(() => { refreshBookings(); }, 1500);
+    }
+
+  } catch (error) {
+    console.error('❌ Error completing trip:', error);
+    console.error('❌ Error response:', error.response?.data);
+    
+    if (error.response?.data?.message) {
+      toast.error(error.response.data.message);
+    } else {
+      toast.error('Failed to complete trip');
+    }
+  } finally {
+    setIsUpdating(false);
+  }
 };
 
 
+
+
+
+
+  const handleViewInvoice = () => {
+    console.log('📄 Opening invoice for booking:', booking.id);
+    
+    navigate(`/dashboard/invoice/${booking.id}`, { 
+      state: { 
+        from: '/dashboard/allBookings',
+        booking: booking 
+      }
+    });
+  };
+
   const totalAdditionalCharges = additionalCharges.reduce((sum, charge) => sum + charge.amount, 0);
+  const unsavedChargesCount = additionalCharges.filter(c => !c.savedToBackend).length;
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -1060,7 +1208,6 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               <h1 className="text-base font-medium text-gray-900">View Booking Details</h1>
             </div>
 
-            {/* View Invoice Button - Only show if completed */}
             {(booking.status === 'Completed' || booking.bookingStatus === 5) && (
               <button
                 onClick={handleViewInvoice}
@@ -1311,7 +1458,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
             )}
           </div>
 
-          {/* Additional Charges Section */}
+          {/* ✅ UPDATED ADDITIONAL CHARGES SECTION */}
           <div className="mb-3">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-semibold text-gray-700">
@@ -1319,6 +1466,11 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 {totalAdditionalCharges > 0 && (
                   <span className="ml-2 text-green-600 font-bold">
                     (Total: ₹{totalAdditionalCharges})
+                  </span>
+                )}
+                {loadingCharges && (
+                  <span className="ml-2 text-blue-600 text-xs">
+                    <div className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
                   </span>
                 )}
               </label>
@@ -1366,7 +1518,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 </button>
                 <button
                   onClick={handleSaveCharges}
-                  disabled={additionalCharges.length === 0 || isSavingCharges}
+                  disabled={unsavedChargesCount === 0 || isSavingCharges}
                   className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center"
                 >
                   {isSavingCharges ? (
@@ -1377,7 +1529,7 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   ) : (
                     <>
                       <FaSave className="mr-1" />
-                      Save
+                      Save {unsavedChargesCount > 0 && `(${unsavedChargesCount})`}
                     </>
                   )}
                 </button>
@@ -1392,18 +1544,26 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                   {additionalCharges.map((charge, index) => (
                     <div 
                       key={charge.id} 
-                      className="flex justify-between items-center py-2 px-3 bg-white rounded-md border border-blue-200 text-xs"
+                      className={`flex justify-between items-center py-2 px-3 rounded-md border text-xs ${
+                        charge.savedToBackend 
+                          ? 'bg-green-50 border-green-200' 
+                          : 'bg-yellow-50 border-yellow-200'
+                      }`}
                     >
                       <div className="flex items-center space-x-2">
-                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium text-xs">
-                          #{index + 1}
+                        <span className={`px-2 py-1 rounded-full font-medium text-xs ${
+                          charge.savedToBackend
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          #{index + 1} {charge.savedToBackend ? '✅' : '⏳'}
                         </span>
                         <span className="font-medium text-gray-700">{charge.type}</span>
                       </div>
                       <div className="flex items-center space-x-3">
                         <span className="font-bold text-green-600">₹{charge.amount}</span>
                         <button 
-                          onClick={() => handleRemoveCharge(charge.id)}
+                          onClick={() => handleRemoveCharge(charge.id, charge.savedToBackend)}
                           className="text-red-500 hover:text-red-700 hover:bg-red-100 p-1 rounded-full font-bold transition-colors"
                           title="Remove charge"
                         >
@@ -1423,15 +1583,23 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
                 </div>
               )}
               
-              {additionalCharges.length === 0 && (
+              {additionalCharges.length === 0 && !loadingCharges && (
                 <div className="text-center py-6 text-gray-500 text-xs bg-white rounded-md border-2 border-dashed border-gray-200">
                   <FaFileAlt className="mx-auto text-2xl mb-2 text-gray-400" />
                   No additional charges added yet
                 </div>
               )}
+              
+              {loadingCharges && (
+                <div className="text-center py-6">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-xs text-gray-600">Loading charges...</p>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* REST OF THE SECTIONS - UNCHANGED */}
           {/* START TRIP IMAGES SECTION */}
           {booking.startTripImages && booking.startTripImages.length > 0 && (
             <div className="border-t pt-3 mt-4">
@@ -1605,15 +1773,15 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
               >
                 Close
               </button>
-              <button>
-              {/* <a
-                href={selectedImage.url}
-                download
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = selectedImage.url;
+                  link.download = selectedImage.name;
+                  link.click();
+                }}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium flex items-center"
-              > */}
-                
+              >
                 <FaDownload className="mr-2" />
                 Download
               </button>
@@ -1621,6 +1789,110 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
           </div>
         </div>
       )}
+      {/* ✅ END TRIP KM MODAL */}
+{showEndTripKmModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white p-4 rounded-t-xl">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <FaExclamationTriangle className="mr-2 text-2xl" />
+            <h3 className="text-lg font-bold">End Trip KM Required</h3>
+          </div>
+          <button 
+            onClick={() => {
+              setShowEndTripKmModal(false);
+              setEndTripKmValue('');
+            }}
+            className="text-white hover:text-gray-200 transition-colors"
+          >
+            <FaTimes className="text-xl" />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-6">
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+          <p className="text-sm text-orange-800 flex items-center">
+            <FaExclamationTriangle className="mr-2 text-orange-600" />
+            Please enter the End Trip KM to complete this booking
+          </p>
+        </div>
+
+        {formData.startTripKm && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-blue-700 font-medium">Start Trip KM:</span>
+              <span className="text-lg font-bold text-blue-900">{formData.startTripKm} km</span>
+            </div>
+          </div>
+        )}
+
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            End Trip KM <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            placeholder="Enter End Trip KM"
+            value={endTripKmValue}
+            onChange={(e) => setEndTripKmValue(e.target.value)}
+            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+            min={formData.startTripKm || 0}
+            step="0.01"
+            autoFocus
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleSubmitEndTripKm();
+              }
+            }}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            {formData.startTripKm 
+              ? `Must be greater than ${formData.startTripKm} km`
+              : 'Enter the odometer reading at trip end'}
+          </p>
+        </div>
+
+        {endTripKmValue && formData.startTripKm && parseFloat(endTripKmValue) > parseFloat(formData.startTripKm) && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-green-700 font-medium">Total Distance:</span>
+              <span className="text-lg font-bold text-green-900">
+                {(parseFloat(endTripKmValue) - parseFloat(formData.startTripKm)).toFixed(2)} km
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end space-x-3">
+        <button
+          onClick={() => {
+            setShowEndTripKmModal(false);
+            setEndTripKmValue('');
+            setFormData(prev => ({ ...prev, bookingStatus: prev.currentBookingStatus }));
+          }}
+          className="px-5 py-2.5 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors text-sm"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmitEndTripKm}
+          disabled={!endTripKmValue || isNaN(parseFloat(endTripKmValue)) || parseFloat(endTripKmValue) <= 0}
+          className="px-5 py-2.5 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all text-sm flex items-center shadow-md"
+        >
+          <FaCheckCircle className="mr-2" />
+          Complete Trip
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 };

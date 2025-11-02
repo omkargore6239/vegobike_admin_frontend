@@ -1,3 +1,4 @@
+// components/Sidebar.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { IoLayersOutline, IoPricetagsOutline } from "react-icons/io5";
 import { LuBox, LuUsers, LuChevronRight, LuCalendarClock } from "react-icons/lu";
@@ -5,10 +6,12 @@ import { RiMotorbikeLine, RiServiceLine } from "react-icons/ri";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MdOutlineLocalGroceryStore, MdSell } from "react-icons/md";
 import { TbBrandBooking } from "react-icons/tb";
-import { FaWrench, FaCogs, FaMoneyBillWave } from "react-icons/fa";
+import { FaWrench, FaCogs, FaMoneyBillWave, FaSignOutAlt, FaPlus } from "react-icons/fa";
 import Header from "./Header";
 import fonts from "../styles/fonts";
 import colors from "../styles/colors";
+import { toast } from "react-toastify";
+
 
 const Sidebar = () => {
   const [activeLink, setActiveLink] = useState(0);
@@ -19,6 +22,11 @@ const Sidebar = () => {
   const sidebarRef = useRef(null);
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+  // ✅ GET USER ROLE
+  const userRole = parseInt(localStorage.getItem("userRole"));
+  const isStoreManager = userRole === 2;
+  const userName = localStorage.getItem("userName");
 
   // Handle window resize
   useEffect(() => {
@@ -33,6 +41,7 @@ const Sidebar = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -44,6 +53,7 @@ const Sidebar = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isMenuOpen]);
+
 
   // Set active link based on current path
   useEffect(() => {
@@ -65,10 +75,12 @@ const Sidebar = () => {
     setActiveLink(findActiveLinkIndex());
   }, [location.pathname]);
 
+
   // Close mobile menu on route change
   useEffect(() => {
     setIsMenuOpen(false);
   }, [location.pathname]);
+
 
   const handleLinkClick = (index, path) => {
     setActiveLink(index);
@@ -80,18 +92,31 @@ const Sidebar = () => {
     }
   };
 
+
   const toggleSubmenu = (index) => {
     setOpenSubmenus((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
+
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const toggleDesktopSidebar = () => setIsDesktopCollapsed(!isDesktopCollapsed);
 
-  const SIDEBAR_LINKS = [
+  // ✅ LOGOUT FUNCTION
+  const handleLogout = () => {
+    localStorage.clear();
+    window.dispatchEvent(new Event('authChange'));
+    toast.success("Logged out successfully!");
+    navigate("/", { replace: true });
+  };
+
+
+  // ✅ ALL ADMIN LINKS
+  const ALL_SIDEBAR_LINKS = [
     { id: 1, path: "/dashboard", name: "Dashboard", icon: LuBox },
     { id: 7, path: "/dashboard/allBookings", name: "All Bookings", icon: TbBrandBooking },
     { id: 2, path: "/dashboard/storeMaster", name: "Store Master", icon: MdOutlineLocalGroceryStore },
     { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
+    { id: 3.5, path: "/dashboard/addBike", name: "Add Bike", icon: FaPlus },
     {
       id: 4,
       name: "Price Master",
@@ -107,13 +132,12 @@ const Sidebar = () => {
       name: "Master Records",
       icon: IoLayersOutline,
       submenu: [
-         { id: 55, path: "/dashboard/masterRecords/allVehicleTypes", name: "All Vehicle Types" }, // ✅ NEW SUBMENU ITEM
-      
+        { id: 55, path: "/dashboard/masterRecords/allVehicleTypes", name: "All Vehicle Types" },
         { id: 51, path: "/dashboard/masterRecords/allCategories", name: "All Categories" },
         { id: 52, path: "/dashboard/masterRecords/allBrands", name: "All Brands" },
         { id: 53, path: "/dashboard/masterRecords/allModels", name: "All Models" },
         { id: 54, path: "/dashboard/masterRecords/allCity", name: "All Cities" },
-       ],
+      ],
     },
     { id: 6, path: "/dashboard/allOffers", name: "All Offers", icon: IoPricetagsOutline },
     { id: 9, path: "/dashboard/allRegisterCustomers", name: "All Registered Customers", icon: LuUsers },
@@ -133,6 +157,18 @@ const Sidebar = () => {
     { id: 15, path: "/dashboard/serviceOrders", name: "Service Orders", icon: FaWrench },
   ];
 
+  // ✅ UPDATED STORE MANAGER LINKS - With Add Bike & Create Booking
+  const STORE_MANAGER_LINKS = [
+    { id: 1, path: "/dashboard", name: "Dashboard", icon: LuBox },
+    { id: 7, path: "/dashboard/allBookings", name: "All Bookings", icon: TbBrandBooking },
+    { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
+     // { id: 3.5, path: "/dashboard/addBike", name: "➕ Add Bike", icon: FaPlus },
+      // { id: 3.7, path: "/dashboard/createBooking", name: "📅 Create Booking", icon: FaPlus }, 
+  ];
+
+  // ✅ SELECT LINKS BASED ON ROLE
+  const SIDEBAR_LINKS = isStoreManager ? STORE_MANAGER_LINKS : ALL_SIDEBAR_LINKS;
+
   return (
     <>
       {/* Header */}
@@ -150,15 +186,22 @@ const Sidebar = () => {
           </button>
           <img src="/vegologo.png" alt="VegoBike Logo" className="h-10 w-10" />
           <h1 className={fonts.sidebarTitle}>VeGoBike</h1>
+          
+          {/* ✅ SHOW USER ROLE */}
+          <span className="ml-4 text-xs bg-indigo-700 px-2 py-1 rounded text-white font-semibold">
+            {isStoreManager ? "🏪 Store Manager" : "👨‍💼 Admin"}
+          </span>
         </div>
         <Header />
       </div>
+
 
       {/* Mobile overlay */}
       <div
         className={`md:hidden fixed inset-0 bg-black bg-opacity-50 z-20 transition-opacity duration-300 ${isMenuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={toggleMenu}
       />
+
 
       {/* Sidebar */}
       <div
@@ -168,6 +211,19 @@ const Sidebar = () => {
                     ${isDesktopCollapsed ? "md:w-20" : "md:w-72"}
                     pt-16`}
       >
+        {/* ✅ USER INFO SECTION */}
+        {((windowWidth >= 768 && !isDesktopCollapsed) || (windowWidth < 768 && isMenuOpen)) && (
+          <div className="px-4 py-3 border-b border-indigo-700">
+            <p className="text-sm font-semibold text-white">
+              {isStoreManager ? "🏪 Store Manager" : "👨‍💼 Admin Dashboard"}
+            </p>
+            <p className="text-xs text-indigo-200 mt-1">
+              {userName}
+            </p>
+            
+          </div>
+        )}
+
         <div className="flex-grow py-5 overflow-y-auto overflow-x-hidden scrollbar-hide">
           <ul className="space-y-1">
             {SIDEBAR_LINKS.map((link, index) => (
@@ -224,18 +280,46 @@ const Sidebar = () => {
           </ul>
         </div>
 
-        {/* Footer */}
+
+        {/* ✅ LOGOUT & FOOTER */}
         {((windowWidth >= 768 && !isDesktopCollapsed) || (windowWidth < 768 && isMenuOpen)) && (
-          <div className="p-4 border-t border-indigo-800">
-            <div className={`${fonts.sidebarFooter} ${colors.sidebarFooter}`}>VegoBike ADMIN © 2025</div>
+          <div className="p-4 border-t border-indigo-800 space-y-3">
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all duration-200 text-sm"
+            >
+              <FaSignOutAlt size={16} />
+              Logout
+            </button>
+            
+            {/* Footer */}
+            <div className={`${fonts.sidebarFooter} ${colors.sidebarFooter} text-center text-xs`}>
+              VegoBike © 2025
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Logout Button (Collapsed) */}
+        {isDesktopCollapsed && windowWidth >= 768 && (
+          <div className="p-2 border-t border-indigo-800">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center px-2 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-200"
+              title="Logout"
+            >
+              <FaSignOutAlt size={18} />
+            </button>
           </div>
         )}
       </div>
+
 
       {/* Main content area */}
       <div className={`transition-all duration-300 ease-in-out ${isDesktopCollapsed ? "md:ml-20" : "md:ml-72"} pt-16`}>
         {/* Your main content goes here */}
       </div>
+
 
       {/* Hide scrollbar */}
       <style jsx>{`
@@ -250,5 +334,6 @@ const Sidebar = () => {
     </>
   );
 };
+
 
 export default Sidebar;

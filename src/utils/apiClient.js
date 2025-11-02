@@ -731,6 +731,24 @@ export const documentAPI = {
   },
 };
 
+// Add to your bookingAPI object in apiClient.js
+// ✅ CORRECTED - Add /api prefix to match your backend
+export const additionalChargeAPI = {
+  save: (bookingId, chargesType, chargesAmount) => 
+    api.post('/api/additional-charges/save', {
+      bookingId,
+      chargesType,
+      chargesAmount
+    }),
+  
+  remove: (chargeId) => 
+    api.post(`/api/additional-charges/remove?id=${chargeId}`),
+  
+  getByBookingId: (bookingId) => 
+    api.get(`/api/additional-charges/booking/${bookingId}`)
+};
+
+
 // Export apiClient as default and named export
 export { apiClient };
 export default api;
