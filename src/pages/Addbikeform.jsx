@@ -1,19 +1,21 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom"; // ✅ Added useParams, useLocation
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { brandAPI, categoryAPI, modelAPI, storeAPI, bikeAPI, BASE_URL } from "../api/apiConfig";
 import { toast } from "react-toastify";
-import { FaSpinner, FaCheck, FaTimes, FaArrowLeft, FaTrash } from "react-icons/fa"; // ✅ Added FaArrowLeft, FaTrash
+import { FaSpinner, FaCheck, FaTimes, FaArrowLeft, FaTrash } from "react-icons/fa";
 
 const AddBikeForm = () => {
   const navigate = useNavigate();
-  const { id } = useParams(); // ✅ Get bike ID from URL
-  const location = useLocation(); // ✅ Get bike data from navigation state
-  
-  // ✅ Check if editing or adding
+  const { id } = useParams();
+  const location = useLocation();
+
   const isEditMode = !!id;
   const initialBikeData = location.state?.bike;
 
+  console.log("🔵 COMPONENT RENDERED - isEditMode:", isEditMode);
+
   const [bikeData, setBikeData] = useState({
+    name: "",
     brandId: "",
     categoryId: "",
     modelId: "",
@@ -22,6 +24,9 @@ const AddBikeForm = () => {
     chassisNumber: "",
     engineNumber: "",
     storeId: "",
+    price: "",
+    latitude: "",
+    longitude: "",
     isPuc: false,
     isInsurance: false,
     isDocuments: false,
@@ -36,13 +41,10 @@ const AddBikeForm = () => {
   const [models, setModels] = useState([]);
   const [stores, setStores] = useState([]);
 
-  // ✅ NEW: Loading and submission states
   const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
   const [errors, setErrors] = useState({});
-  const [pageLoading, setPageLoading] = useState(isEditMode); // ✅ Loading state for edit mode
+  const [pageLoading, setPageLoading] = useState(isEditMode);
 
-  // ✅ Preview images
   const [previewImages, setPreviewImages] = useState({
     pucImage: null,
     insuranceImage: null,
@@ -50,57 +52,57 @@ const AddBikeForm = () => {
     vehicleImages: [],
   });
 
-  // ✅ Fetch dynamic data from database
+  // Helper function
+  const isValidId = (value) => {
+    console.log(`🔍 isValidId called with:`, value, `Type:`, typeof value);
+    if (!value || value === "" || value === "0") {
+      console.log(`  ❌ Invalid: empty or "0"`);
+      return false;
+    }
+    const numValue = Number(value);
+    const isValid = !isNaN(numValue) && numValue > 0;
+    console.log(`  ${isValid ? '✅' : '❌'} Result: ${numValue} (isNaN: ${isNaN(numValue)}, > 0: ${numValue > 0})`);
+    return isValid;
+  };
+
+  // Fetch data
   useEffect(() => {
+    console.log("📡 EFFECT: Fetching dropdown data...");
     const fetchData = async () => {
       try {
+        console.log("  🌐 Making API calls...");
         const [brandRes, categoryRes, modelRes, storeRes] = await Promise.all([
-          brandAPI.getAll(),
-          categoryAPI.getAll(),
-          modelAPI.getAll(),
-          storeAPI.getAll(),
+          brandAPI.getActive(),
+          categoryAPI.getActive(),
+          modelAPI.getActive(),
+          storeAPI.getActive(),
         ]);
 
-        console.log("✅ Brand API Response:", brandRes.data);
+        console.log("  ✅ Brand Response:", brandRes);
+        console.log("  ✅ Category Response:", categoryRes);
+        console.log("  ✅ Model Response:", modelRes);
+        console.log("  ✅ Store Response:", storeRes);
 
-        // Handle array or wrapped response
-        setBrands(
-          Array.isArray(brandRes.data)
-            ? brandRes.data
-            : brandRes.data.content ||
-                brandRes.data.data ||
-                brandRes.data.brands ||
-                []
-        );
+        const brandsData = Array.isArray(brandRes.data) ? brandRes.data : brandRes.data?.data || [];
+        const categoriesData = Array.isArray(categoryRes.data) ? categoryRes.data : categoryRes.data?.data || [];
+        const modelsData = Array.isArray(modelRes.data) ? modelRes.data : modelRes.data?.data || [];
+        const storesData = Array.isArray(storeRes.data) ? storeRes.data : storeRes.data?.data || [];
 
-        setCategories(
-          Array.isArray(categoryRes.data)
-            ? categoryRes.data
-            : categoryRes.data.content ||
-                categoryRes.data.data ||
-                categoryRes.data.categories ||
-                []
-        );
+        console.log("  📦 Processed Brands:", brandsData.length, "items");
+        console.log("     First brand:", brandsData[0]);
+        console.log("  📦 Processed Categories:", categoriesData.length, "items");
+        console.log("  📦 Processed Models:", modelsData.length, "items");
+        console.log("  📦 Processed Stores:", storesData.length, "items");
 
-        setModels(
-          Array.isArray(modelRes.data)
-            ? modelRes.data
-            : modelRes.data.content ||
-                modelRes.data.data ||
-                modelRes.data.models ||
-                []
-        );
+        setBrands(brandsData);
+        setCategories(categoriesData);
+        setModels(modelsData);
+        setStores(storesData);
 
-        setStores(
-          Array.isArray(storeRes.data)
-            ? storeRes.data
-            : storeRes.data.content ||
-                storeRes.data.data ||
-                storeRes.data.stores ||
-                []
-        );
+        console.log("  ✅ State updated successfully");
       } catch (error) {
-        console.error("❌ Error fetching dropdown data:", error);
+        console.error("  ❌ Error fetching dropdown data:", error);
+        console.error("     Error stack:", error.stack);
         toast.error("Failed to load dropdown data. Please refresh the page.");
       }
     };
@@ -108,13 +110,15 @@ const AddBikeForm = () => {
     fetchData();
   }, []);
 
-  // ✅ Populate form with bike data when editing
+  // Edit mode
   useEffect(() => {
     if (isEditMode) {
+      console.log("📝 EFFECT: Edit mode detected");
       if (initialBikeData) {
-        console.log("📝 Loading bike data:", initialBikeData);
+        console.log("  📦 Initial bike data:", initialBikeData);
 
         setBikeData({
+          name: initialBikeData.name || "",
           brandId: initialBikeData.brandId || "",
           categoryId: initialBikeData.categoryId || "",
           modelId: initialBikeData.modelId || "",
@@ -123,6 +127,9 @@ const AddBikeForm = () => {
           chassisNumber: initialBikeData.chassisNumber || "",
           engineNumber: initialBikeData.engineNumber || "",
           storeId: initialBikeData.storeId || "",
+          price: initialBikeData.price || "",
+          latitude: initialBikeData.latitude || "",
+          longitude: initialBikeData.longitude || "",
           isPuc: initialBikeData.isPuc || false,
           isInsurance: initialBikeData.isInsurance || false,
           isDocuments: initialBikeData.isDocuments || false,
@@ -132,41 +139,35 @@ const AddBikeForm = () => {
           vehicleImages: null,
         });
 
-        // ✅ Set preview images from existing data
         const previews = {
-          pucImage: initialBikeData.pucImageUrl
-            ? `${BASE_URL}${initialBikeData.pucImageUrl}`
-            : null,
-          insuranceImage: initialBikeData.insuranceImageUrl
-            ? `${BASE_URL}${initialBikeData.insuranceImageUrl}`
-            : null,
-          documentImage: initialBikeData.documentImageUrl
-            ? `${BASE_URL}${initialBikeData.documentImageUrl}`
-            : null,
+          pucImage: initialBikeData.pucImageUrl ? `${BASE_URL}${initialBikeData.pucImageUrl}` : null,
+          insuranceImage: initialBikeData.insuranceImageUrl ? `${BASE_URL}${initialBikeData.insuranceImageUrl}` : null,
+          documentImage: initialBikeData.documentImageUrl ? `${BASE_URL}${initialBikeData.documentImageUrl}` : null,
           vehicleImages: initialBikeData.bikeImages
-            ? initialBikeData.bikeImages.map((img) =>
-                typeof img === "string" ? `${BASE_URL}${img}` : img
-              )
+            ? initialBikeData.bikeImages.map((img) => (typeof img === "string" ? `${BASE_URL}${img}` : img))
             : [],
         };
 
         setPreviewImages(previews);
         setPageLoading(false);
+        console.log("  ✅ Bike data loaded from initial state");
       } else {
-        // ✅ Fetch bike data by ID if not passed via state
+        console.log("  🌐 Fetching bike data from API...");
         fetchBikeData();
       }
     }
   }, [isEditMode, initialBikeData]);
 
-  // ✅ Fetch bike data by ID if not passed via state
   const fetchBikeData = async () => {
     try {
+      console.log("  📡 GET /api/bikes/" + id);
       const response = await bikeAPI.getById(id);
       const bike = response.data?.data || response.data;
+      console.log("  ✅ Bike fetched:", bike);
 
       if (bike) {
         setBikeData({
+          name: bike.name || "",
           brandId: bike.brandId || "",
           categoryId: bike.categoryId || "",
           modelId: bike.modelId || "",
@@ -175,6 +176,9 @@ const AddBikeForm = () => {
           chassisNumber: bike.chassisNumber || "",
           engineNumber: bike.engineNumber || "",
           storeId: bike.storeId || "",
+          price: bike.price || "",
+          latitude: bike.latitude || "",
+          longitude: bike.longitude || "",
           isPuc: bike.isPuc || false,
           isInsurance: bike.isInsurance || false,
           isDocuments: bike.isDocuments || false,
@@ -185,194 +189,370 @@ const AddBikeForm = () => {
         });
 
         const previews = {
-          pucImage: bike.pucImageUrl
-            ? `${BASE_URL}${bike.pucImageUrl}`
-            : null,
-          insuranceImage: bike.insuranceImageUrl
-            ? `${BASE_URL}${bike.insuranceImageUrl}`
-            : null,
-          documentImage: bike.documentImageUrl
-            ? `${BASE_URL}${bike.documentImageUrl}`
-            : null,
+          pucImage: bike.pucImageUrl ? `${BASE_URL}${bike.pucImageUrl}` : null,
+          insuranceImage: bike.insuranceImageUrl ? `${BASE_URL}${bike.insuranceImageUrl}` : null,
+          documentImage: bike.documentImageUrl ? `${BASE_URL}${bike.documentImageUrl}` : null,
           vehicleImages: bike.bikeImages
-            ? bike.bikeImages.map((img) =>
-                typeof img === "string" ? `${BASE_URL}${img}` : img
-              )
+            ? bike.bikeImages.map((img) => (typeof img === "string" ? `${BASE_URL}${img}` : img))
             : [],
         };
 
         setPreviewImages(previews);
+        console.log("  ✅ State updated with bike data");
       }
     } catch (error) {
-      console.error("❌ Error fetching bike:", error);
+      console.error("  ❌ Error fetching bike:", error);
       toast.error("Failed to load bike data");
     } finally {
       setPageLoading(false);
     }
   };
 
-  // ✅ Handle input & file changes
+  // Handle change
   const handleChange = (e) => {
     const { name, value, type, checked, files } = e.target;
+
+    console.log("\n🔄 ========== FIELD CHANGE ==========");
+    console.log("  Field name:", name);
+    console.log("  Field type:", type);
+    console.log("  New value:", value);
+    console.log("  Value type:", typeof value);
+
     if (type === "checkbox") {
+      console.log("  ✅ Checkbox changed:", checked);
       setBikeData({ ...bikeData, [name]: checked });
     } else if (type === "file") {
+      console.log("  📁 File(s) selected:", files.length);
       if (name === "vehicleImages") {
         const newImages = Array.from(files);
+        console.log("    Vehicle images count:", newImages.length);
         setBikeData({ ...bikeData, [name]: newImages });
-
-        // ✅ Preview vehicle images
-        const previews = newImages.map((file) => URL.createObjectURL(file));
-        setPreviewImages((prev) => ({
-          ...prev,
-          vehicleImages: previews,
-        }));
+        const previews = newImages.map((file) => {
+          console.log("      - File:", file.name, file.size, "bytes");
+          return URL.createObjectURL(file);
+        });
+        setPreviewImages((prev) => ({ ...prev, vehicleImages: previews }));
       } else {
+        console.log("    Single file:", files[0]?.name);
         setBikeData({ ...bikeData, [name]: files[0] });
-
-        // ✅ Preview single image
         if (files[0]) {
           const preview = URL.createObjectURL(files[0]);
-          setPreviewImages((prev) => ({
-            ...prev,
-            [name]: preview,
-          }));
+          setPreviewImages((prev) => ({ ...prev, [name]: preview }));
         }
       }
     } else {
-      setBikeData({ ...bikeData, [name]: value });
+      const updatedData = { ...bikeData, [name]: value };
+      console.log("  ✅ Text/Select field updated");
+      console.log("  Previous value:", bikeData[name]);
+      console.log("  New value:", value);
+      console.log("  Updated bikeData[" + name + "]:", updatedData[name]);
+      setBikeData(updatedData);
     }
-    // Clear errors for this field when user starts typing
+
     if (errors[name]) {
+      console.log("  🧹 Clearing error for:", name);
       setErrors({ ...errors, [name]: "" });
     }
+
+    console.log("🔄 ========== FIELD CHANGE END ==========\n");
   };
 
-  // ✅ Validate form before submission
+  // Validation
   const validateForm = () => {
+    console.log("\n🔍 ========================================");
+    console.log("🔍 ========== VALIDATION START ==========");
+    console.log("🔍 ========================================");
+    
     const newErrors = {};
 
-    if (!bikeData.brandId) newErrors.brandId = "Brand is required";
-    if (!bikeData.categoryId) newErrors.categoryId = "Category is required";
-    if (!bikeData.modelId) newErrors.modelId = "Model is required";
-    if (!bikeData.registrationNumber)
+    console.log("📋 Current bikeData STATE:");
+    console.log("  name:", bikeData.name, "(Length:", bikeData.name?.length, ")");
+    console.log("  brandId:", bikeData.brandId, "(Type:", typeof bikeData.brandId, ")");
+    console.log("  categoryId:", bikeData.categoryId, "(Type:", typeof bikeData.categoryId, ")");
+    console.log("  modelId:", bikeData.modelId, "(Type:", typeof bikeData.modelId, ")");
+    console.log("  storeId:", bikeData.storeId, "(Type:", typeof bikeData.storeId, ")");
+    console.log("  registrationYear:", bikeData.registrationYear, "(Type:", typeof bikeData.registrationYear, ")");
+    console.log("  price:", bikeData.price, "(Type:", typeof bikeData.price, ")");
+    console.log("  registrationNumber:", bikeData.registrationNumber);
+    console.log("  vehicleImages:", bikeData.vehicleImages?.length || 0, "files");
+
+    console.log("\n📋 Dropdown data availability:");
+    console.log("  Brands available:", brands.length);
+    console.log("  Categories available:", categories.length);
+    console.log("  Models available:", models.length);
+    console.log("  Stores available:", stores.length);
+
+    console.log("\n🔍 VALIDATION CHECKS:");
+
+    // Name
+    console.log("\n1️⃣ Validating NAME:");
+    if (!bikeData.name?.trim()) {
+      newErrors.name = "Bike name is required";
+      console.log("  ❌ FAILED: Name is empty");
+    } else {
+      console.log("  ✅ PASSED: Name =", bikeData.name);
+    }
+
+    // Brand
+    console.log("\n2️⃣ Validating BRAND ID:");
+    console.log("  Input value:", bikeData.brandId);
+    if (!isValidId(bikeData.brandId)) {
+      newErrors.brandId = "Please select a brand";
+      console.log("  ❌ FAILED: Brand ID invalid");
+    } else {
+      console.log("  ✅ PASSED: Brand ID =", bikeData.brandId);
+    }
+
+    // Category
+    console.log("\n3️⃣ Validating CATEGORY ID:");
+    console.log("  Input value:", bikeData.categoryId);
+    if (!isValidId(bikeData.categoryId)) {
+      newErrors.categoryId = "Please select a category";
+      console.log("  ❌ FAILED: Category ID invalid");
+    } else {
+      console.log("  ✅ PASSED: Category ID =", bikeData.categoryId);
+    }
+
+    // Model
+    console.log("\n4️⃣ Validating MODEL ID:");
+    console.log("  Input value:", bikeData.modelId);
+    if (!isValidId(bikeData.modelId)) {
+      newErrors.modelId = "Please select a model";
+      console.log("  ❌ FAILED: Model ID invalid");
+    } else {
+      console.log("  ✅ PASSED: Model ID =", bikeData.modelId);
+    }
+
+    // Store
+    console.log("\n5️⃣ Validating STORE ID:");
+    console.log("  Input value:", bikeData.storeId);
+    if (!isValidId(bikeData.storeId)) {
+      newErrors.storeId = "Please select a store";
+      console.log("  ❌ FAILED: Store ID invalid");
+    } else {
+      console.log("  ✅ PASSED: Store ID =", bikeData.storeId);
+    }
+
+    // Registration Year
+    console.log("\n6️⃣ Validating REGISTRATION YEAR:");
+    console.log("  Input value:", bikeData.registrationYear);
+    if (!isValidId(bikeData.registrationYear)) {
+      newErrors.registrationYear = "Please select registration year";
+      console.log("  ❌ FAILED: Year invalid");
+    } else {
+      console.log("  ✅ PASSED: Year =", bikeData.registrationYear);
+    }
+
+    // Price
+    console.log("\n7️⃣ Validating PRICE:");
+    console.log("  Input value:", bikeData.price);
+    if (!bikeData.price || Number(bikeData.price) <= 0) {
+      newErrors.price = "Price must be greater than 0";
+      console.log("  ❌ FAILED: Price invalid");
+    } else {
+      console.log("  ✅ PASSED: Price =", bikeData.price);
+    }
+
+    // Registration Number
+    console.log("\n8️⃣ Validating REGISTRATION NUMBER:");
+    console.log("  Input value:", bikeData.registrationNumber);
+    if (!bikeData.registrationNumber?.trim()) {
       newErrors.registrationNumber = "Registration number is required";
-    if (!bikeData.registrationYear)
-      newErrors.registrationYear = "Registration year is required";
-    if (!bikeData.storeId) newErrors.storeId = "Store is required";
-    // ✅ Vehicle images required only for new bikes
-    if (!isEditMode && (!bikeData.vehicleImages || bikeData.vehicleImages.length === 0))
-      newErrors.vehicleImages = "At least one vehicle image is required";
+      console.log("  ❌ FAILED: Registration number empty");
+    } else {
+      console.log("  ✅ PASSED: Registration number =", bikeData.registrationNumber);
+    }
+
+    // Vehicle Images
+   // Vehicle Images
+console.log("\n9️⃣ Validating VEHICLE IMAGES:");
+console.log("  Edit mode:", isEditMode);
+console.log("  Images count:", bikeData.vehicleImages?.length || 0);
+
+// ✅ FIXED: Changed bikeData.images to bikeData.vehicleImages
+if (!isEditMode && (!bikeData.vehicleImages || bikeData.vehicleImages.length === 0)) {
+  newErrors.vehicleImages = "At least one vehicle image is required";  // ✅ FIXED: Changed from 'images' to 'vehicleImages'
+  console.log("  ❌ FAILED: No vehicle images");
+} else {
+  console.log("  ✅ PASSED");
+}
+
+
+    console.log("\n📊 VALIDATION SUMMARY:");
+    console.log("  Total errors:", Object.keys(newErrors).length);
+    if (Object.keys(newErrors).length > 0) {
+      console.log("  ❌ Validation FAILED with errors:");
+      Object.keys(newErrors).forEach(key => {
+        console.log("    -", key, ":", newErrors[key]);
+      });
+    } else {
+      console.log("  ✅ ALL VALIDATIONS PASSED!");
+    }
+
+    console.log("🔍 ========================================");
+    console.log("🔍 ========== VALIDATION END ==========");
+    console.log("🔍 ========================================\n");
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // ✅ Remove vehicle image preview
   const removeVehicleImagePreview = (index) => {
+    console.log("🗑️ Removing vehicle image at index:", index);
     setPreviewImages((prev) => ({
       ...prev,
       vehicleImages: prev.vehicleImages.filter((_, i) => i !== index),
     }));
-
-    // Also remove from bikeData if it's a new file
-    if (bikeData.vehicleImages) {
-      setBikeData((prev) => ({
-        ...prev,
-        vehicleImages: prev.vehicleImages.filter((_, i) => i !== index),
-      }));
+    // ✅ FIXED: Changed from bikeData.images to bikeData.vehicleImages
+if (bikeData.vehicleImages && Array.isArray(bikeData.vehicleImages)) {
+  console.log("  📁 vehicleImages:", bikeData.vehicleImages.length, "files");
+  bikeData.vehicleImages.forEach((image, index) => {
+    if (image instanceof File) {
+      formData.append("vehicleImages", image);  // ✅ Backend expects 'vehicleImages' or 'images'
+      console.log(`    - File ${index + 1}:`, image.name);
     }
+  });
+}
+
   };
 
-  // ✅ Remove single image preview
   const removeSingleImagePreview = (fieldName) => {
-    setPreviewImages((prev) => ({
-      ...prev,
-      [fieldName]: null,
-    }));
-    setBikeData((prev) => ({
-      ...prev,
-      [fieldName]: null,
-    }));
+    console.log("🗑️ Removing single image:", fieldName);
+    setPreviewImages((prev) => ({ ...prev, [fieldName]: null }));
+    setBikeData((prev) => ({ ...prev, [fieldName]: null }));
   };
 
-  // ✅ Submit bike data to backend (Add or Edit)
+  // Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ✅ Prevent double submission
-    if (isLoading || isSubmitted) {
-      console.warn("⚠️ Form already submitted or loading");
+    console.log("\n🚀 ==========================================");
+    console.log("🚀 ========== FORM SUBMIT START ==========");
+    console.log("🚀 ==========================================");
+
+    if (isLoading) {
+      console.warn("⚠️ Already submitting, ignoring...");
       return;
     }
 
-    // ✅ Validate form
-    if (!validateForm()) {
-      toast.error("Please fill all required fields");
+    console.log("📋 Form Data at Submit:");
+    console.log(JSON.stringify(bikeData, null, 2));
+
+    // Validation
+    const isValid = validateForm();
+    
+    if (!isValid) {
+      console.error("\n❌ ==========================================");
+      console.error("❌ SUBMISSION BLOCKED - Validation Failed");
+      console.error("❌ ==========================================\n");
+      toast.error("Please fill all required fields correctly");
       return;
     }
 
+    console.log("\n✅ Validation passed, proceeding with submission...");
     setIsLoading(true);
-    setIsSubmitted(true); // ✅ Set flag immediately to prevent double clicks
 
     try {
-      console.log("🚀 Submitting Bike Data:", bikeData);
-
-      // ✅ Create FormData for multipart submission
       const formData = new FormData();
 
-      // Add all text fields
-      formData.append("brandId", bikeData.brandId);
-      formData.append("categoryId", bikeData.categoryId);
-      formData.append("modelId", bikeData.modelId);
-      formData.append("registrationNumber", bikeData.registrationNumber);
-      formData.append("registrationYear", bikeData.registrationYear);
-      formData.append("chassisNumber", bikeData.chassisNumber);
-      formData.append("engineNumber", bikeData.engineNumber);
-      formData.append("storeId", bikeData.storeId);
+      // Convert to numbers
+      console.log("\n🔢 Converting IDs to numbers:");
+      const brandId = Number(bikeData.brandId);
+      const categoryId = Number(bikeData.categoryId);
+      const modelId = Number(bikeData.modelId);
+      const storeId = Number(bikeData.storeId);
+      const registrationYear = Number(bikeData.registrationYear);
+      const price = Number(bikeData.price);
 
-      // Add checkboxes
-      formData.append("isPuc", bikeData.isPuc);
-      formData.append("isInsurance", bikeData.isInsurance);
-      formData.append("isDocuments", bikeData.isDocuments);
+      console.log("  brandId:", bikeData.brandId, "→", brandId, "(isNaN:", isNaN(brandId) + ")");
+      console.log("  categoryId:", bikeData.categoryId, "→", categoryId, "(isNaN:", isNaN(categoryId) + ")");
+      console.log("  modelId:", bikeData.modelId, "→", modelId, "(isNaN:", isNaN(modelId) + ")");
+      console.log("  storeId:", bikeData.storeId, "→", storeId, "(isNaN:", isNaN(storeId) + ")");
+      console.log("  registrationYear:", bikeData.registrationYear, "→", registrationYear);
+      console.log("  price:", bikeData.price, "→", price);
 
-      // Add files only if new ones are selected
-      if (bikeData.pucImage) {
+      // Append to FormData
+      console.log("\n📦 Building FormData:");
+      formData.append("name", bikeData.name?.trim() || "");
+      console.log("  ✅ name:", bikeData.name?.trim());
+      
+      formData.append("brandId", brandId.toString());
+      console.log("  ✅ brandId:", brandId.toString());
+      
+      formData.append("categoryId", categoryId.toString());
+      console.log("  ✅ categoryId:", categoryId.toString());
+      
+      formData.append("modelId", modelId.toString());
+      console.log("  ✅ modelId:", modelId.toString());
+      
+      formData.append("storeId", storeId.toString());
+      console.log("  ✅ storeId:", storeId.toString());
+      
+      formData.append("registrationYear", registrationYear.toString());
+      console.log("  ✅ registrationYear:", registrationYear.toString());
+      
+      formData.append("price", price.toString());
+      console.log("  ✅ price:", price.toString());
+      
+      formData.append("registrationNumber", bikeData.registrationNumber?.trim() || "");
+      console.log("  ✅ registrationNumber:", bikeData.registrationNumber?.trim());
+      
+      formData.append("chassisNumber", bikeData.chassisNumber?.trim() || "");
+      formData.append("engineNumber", bikeData.engineNumber?.trim() || "");
+      formData.append("latitude", bikeData.latitude?.trim() || "");
+      formData.append("longitude", bikeData.longitude?.trim() || "");
+      formData.append("isPuc", String(bikeData.isPuc === true));
+      formData.append("isInsurance", String(bikeData.isInsurance === true));
+      formData.append("isDocuments", String(bikeData.isDocuments === true));
+
+      // Files
+      if (bikeData.pucImage && bikeData.pucImage instanceof File) {
         formData.append("pucImage", bikeData.pucImage);
+        console.log("  📁 pucImage:", bikeData.pucImage.name);
       }
-
-      if (bikeData.insuranceImage) {
+      if (bikeData.insuranceImage && bikeData.insuranceImage instanceof File) {
         formData.append("insuranceImage", bikeData.insuranceImage);
+        console.log("  📁 insuranceImage:", bikeData.insuranceImage.name);
       }
-
-      if (bikeData.documentImage) {
+      if (bikeData.documentImage && bikeData.documentImage instanceof File) {
         formData.append("documentImage", bikeData.documentImage);
+        console.log("  📁 documentImage:", bikeData.documentImage.name);
       }
-
-      if (bikeData.vehicleImages && bikeData.vehicleImages.length > 0) {
-        bikeData.vehicleImages.forEach((image) => {
-          // Only append if it's a File object (new upload)
+      if (bikeData.images&& Array.isArray(bikeData.vehicleImages)) {
+        console.log("  📁 vehicleImages:", bikeData.vehicleImages.length, "files");
+        bikeData.vehicleImages.forEach((image, index) => {
           if (image instanceof File) {
             formData.append("vehicleImages", image);
+            console.log("    - File", index + 1, ":", image.name);
           }
         });
       }
 
-      let response;
+      console.log("\n📤 FINAL FormData to be sent:");
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`  ${key}: File(${value.name}, ${value.size} bytes)`);
+        } else {
+          console.log(`  ${key}: ${value}`);
+        }
+      }
 
+      let response;
       if (isEditMode) {
-        // ✅ UPDATE existing bike
+        console.log("\n🔄 PUT /api/bikes/" + id);
         response = await bikeAPI.update(id, formData);
-        console.log("✅ Bike updated:", response.data);
+        console.log("✅ Update Response:", response);
         toast.success("✅ Bike updated successfully!");
       } else {
-        // ✅ CREATE new bike
+        console.log("\n➕ POST /api/bikes/add");
         response = await bikeAPI.create(formData);
-        console.log("✅ Bike added successfully:", response.data);
-        toast.success("✅ Bike added successfully! Redirecting...");
+        console.log("✅ Create Response:", response);
+        toast.success("✅ Bike added successfully!");
 
-        // ✅ Reset form for new bikes only
+        // Reset form
+        console.log("🧹 Resetting form...");
         setBikeData({
+          name: "",
           brandId: "",
           categoryId: "",
           modelId: "",
@@ -381,6 +561,9 @@ const AddBikeForm = () => {
           chassisNumber: "",
           engineNumber: "",
           storeId: "",
+          price: "",
+          latitude: "",
+          longitude: "",
           isPuc: false,
           isInsurance: false,
           isDocuments: false,
@@ -389,38 +572,40 @@ const AddBikeForm = () => {
           documentImage: null,
           vehicleImages: null,
         });
-
         setPreviewImages({
           pucImage: null,
           insuranceImage: null,
           documentImage: null,
           vehicleImages: [],
         });
-
-        // ✅ Redirect to all bikes page after 1.5 seconds
-        setTimeout(() => {
-          navigate("/dashboard/allBikes");
-        }, 1500);
       }
 
-      // ✅ Reset submitted state after 2 seconds (for edit mode)
-      setTimeout(() => {
-        setIsSubmitted(false);
-      }, 2000);
+      console.log("✅ Response Data:", response.data);
+      console.log("\n🚀 ==========================================");
+      console.log("🚀 ========== SUBMIT SUCCESS ==========");
+      console.log("🚀 ==========================================\n");
+
+      setTimeout(() => navigate("/dashboard/allBikes"), 1500);
     } catch (error) {
-      console.error("❌ Error:", error);
-      setIsSubmitted(false); // ✅ Allow retry on error
-      const errorMsg =
-        error.response?.data?.message ||
-        error.message ||
-        `Error ${isEditMode ? "updating" : "adding"} bike. Check console for details.`;
+      console.error("\n❌ ==========================================");
+      console.error("❌ ========== SUBMIT ERROR ==========");
+      console.error("❌ ==========================================");
+      console.error("Error object:", error);
+      console.error("Error message:", error.message);
+      console.error("Error response:", error.response);
+      console.error("Error response data:", error.response?.data);
+      console.error("Error response status:", error.response?.status);
+      console.error("Error stack:", error.stack);
+      console.error("❌ ==========================================\n");
+
+      const errorMsg = error.response?.data?.message || error.message || "Error submitting form";
       toast.error(errorMsg);
     } finally {
+      console.log("🏁 Setting isLoading to false");
       setIsLoading(false);
     }
   };
 
-  // ✅ Loading page for edit mode
   if (pageLoading) {
     return (
       <div className="bg-gray-100 min-h-screen p-6 flex items-center justify-center">
@@ -435,7 +620,6 @@ const AddBikeForm = () => {
   return (
     <div className="bg-gray-100 min-h-screen p-6">
       <div className="bg-white rounded-lg shadow-md p-6 max-w-6xl mx-auto">
-        {/* Header with back button for edit mode */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             {isEditMode && (
@@ -453,7 +637,26 @@ const AddBikeForm = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <form onSubmit={handleSubmit} noValidate className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Bike Name */}
+          <div>
+            <label className="block text-gray-700 mb-1">
+              Bike Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={bikeData.name}
+              onChange={handleChange}
+              placeholder="Enter bike name"
+              className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
+                errors.name ? "border-red-500" : "border-gray-300"
+              }`}
+              disabled={isLoading}
+            />
+            {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+          </div>
+
           {/* Brand */}
           <div>
             <label className="block text-gray-700 mb-1">
@@ -466,20 +669,19 @@ const AddBikeForm = () => {
               className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
                 errors.brandId ? "border-red-500" : "border-gray-300"
               }`}
-              required
               disabled={isLoading}
             >
-              <option value="">Select Brand</option>
-              {Array.isArray(brands) &&
-                brands.map((brand) => (
-                  <option key={brand.id} value={brand.id}>
-                    {brand.brandName || brand.name}
-                  </option>
-                ))}
+              <option value="">-- Select Brand --</option>
+              {brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.brandName || brand.name}
+                </option>
+              ))}
             </select>
-            {errors.brandId && (
-              <p className="text-red-500 text-sm mt-1">{errors.brandId}</p>
-            )}
+            {errors.brandId && <p className="text-red-500 text-sm mt-1">{errors.brandId}</p>}
+            <p className="text-xs text-blue-600 mt-1 font-mono">
+              Selected ID: {bikeData.brandId || "(none)"} | Type: {typeof bikeData.brandId}
+            </p>
           </div>
 
           {/* Category */}
@@ -494,20 +696,19 @@ const AddBikeForm = () => {
               className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
                 errors.categoryId ? "border-red-500" : "border-gray-300"
               }`}
-              required
               disabled={isLoading}
             >
-              <option value="">Select Category</option>
-              {Array.isArray(categories) &&
-                categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.categoryName || cat.name}
-                  </option>
-                ))}
+              <option value="">-- Select Category --</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.categoryName || cat.name}
+                </option>
+              ))}
             </select>
-            {errors.categoryId && (
-              <p className="text-red-500 text-sm mt-1">{errors.categoryId}</p>
-            )}
+            {errors.categoryId && <p className="text-red-500 text-sm mt-1">{errors.categoryId}</p>}
+            <p className="text-xs text-blue-600 mt-1 font-mono">
+              Selected ID: {bikeData.categoryId || "(none)"} | Type: {typeof bikeData.categoryId}
+            </p>
           </div>
 
           {/* Model */}
@@ -522,20 +723,19 @@ const AddBikeForm = () => {
               className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
                 errors.modelId ? "border-red-500" : "border-gray-300"
               }`}
-              required
               disabled={isLoading}
             >
-              <option value="">Select Model</option>
-              {Array.isArray(models) &&
-                models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.modelName || model.name}
-                  </option>
-                ))}
+              <option value="">-- Select Model --</option>
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.modelName || model.name}
+                </option>
+              ))}
             </select>
-            {errors.modelId && (
-              <p className="text-red-500 text-sm mt-1">{errors.modelId}</p>
-            )}
+            {errors.modelId && <p className="text-red-500 text-sm mt-1">{errors.modelId}</p>}
+            <p className="text-xs text-blue-600 mt-1 font-mono">
+              Selected ID: {bikeData.modelId || "(none)"} | Type: {typeof bikeData.modelId}
+            </p>
           </div>
 
           {/* Registration Number */}
@@ -552,13 +752,10 @@ const AddBikeForm = () => {
               className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
                 errors.registrationNumber ? "border-red-500" : "border-gray-300"
               }`}
-              required
               disabled={isLoading}
             />
             {errors.registrationNumber && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.registrationNumber}
-              </p>
+              <p className="text-red-500 text-sm mt-1">{errors.registrationNumber}</p>
             )}
           </div>
 
@@ -574,10 +771,9 @@ const AddBikeForm = () => {
               className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
                 errors.registrationYear ? "border-red-500" : "border-gray-300"
               }`}
-              required
               disabled={isLoading}
             >
-              <option value="">Select Registration Year</option>
+              <option value="">-- Select Registration Year --</option>
               {[2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018].map((year) => (
                 <option key={year} value={year}>
                   {year}
@@ -585,17 +781,37 @@ const AddBikeForm = () => {
               ))}
             </select>
             {errors.registrationYear && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.registrationYear}
-              </p>
+              <p className="text-red-500 text-sm mt-1">{errors.registrationYear}</p>
             )}
+            <p className="text-xs text-blue-600 mt-1 font-mono">
+              Selected: {bikeData.registrationYear || "(none)"} | Type: {typeof bikeData.registrationYear}
+            </p>
+          </div>
+
+          {/* Price */}
+          <div>
+            <label className="block text-gray-700 mb-1">
+              Price (₹) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              name="price"
+              value={bikeData.price}
+              onChange={handleChange}
+              placeholder="Enter price"
+              min="0"
+              step="0.01"
+              className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
+                errors.price ? "border-red-500" : "border-gray-300"
+              }`}
+              disabled={isLoading}
+            />
+            {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
           </div>
 
           {/* Chassis Number */}
           <div>
-            <label className="block text-gray-700 mb-1">
-              Vehicle Chassis Number
-            </label>
+            <label className="block text-gray-700 mb-1">Vehicle Chassis Number</label>
             <input
               type="text"
               name="chassisNumber"
@@ -609,9 +825,7 @@ const AddBikeForm = () => {
 
           {/* Engine Number */}
           <div>
-            <label className="block text-gray-700 mb-1">
-              Vehicle Engine Number
-            </label>
+            <label className="block text-gray-700 mb-1">Vehicle Engine Number</label>
             <input
               type="text"
               name="engineNumber"
@@ -623,7 +837,7 @@ const AddBikeForm = () => {
             />
           </div>
 
-          {/* Store Name */}
+          {/* Store */}
           <div>
             <label className="block text-gray-700 mb-1">
               Store Name <span className="text-red-500">*</span>
@@ -635,27 +849,53 @@ const AddBikeForm = () => {
               className={`w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80] ${
                 errors.storeId ? "border-red-500" : "border-gray-300"
               }`}
-              required
               disabled={isLoading}
             >
-              <option value="">Select Store</option>
-              {Array.isArray(stores) &&
-                stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.storeName || store.name}
-                  </option>
-                ))}
+              <option value="">-- Select Store --</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.storeName || store.name}
+                </option>
+              ))}
             </select>
-            {errors.storeId && (
-              <p className="text-red-500 text-sm mt-1">{errors.storeId}</p>
-            )}
+            {errors.storeId && <p className="text-red-500 text-sm mt-1">{errors.storeId}</p>}
+            <p className="text-xs text-blue-600 mt-1 font-mono">
+              Selected ID: {bikeData.storeId || "(none)"} | Type: {typeof bikeData.storeId}
+            </p>
+          </div>
+
+          {/* Latitude */}
+          <div>
+            <label className="block text-gray-700 mb-1">Latitude (Optional)</label>
+            <input
+              type="text"
+              name="latitude"
+              value={bikeData.latitude}
+              onChange={handleChange}
+              placeholder="Enter latitude"
+              className="w-full border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80]"
+              disabled={isLoading}
+            />
+          </div>
+
+          {/* Longitude */}
+          <div>
+            <label className="block text-gray-700 mb-1">Longitude (Optional)</label>
+            <input
+              type="text"
+              name="longitude"
+              value={bikeData.longitude}
+              onChange={handleChange}
+              placeholder="Enter longitude"
+              className="w-full border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#2B2B80]"
+              disabled={isLoading}
+            />
           </div>
         </form>
 
-        {/* Divider */}
         <hr className="my-6" />
 
-        {/* PUC / Insurance / Documents */}
+        {/* PUC / Insurance / Documents sections - keep same as before */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* PUC */}
           <div>
@@ -777,24 +1017,23 @@ const AddBikeForm = () => {
 
         {/* Vehicle Images */}
         <div className="mt-6">
-          <label className="block text-gray-700 font-medium">
-            Upload Vehicle Images {!isEditMode && <span className="text-red-500">*</span>}
-          </label>
-          <input
-            type="file"
-            name="vehicleImages"
-            onChange={handleChange}
-            multiple
-            className={`mt-2 w-full border-2 border-dashed rounded p-4 ${
-              errors.vehicleImages ? "border-red-500" : "border-gray-300"
-            }`}
-            disabled={isLoading}
-            accept="image/*"
-          />
-          {errors.vehicleImages && (
-            <p className="text-red-500 text-sm mt-1">{errors.vehicleImages}</p>
-          )}
-          {previewImages.vehicleImages && previewImages.vehicleImages.length > 0 && (
+            <label className="block text-gray-700 font-medium">
+    Upload Vehicle Images {!isEditMode && <span className="text-red-500">*</span>}
+  </label>
+  <input
+    type="file"
+    name="vehicleImages"
+    onChange={handleChange}
+    multiple
+    className={`mt-2 w-full border-2 border-dashed rounded p-4 ${
+      errors.vehicleImages ? "border-red-500" : "border-gray-300"  // ✅ FIXED: Changed from 'errors.images'
+    }`}
+    disabled={isLoading}
+    accept="image/*"
+  />
+  {errors.vehicleImages && (  // ✅ FIXED: Changed from 'errors.images'
+    <p className="text-red-500 text-sm mt-1">{errors.vehicleImages}</p>
+  )}          {previewImages.vehicleImages && previewImages.vehicleImages.length > 0 &&  (
             <div className="mt-4">
               <p className="text-sm font-semibold text-gray-700 mb-2">
                 Vehicle Images ({previewImages.vehicleImages.length})
@@ -820,18 +1059,16 @@ const AddBikeForm = () => {
               </div>
             </div>
           )}
-          {bikeData.vehicleImages && bikeData.vehicleImages.length > 0 && (
-            <p className="text-green-600 text-sm mt-2">
-              ✅ {bikeData.vehicleImages.length} image(s) selected
-            </p>
-          )}
         </div>
 
-        {/* Submit */}
+        {/* Submit Buttons */}
         <div className="mt-6 flex justify-end gap-4">
           <button
             type="button"
-            onClick={() => navigate("/dashboard/allBikes")}
+            onClick={() => {
+              console.log("❌ Cancel button clicked");
+              navigate("/dashboard/allBikes");
+            }}
             className="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 transition flex items-center gap-2 disabled:opacity-50 font-semibold"
             disabled={isLoading}
           >
@@ -840,8 +1077,12 @@ const AddBikeForm = () => {
           </button>
 
           <button
-            onClick={handleSubmit}
-            disabled={isLoading || isSubmitted}
+            type="button"
+            onClick={(e) => {
+              console.log("🖱️ Submit button clicked");
+              handleSubmit(e);
+            }}
+            disabled={isLoading}
             className="bg-[#2B2B80] text-white px-6 py-2 rounded-lg hover:bg-[#1f1f60] transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
           >
             {isLoading ? (

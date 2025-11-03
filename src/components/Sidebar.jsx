@@ -116,7 +116,7 @@ const Sidebar = () => {
     { id: 7, path: "/dashboard/allBookings", name: "All Bookings", icon: TbBrandBooking },
     { id: 2, path: "/dashboard/storeMaster", name: "Store Master", icon: MdOutlineLocalGroceryStore },
     { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
-    { id: 3.5, path: "/dashboard/addBike", name: "Add Bike", icon: FaPlus },
+    // { id: 3.5, path: "/dashboard/addBike", name: "Add Bike", icon: FaPlus },
     {
       id: 4,
       name: "Price Master",
