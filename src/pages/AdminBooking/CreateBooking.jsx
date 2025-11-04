@@ -24,6 +24,7 @@ const CreateUserBooking = () => {
   const [selectedCity, setSelectedCity] = useState("");
   const [selectedStore, setSelectedStore] = useState("");
   const [selectedBike, setSelectedBike] = useState("");
+  const [selectedPackage, setSelectedPackage] = useState(null); // NEW: Store selected package
 
   // Dates & Times
   const [startDate, setStartDate] = useState("");
@@ -104,7 +105,7 @@ const CreateUserBooking = () => {
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FETCH CUSTOMER BY PHONE NUMBER (Backend checks getUserByPhoneNumber)
+  // FETCH CUSTOMER BY PHONE NUMBER
   // ═══════════════════════════════════════════════════════════════════════════
   const handlePhoneNumberSearch = async () => {
     if (!customerPhone || customerPhone.length !== 10) {
@@ -116,12 +117,10 @@ const CreateUserBooking = () => {
     setError("");
     
     try {
-      // Try to get user by phone number - same logic as backend
       const response = await apiClient.get(`/api/auth/by-phone/${customerPhone}`);
       const userData = response.data?.data || response.data;
       
       if (userData) {
-        // Customer exists - populate form
         setCustomerData({
           name: userData.name || "",
           phoneNumber: userData.phoneNumber || customerPhone,
@@ -133,7 +132,6 @@ const CreateUserBooking = () => {
         toast.success(`✅ Existing customer: ${userData.name}`);
       }
     } catch (error) {
-      // Customer doesn't exist - backend will register them during booking
       if (error.response?.status === 404 || error.response?.status === 400) {
         setCustomerData({
           name: "",
@@ -158,7 +156,6 @@ const CreateUserBooking = () => {
     if (customerPhone.length === 10 && /^\d{10}$/.test(customerPhone)) {
       handlePhoneNumberSearch();
     } else if (customerPhone.length < 10) {
-      // Reset customer data if phone is incomplete
       setIsExistingCustomer(false);
       setCustomerData({
         name: "",
@@ -193,6 +190,7 @@ const CreateUserBooking = () => {
     setSelectedCity(cityId);
     setSelectedStore("");
     setSelectedBike("");
+    setSelectedPackage(null);
     setAvailableBikes([]);
     setBikesDisplayCount(6);
     setError("");
@@ -216,6 +214,7 @@ const CreateUserBooking = () => {
     // Reset bikes when dates change
     setAvailableBikes([]);
     setSelectedBike("");
+    setSelectedPackage(null);
     setBikesDisplayCount(6);
     setError("");
   };
@@ -278,10 +277,10 @@ const CreateUserBooking = () => {
     setError("");
     setAvailableBikes([]);
     setSelectedBike("");
+    setSelectedPackage(null);
     setBikesDisplayCount(6);
 
     try {
-      // Format dates as ISO strings
       const startDateTime = new Date(`${startDate}T${startTime}`).toISOString();
       const endDateTime = new Date(`${endDate}T${endTime}`).toISOString();
 
@@ -291,7 +290,7 @@ const CreateUserBooking = () => {
           startDate: startDateTime,
           endDate: endDateTime,
           page: 0,
-          size: 100 // Fetch all bikes, we'll handle pagination on frontend
+          size: 100
         }
       });
 
@@ -300,7 +299,6 @@ const CreateUserBooking = () => {
       let total = 0;
 
       if (response.data?.content) {
-        // Paginated response
         bikes = response.data.content;
         total = response.data.totalElements || bikes.length;
       } else if (response.data?.data) {
@@ -318,7 +316,7 @@ const CreateUserBooking = () => {
         setError("No bikes available for selected dates and store");
         toast.warning("No bikes available");
       } else {
-        toast.success(`Found ${bikes.length} available bike(s)`);
+        toast.success(`✅ Found ${bikes.length} available bike(s)`);
       }
     } catch (error) {
       console.error("Error checking bikes:", error);
@@ -330,6 +328,28 @@ const CreateUserBooking = () => {
     } finally {
       setBikesLoading(false);
     }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HANDLE BIKE SELECTION
+  // ═══════════════════════════════════════════════════════════════════════════
+  const handleBikeSelect = (bikeId) => {
+    setSelectedBike(bikeId.toString());
+    setSelectedPackage(null); // Reset package when bike changes
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HANDLE PACKAGE SELECTION
+  // ═══════════════════════════════════════════════════════════════════════════
+  const handlePackageSelect = (pkg) => {
+    setSelectedPackage(pkg);
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GET SELECTED BIKE DATA
+  // ═══════════════════════════════════════════════════════════════════════════
+  const getSelectedBikeData = () => {
+    return availableBikes.find(b => b.id === parseInt(selectedBike));
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -346,7 +366,6 @@ const CreateUserBooking = () => {
     const { name, value } = e.target;
     setCustomerData(prev => ({ ...prev, [name]: value }));
 
-    // Clear validation error for this field
     if (validationErrors[name]) {
       setValidationErrors(prev => ({ ...prev, [name]: undefined }));
     }
@@ -354,23 +373,23 @@ const CreateUserBooking = () => {
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CALCULATE CHARGES
+  // CALCULATE CHARGES - BASED ON SELECTED PACKAGE
   // ═══════════════════════════════════════════════════════════════════════════
   const calculateCharges = () => {
-    const selectedBikeData = availableBikes.find(b => b.id === parseInt(selectedBike));
-    if (!selectedBikeData || totalHours === 0) {
-      return { baseCharges: 0, gst: 0, total: 0 };
+    if (!selectedPackage) {
+      return { baseCharges: 0, gst: 0, total: 0, deposit: 0 };
     }
 
-    const dailyRate = selectedBikeData.dailyRate || selectedBikeData.price || 500;
-    const baseCharge = dailyRate * (totalHours / 24);
-    const gstAmount = baseCharge * 0.18; // 18% GST
+    const baseCharge = parseFloat(selectedPackage.price || 0);
+    const deposit = parseFloat(selectedPackage.deposit || 0);
+    const gstAmount = baseCharge * 0.05; // 18% GST
     const total = baseCharge + gstAmount;
 
     return {
       baseCharges: parseFloat(baseCharge.toFixed(2)),
       gst: parseFloat(gstAmount.toFixed(2)),
-      total: parseFloat(total.toFixed(2))
+      total: parseFloat(total.toFixed(2)),
+      deposit: parseFloat(deposit.toFixed(2))
     };
   };
 
@@ -405,13 +424,14 @@ const CreateUserBooking = () => {
     if (!startDate) errors.startDate = "Start date is required";
     if (!endDate) errors.endDate = "End date is required";
     if (!selectedBike) errors.bike = "Please select a bike";
+    if (!selectedPackage) errors.package = "Please select a package";
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CREATE BOOKING - Matches Backend Controller Flow
+  // CREATE BOOKING
   // ═══════════════════════════════════════════════════════════════════════════
   const handleCreateBooking = async (e) => {
     e.preventDefault();
@@ -431,7 +451,6 @@ const CreateUserBooking = () => {
       const startDateTime = new Date(`${startDate}T${startTime}`).toISOString();
       const endDateTime = new Date(`${endDate}T${endTime}`).toISOString();
 
-      // Payload matches AdminRegisterAndBookRequest structure
       const payload = {
         customer: {
           name: customerData.name.trim(),
@@ -447,22 +466,17 @@ const CreateUserBooking = () => {
           charges: charges.baseCharges,
           gst: charges.gst,
           finalAmount: charges.total,
-          totalHours: totalHours,
+          totalHours: selectedPackage.hourlyRate ? totalHours : (selectedPackage.days * 24),
           address: customerData.address.trim(),
           addressType: "home",
-          paymentType: 1, // COD
+          paymentType: 1,
           additionalCharges: 0,
-          advanceAmount: 0
+          advanceAmount: charges.deposit
         }
       };
 
       console.log("📤 Booking payload:", payload);
 
-      // Backend will:
-      // 1. Try getUserByPhoneNumber(phoneNumber)
-      // 2. If UserNotFoundException, call adminRegisterUser(customer)
-      // 3. Set customerId from user
-      // 4. Create booking
       const response = await apiClient.post(
         "/api/booking-bikes/admin/bookings/register-and-book",
         payload
@@ -476,7 +490,6 @@ const CreateUserBooking = () => {
 
       console.log("✅ Booking successful:", response.data);
 
-      // Reset form after successful booking
       setTimeout(() => {
         resetForm();
       }, 3000);
@@ -509,6 +522,7 @@ const CreateUserBooking = () => {
     setSelectedCity("");
     setSelectedStore("");
     setSelectedBike("");
+    setSelectedPackage(null);
     setStartDate("");
     setEndDate("");
     setStartTime("09:00");
@@ -526,6 +540,18 @@ const CreateUserBooking = () => {
   const charges = calculateCharges();
   const displayedBikes = availableBikes.slice(0, bikesDisplayCount);
   const hasMoreBikes = bikesDisplayCount < availableBikes.length;
+  const selectedBikeData = getSelectedBikeData();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HELPER FUNCTIONS FOR BIKE DISPLAY
+  // ═══════════════════════════════════════════════════════════════════════════
+  const getBikeModel = (bike) => {
+    return bike.model || bike.modelName || bike.vehicleModel || "Unknown Model";
+  };
+
+  const getBikeBrand = (bike) => {
+    return bike.brand || bike.brandName || bike.vehicleBrand || "Unknown Brand";
+  };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
@@ -573,7 +599,7 @@ const CreateUserBooking = () => {
             <div className="p-6 md:p-8">
               
               {/* ═══════════════════════════════════════════════════════════════ */}
-              {/* STEP 1: CUSTOMER PHONE NUMBER (FIRST) */}
+              {/* STEP 1: CUSTOMER PHONE NUMBER */}
               {/* ═══════════════════════════════════════════════════════════════ */}
               <div className="mb-8 pb-8 border-b-2 border-gray-100">
                 <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
@@ -787,6 +813,7 @@ const CreateUserBooking = () => {
                             setSelectedStore(e.target.value);
                             setAvailableBikes([]);
                             setSelectedBike("");
+                            setSelectedPackage(null);
                             setBikesDisplayCount(6);
                           }}
                           className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-[#2B2B80] focus:ring-2 focus:ring-blue-200 transition text-gray-700 font-medium disabled:bg-gray-100"
@@ -924,7 +951,7 @@ const CreateUserBooking = () => {
                   </div>
 
                   {/* ═══════════════════════════════════════════════════════════════ */}
-                  {/* STEP 5: SELECT BIKE (WITH PAGINATION) */}
+                  {/* STEP 5: SELECT BIKE */}
                   {/* ═══════════════════════════════════════════════════════════════ */}
                   {availableBikes.length > 0 && (
                     <div className="mb-8 pb-8 border-b-2 border-gray-100">
@@ -937,17 +964,31 @@ const CreateUserBooking = () => {
                         {displayedBikes.map(bike => (
                           <div
                             key={bike.id}
-                            onClick={() => setSelectedBike(bike.id.toString())}
+                            onClick={() => handleBikeSelect(bike.id)}
                             className={`p-4 border-2 rounded-lg cursor-pointer transition-all transform hover:scale-105 ${
                               selectedBike === bike.id.toString()
                                 ? "border-[#2B2B80] bg-blue-50 shadow-lg"
                                 : "border-gray-300 hover:border-blue-400 hover:shadow-md"
                             }`}
                           >
+                            {/* Bike Image */}
+                            {bike.mainImageUrl && (
+                              <div className="mb-3 rounded-lg overflow-hidden">
+                                <img 
+                                  src={bike.mainImageUrl} 
+                                  alt={getBikeModel(bike)}
+                                  className="w-full h-40 object-cover"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
+                                />
+                              </div>
+                            )}
+
                             <div className="flex justify-between items-start mb-3">
                               <div>
-                                <p className="font-bold text-lg text-gray-900">{bike.model}</p>
-                                <p className="text-sm text-gray-600">{bike.brand}</p>
+                                <p className="font-bold text-lg text-gray-900">{getBikeModel(bike)}</p>
+                                <p className="text-sm text-gray-600">{getBikeBrand(bike)}</p>
                               </div>
                               {selectedBike === bike.id.toString() && (
                                 <FaCheck className="text-[#2B2B80] text-xl" />
@@ -955,16 +996,16 @@ const CreateUserBooking = () => {
                             </div>
                             <div className="space-y-2 text-sm">
                               <p className="text-gray-700">
-                                📝 <span className="font-semibold">{bike.registrationNumber}</span>
+                                📝 <span className="font-semibold">{bike.registrationNumber || 'N/A'}</span>
                               </p>
-                              {/* <p className="text-gray-700 font-bold">
-                                💰 ₹{bike.dailyRate || bike.price}/day
-                              </p> */}
-                              {/* {selectedBike === bike.id.toString() && charges.total > 0 && (
-                                <p className="text-green-600 font-bold pt-2 border-t border-gray-200">
-                                  Total: ₹{charges.total.toFixed(2)}
+                              <p className="text-gray-700">
+                                🏪 <span className="font-semibold">{bike.storeName || 'N/A'}</span>
+                              </p>
+                              {bike.packages && bike.packages.length > 0 && (
+                                <p className="text-green-600 font-semibold">
+                                  📦 {bike.packages.length} package{bike.packages.length > 1 ? 's' : ''} available
                                 </p>
-                              )} */}
+                              )}
                             </div>
                           </div>
                         ))}
@@ -991,52 +1032,220 @@ const CreateUserBooking = () => {
                   )}
 
                   {/* ═══════════════════════════════════════════════════════════════ */}
-                  {/* STEP 6: PRICE BREAKDOWN & SUMMARY */}
+                  {/* STEP 6: SELECT PACKAGE */}
                   {/* ═══════════════════════════════════════════════════════════════ */}
-                  {selectedBike && charges.total > 0 && (
-                    <div className="mb-8">
+                  {selectedBike && selectedBikeData && selectedBikeData.packages && selectedBikeData.packages.length > 0 && (
+                    <div className="mb-8 pb-8 border-b-2 border-gray-100">
                       <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
                         <span className="bg-[#2B2B80] text-white rounded-full w-8 h-8 flex items-center justify-center mr-3">6</span>
-                        Booking Summary
+                        Select Package <span className="text-red-500 ml-1">*</span>
+                      </h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                        {selectedBikeData.packages.map((pkg, index) => (
+                          <div
+                            key={index}
+                            onClick={() => handlePackageSelect(pkg)}
+                            className={`p-5 border-2 rounded-xl cursor-pointer transition-all transform hover:scale-105 ${
+                              selectedPackage === pkg
+                                ? "border-green-500 bg-green-50 shadow-xl ring-2 ring-green-400"
+                                : "border-gray-300 hover:border-green-400 hover:shadow-lg"
+                            }`}
+                          >
+                            {/* Package Header */}
+                            <div className="flex justify-between items-center mb-3">
+                              <div>
+                                <p className="text-lg font-bold text-gray-900">
+                                  {pkg.hourlyRate ? "⏱️ Hourly" : `📅 ${pkg.daysDisplay}`}
+                                </p>
+                              </div>
+                              {selectedPackage === pkg && (
+                                <FaCheckCircle className="text-green-500 text-xl" />
+                              )}
+                            </div>
+
+                            {/* Price */}
+                            <div className="mb-3">
+                              <p className="text-2xl font-bold text-[#2B2B80]">
+                                ₹{parseFloat(pkg.price).toFixed(2)}
+                              </p>
+                              {pkg.hourlyRate && (
+                                <p className="text-xs text-gray-600 mt-1">per hour</p>
+                              )}
+                            </div>
+
+                            {/* Package Details */}
+                            <div className="space-y-1 text-xs border-t pt-3">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Deposit:</span>
+                                <span className="font-bold text-gray-900">₹{parseFloat(pkg.deposit).toFixed(2)}</span>
+                              </div>
+                              
+                              {pkg.hourlyChargeAmount && parseFloat(pkg.hourlyChargeAmount) > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Extra/Hr:</span>
+                                  <span className="font-bold text-gray-900">₹{parseFloat(pkg.hourlyChargeAmount).toFixed(2)}</span>
+                                </div>
+                              )}
+
+                              {!pkg.hourlyRate && pkg.days > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Duration:</span>
+                                  <span className="font-bold text-gray-900">{pkg.days} {pkg.days === 1 ? 'Day' : 'Days'}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Per Day Rate (for multi-day packages) */}
+                            {!pkg.hourlyRate && pkg.days > 1 && (
+                              <div className="mt-2 pt-2 border-t">
+                                <p className="text-xs text-gray-500 text-center">
+                                  ≈ ₹{(parseFloat(pkg.price) / pkg.days).toFixed(2)}/day
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {validationErrors.package && (
+                        <p className="text-sm text-red-600 font-semibold mt-2">{validationErrors.package}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ═══════════════════════════════════════════════════════════════ */}
+                  {/* STEP 7: BOOKING SUMMARY & PAYMENT */}
+                  {/* ═══════════════════════════════════════════════════════════════ */}
+                  {selectedBike && selectedPackage && charges.total > 0 && (
+                    <div className="mb-8">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <span className="bg-[#2B2B80] text-white rounded-full w-8 h-8 flex items-center justify-center mr-3">7</span>
+                        Booking Summary & Payment
                       </h3>
 
                       {/* Price Breakdown Cards */}
-                      {/* <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border-2 border-blue-200">
-                          <p className="text-sm text-gray-600 font-semibold">Duration</p>
-                          <p className="text-2xl font-bold text-[#2B2B80]">{totalHours}h</p>
+                          <p className="text-sm text-gray-600 font-semibold">Package</p>
+                          <p className="text-xl font-bold text-[#2B2B80]">{selectedPackage.daysDisplay}</p>
                         </div>
 
                         <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-4 border-2 border-indigo-200">
-                          <p className="text-sm text-gray-600 font-semibold">Base Rate</p>
-                          <p className="text-2xl font-bold text-indigo-700">₹{charges.baseCharges.toFixed(2)}</p>
+                          <p className="text-sm text-gray-600 font-semibold">Base Price</p>
+                          <p className="text-xl font-bold text-indigo-700">₹{charges.baseCharges.toFixed(2)}</p>
                         </div>
 
                         <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-4 border-2 border-yellow-200">
-                          <p className="text-sm text-gray-600 font-semibold">GST (18%)</p>
-                          <p className="text-2xl font-bold text-yellow-700">₹{charges.gst.toFixed(2)}</p>
+                          <p className="text-sm text-gray-600 font-semibold">GST (5%)</p>
+                          <p className="text-xl font-bold text-yellow-700">₹{charges.gst.toFixed(2)}</p>
                         </div>
 
                         <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-lg p-4 border-3 border-green-400">
                           <p className="text-sm text-gray-600 font-semibold">Total Amount</p>
-                          <p className="text-2xl font-bold text-green-700">₹{charges.total.toFixed(2)}</p>
+                          <p className="text-xl font-bold text-green-700">₹{charges.total.toFixed(2)}</p>
                         </div>
-                      </div> */}
+                      </div>
+
+                      {/* Deposit Info */}
+                      {charges.deposit > 0 && (
+                        <div className="mb-6 p-4 bg-orange-50 border-2 border-orange-300 rounded-lg">
+                          <p className="text-sm font-bold text-orange-800 mb-2">💰 Security Deposit Required:</p>
+                          <p className="text-2xl font-bold text-orange-700">₹{charges.deposit.toFixed(2)}</p>
+                          <p className="text-xs text-orange-600 mt-1">Refundable after bike return in good condition</p>
+                        </div>
+                      )}
 
                       {/* Booking Details Summary */}
-                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
-                        <p className="text-sm font-bold text-gray-800 mb-3">📋 Complete Booking Details:</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
-                          <p>👤 Customer: <span className="font-semibold">{customerData.name}</span></p>
-                          <p>📞 Phone: <span className="font-semibold">{customerData.phoneNumber}</span></p>
-                          <p>📍 City: <span className="font-semibold">{allCities.find(c => c.id === parseInt(selectedCity))?.cityName || allCities.find(c => c.id === parseInt(selectedCity))?.name}</span></p>
-                          <p>🏪 Store: <span className="font-semibold">{filteredStores.find(s => s.id === parseInt(selectedStore))?.storeName}</span></p>
-                          <p>🚗 Bike: <span className="font-semibold">{availableBikes.find(b => b.id === parseInt(selectedBike))?.model} ({availableBikes.find(b => b.id === parseInt(selectedBike))?.brand})</span></p>
-                          <p>📝 Registration: <span className="font-semibold">{availableBikes.find(b => b.id === parseInt(selectedBike))?.registrationNumber}</span></p>
-                          <p>📅 Start: <span className="font-semibold">{startDate} at {startTime}</span></p>
-                          <p>📅 End: <span className="font-semibold">{endDate} at {endTime}</span></p>
-                          <p>⏱️ Duration: <span className="font-semibold">{totalHours} hours</span></p>
-                          <p>💳 Payment: <span className="font-semibold text-green-600">COD (Cash on Delivery)</span></p>
+                      <div className="bg-gray-50 rounded-lg p-6 border-2 border-gray-200">
+                        <p className="text-sm font-bold text-gray-800 mb-4 text-lg">📋 Complete Booking Details:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+                          <div className="flex items-start">
+                            <span className="mr-2">👤</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Customer</p>
+                              <p className="font-semibold">{customerData.name}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">📞</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Phone</p>
+                              <p className="font-semibold">{customerData.phoneNumber}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">📍</span>
+                            <div>
+                              <p className="text-xs text-gray-500">City</p>
+                              <p className="font-semibold">
+                                {allCities.find(c => c.id === parseInt(selectedCity))?.cityName || 
+                                 allCities.find(c => c.id === parseInt(selectedCity))?.name}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">🏪</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Store</p>
+                              <p className="font-semibold">
+                                {filteredStores.find(s => s.id === parseInt(selectedStore))?.storeName}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">🚗</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Bike</p>
+                              <p className="font-semibold">
+                                {getBikeModel(selectedBikeData)} ({getBikeBrand(selectedBikeData)})
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">📝</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Registration</p>
+                              <p className="font-semibold">{selectedBikeData?.registrationNumber}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">📅</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Start</p>
+                              <p className="font-semibold">{startDate} at {startTime}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">📅</span>
+                            <div>
+                              <p className="text-xs text-gray-500">End</p>
+                              <p className="font-semibold">{endDate} at {endTime}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">⏱️</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Duration</p>
+                              <p className="font-semibold">{totalHours} hours</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start">
+                            <span className="mr-2">💳</span>
+                            <div>
+                              <p className="text-xs text-gray-500">Payment</p>
+                              <p className="font-semibold text-green-600">COD (Cash on Delivery)</p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1048,7 +1257,7 @@ const CreateUserBooking = () => {
             {/* ═══════════════════════════════════════════════════════════════ */}
             {/* FOOTER: ACTION BUTTONS */}
             {/* ═══════════════════════════════════════════════════════════════ */}
-            {selectedBike && (
+            {selectedBike && selectedPackage && (
               <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 md:p-8 flex flex-col md:flex-row gap-4 justify-end border-t-2 border-gray-200">
                 <button
                   type="button"

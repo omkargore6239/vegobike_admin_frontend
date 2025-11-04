@@ -392,13 +392,13 @@ const BookingListView = ({
           </div>
           
           <div className="flex items-center space-x-3">
-            {/* <button
+            <button
               onClick={() => navigate('/dashboard/createBooking')}
               className="flex items-center px-4 py-2 rounded-lg shadow-md transition-all bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold hover:shadow-lg"
             >
               <FaPlus className="mr-2" />
               Create Booking
-            </button> */}
+            </button>
 
             <button
               onClick={handleRefresh}
