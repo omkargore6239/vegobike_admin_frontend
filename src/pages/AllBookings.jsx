@@ -6,7 +6,7 @@ import {
   FaUser, FaPhone, FaHashtag, FaClock, FaMoneyBillWave, FaShieldAlt,
   FaSearch, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaEdit, FaSave,
   FaUpload, FaDownload, FaFileAlt, FaPlus, FaTimes, FaSync, FaExclamationTriangle,
-  FaImage, FaCamera, FaFileInvoice
+  FaImage, FaCamera, FaFileInvoice, FaInfoCircle
 } from "react-icons/fa";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -45,6 +45,9 @@ const [endTripKmValue, setEndTripKmValue] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   // Add these new state variables at the top with other states
 
+const [showExtendTripModal, setShowExtendTripModal] = useState(false);
+const [newEndDateTime, setNewEndDateTime] = useState('');
+const [extendLoading, setExtendLoading] = useState(false);
 
 
   useEffect(() => {
@@ -194,6 +197,9 @@ const [endTripKmValue, setEndTripKmValue] = useState('');
     setCurrentPage(0);
   };
 
+
+
+
   const handleView = async (booking) => {
     console.log('👁️ Viewing booking:', booking);
 
@@ -316,6 +322,12 @@ const [endTripKmValue, setEndTripKmValue] = useState('');
     setShowEndTripKmModal={setShowEndTripKmModal}
     endTripKmValue={endTripKmValue}
     setEndTripKmValue={setEndTripKmValue}
+     showExtendTripModal={showExtendTripModal}
+  setShowExtendTripModal={setShowExtendTripModal}
+  newEndDateTime={newEndDateTime}
+  setNewEndDateTime={setNewEndDateTime}
+  extendLoading={extendLoading}
+  setExtendLoading={setExtendLoading}
           />
         ) : (
           <BookingListView
@@ -645,7 +657,12 @@ const BookingListView = ({
 const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings, navigate, showEndTripKmModal,
   setShowEndTripKmModal,
   endTripKmValue,
-  setEndTripKmValue }) => {
+  setEndTripKmValue,showExtendTripModal,
+  setShowExtendTripModal,
+  newEndDateTime,
+  setNewEndDateTime,
+  extendLoading,
+  setExtendLoading }) => {
   const [formData, setFormData] = useState({});
   const [additionalCharges, setAdditionalCharges] = useState([]);
   const [newCharge, setNewCharge] = useState({ type: 'Additional Charges', amount: '' });
@@ -738,6 +755,101 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
       setLoadingDocuments(false);
     }
   };
+// ✅ ADD THIS INSIDE BookingDetailView COMPONENT
+// ✅ COMPLETE - Proper validation and API call
+const handleExtendTrip = async () => {
+  // Step 1: Validate booking ID
+  if (!booking?.id) {
+    toast.error('❌ Booking ID not found');
+    return;
+  }
+  
+  // Step 2: Validate input is not empty
+  if (!newEndDateTime || newEndDateTime.trim() === '') {
+    toast.error('❌ Please select a new end date and time');
+    return;
+  }
+  
+  // Step 3: Validate date format
+  const newDate = new Date(newEndDateTime);
+  if (isNaN(newDate.getTime())) {
+    toast.error('❌ Invalid date format');
+    return;
+  }
+  
+  // Step 4: Validate new date is after current end date
+  const currentEndDate = new Date(formData.endDate);
+  if (newDate <= currentEndDate) {
+    toast.error('❌ New end time must be later than current end time');
+    return;
+  }
+  
+  setExtendLoading(true);
+  try {
+    console.log('⏱️ [Extend Trip] Starting extension process');
+    console.log({
+      bookingId: booking.id,
+      currentEndDate: formData.endDate,
+      newEndDateTime: newEndDateTime,
+      epochMillis: newDate.getTime()
+    });
+    
+    // ✅ Convert to epoch milliseconds (required by backend)
+    const epochMillis = newDate.getTime();
+    
+    // ✅ Call API
+    const response = await bookingAPI.extendTrip(booking.id, epochMillis);
+    
+    console.log('✅ [Extend Trip] API response:', response.data);
+    
+    // Update UI with new end date
+    setFormData(prev => ({ 
+      ...prev, 
+      endDate: newEndDateTime 
+    }));
+    
+    // Close modal and clear input
+    setShowExtendTripModal(false);
+    setNewEndDateTime('');
+    
+    // Show success message
+    toast.success('✅ Trip extended successfully!');
+    
+    // Refresh bookings list after delay
+    if (refreshBookings) {
+      console.log('🔄 Refreshing bookings list...');
+      setTimeout(() => {
+        refreshBookings();
+      }, 1000);
+    }
+    
+  } catch (error) {
+    console.error('❌ [Extend Trip] Error:', error);
+    
+    // Handle specific error responses
+    if (error.response?.status === 409) { // CONFLICT
+      const message = error.response?.data?.message || 'Trip cannot be extended at this time';
+      toast.error(`⚠️ ${message}`);
+    } else if (error.response?.status === 400) { // BAD REQUEST
+      const message = error.response?.data?.message || 'Invalid request. Please try again.';
+      toast.error(`❌ ${message}`);
+    } else {
+      const message = error.response?.data?.message 
+        || error.message 
+        || 'Failed to extend trip. Please try again.';
+      toast.error(`❌ ${message}`);
+    }
+  } finally {
+    setExtendLoading(false);
+  }
+};
+
+
+
+const handleCloseExtendModal = () => {
+  setShowExtendTripModal(false);
+  setNewEndDateTime('');
+};
 
   const handleDocumentVerification = async (documentType, status) => {
     if (!booking?.customerId) {
@@ -1416,8 +1528,26 @@ const handleSubmitEndTripKm = async () => {
               </select>
             </div>
           </div>
+{/* EXTEND TRIP BUTTON - ADMIN ONLY */}
+{/* <div className="mb-3">
+  {booking.status === 'On Going' || booking.status === 'Start Trip' ? (
+    <button
+      onClick={() => setShowExtendTripModal(true)}
+      className="w-1/4 py-2 px-4 rounded-md text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center"
+    >
+      <FaClock className="mr-2" />
+      Extend Trip
+    </button>
+  ) : (
+    <div className="p-3 bg-gray-100 rounded-md border border-gray-300">
+      <p className="text-xs text-gray-600 flex items-center">
+        <FaInfoCircle className="mr-1" />
+        Trip extension only available for ongoing or started trips
+      </p>
+    </div>
+  )}
+</div>
 
-          {/* UPDATE BOOKING DETAILS BUTTON */}
           <div className="mb-3">
             <button
               onClick={handleUpdateBookingDetails}
@@ -1456,7 +1586,69 @@ const handleSubmitEndTripKm = async () => {
                 </p>
               </div>
             )}
-          </div>
+          </div> */}
+
+          {/* EXTEND TRIP & UPDATE STATUS - REDUCED WIDTH */}
+<div className="mb-3 flex gap-3 items-stretch w-1/2">
+  {/* EXTEND TRIP BUTTON */}
+  {booking.status === 'On Going' || booking.status === 'Start Trip' ? (
+    <button
+      onClick={() => setShowExtendTripModal(true)}
+      className="flex-1 py-2 px-4 rounded-md text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center"
+    >
+      <FaClock className="mr-2" />
+      Extend Trip
+    </button>
+  ) : (
+    <div className="flex-1 p-3 bg-gray-100 rounded-md border border-gray-300 flex items-center justify-center">
+      <p className="text-xs text-gray-600 flex items-center">
+        <FaInfoCircle className="mr-1" />
+        Trip extension only available for ongoing or started trips
+      </p>
+    </div>
+  )}
+
+  {/* UPDATE BOOKING STATUS BUTTON */}
+  <button
+    onClick={handleUpdateBookingDetails}
+    disabled={isUpdating || formData.bookingStatus === formData.currentBookingStatus}
+    className={`flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors flex items-center justify-center ${
+      formData.bookingStatus === formData.currentBookingStatus
+        ? 'bg-gray-400 cursor-not-allowed text-white'
+        : isUpdating
+        ? 'bg-blue-400 cursor-not-allowed text-white'
+        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
+    }`}
+  >
+    {isUpdating ? (
+      <>
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+        Updating Status...
+      </>
+    ) : formData.bookingStatus === formData.currentBookingStatus ? (
+      <>
+        <FaCheckCircle className="mr-2" />
+        Status Up to Date
+      </>
+    ) : (
+      <>
+        <FaEdit className="mr-2" />
+        Update Booking Status
+      </>
+    )}
+  </button>
+</div>
+
+{/* STATUS CHANGE WARNING */}
+{formData.bookingStatus !== formData.currentBookingStatus && !isUpdating && (
+  <div className="p-2 bg-orange-50 border border-orange-200 rounded-md w-1/2">
+    <p className="text-xs text-orange-600 font-medium flex items-center">
+      <FaEdit className="mr-1" />
+      Status will change from "{formData.currentBookingStatus}" to "{formData.bookingStatus}"
+    </p>
+  </div>
+)}
+
 
           {/* ✅ UPDATED ADDITIONAL CHARGES SECTION */}
           <div className="mb-3">
@@ -1892,6 +2084,125 @@ const handleSubmitEndTripKm = async () => {
     </div>
   </div>
 )}
+
+{/* ✅ EXTEND TRIP MODAL */}
+{showExtendTripModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 rounded-t-xl">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <FaClock className="mr-2 text-2xl" />
+            <h3 className="text-lg font-bold">Extend Trip</h3>
+          </div>
+          {/*<button 
+            onClick={() => {
+              setShowExtendTripModal(false);
+              setNewEndDateTime('');
+            }}
+            className="text-white hover:text-gray-200 transition-colors"
+          >
+            <FaTimes className="text-xl" />
+          </button>*/}
+          <button 
+  onClick={handleCloseExtendModal}
+  className="text-white hover:text-gray-200 transition-colors"
+>
+  <FaTimes className="text-xl" />
+</button>
+
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-6">
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+          <p className="text-sm text-purple-800 flex items-center">
+            <FaClock className="mr-2 text-purple-600" />
+            Select a new end date and time to extend this trip
+          </p>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Current End Time
+          </label>
+          <input
+            type="datetime-local"
+            value={formData.endDate}
+            disabled
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed text-sm"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            New End Time <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="datetime-local"
+            value={newEndDateTime}
+            onChange={(e) => setNewEndDateTime(e.target.value)}
+            min={formData.endDate}
+            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+            autoFocus
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Must be later than current end time
+          </p>
+        </div>
+
+        {newEndDateTime && formData.endDate && (() => {
+          const currentEnd = new Date(formData.endDate);
+          const newEnd = new Date(newEndDateTime);
+          const diffMinutes = Math.round((newEnd - currentEnd) / 60000);
+          const hours = Math.floor(diffMinutes / 60);
+          const mins = diffMinutes % 60;
+          
+          return (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-green-700 font-medium">Extension Duration:</span>
+                <span className="text-lg font-bold text-green-900">
+                  {hours}h {mins}m
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Footer */}
+      <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end space-x-3">
+        <button
+            onClick={handleCloseExtendModal}
+          className="px-5 py-2.5 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors text-sm"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleExtendTrip}
+          disabled={!newEndDateTime || extendLoading}
+          className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all text-sm flex items-center shadow-md"
+        >
+          {extendLoading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              Extending...
+            </>
+          ) : (
+            <>
+              <FaClock className="mr-2" />
+              Extend Trip
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
     </div>
   );

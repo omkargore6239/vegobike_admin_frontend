@@ -532,7 +532,30 @@ export const bookingAPI = {
       throw error;
     }
   },
-  
+  // ✅ CORRECT - send as query parameter in URL
+// ✅ CORRECT - Matches backend exactly
+// Backend: POST /api/booking-bikes/admin/bookings/{bookingId}/extend?newEndDateTime={epochMillis}
+extendTrip: async (bookingId, epochMillis) => {
+  try {
+    console.log(`⏱️ [Booking API] Extending trip`);
+    console.log(`  - Booking ID: ${bookingId}`);
+    console.log(`  - New End DateTime (ms): ${epochMillis}`);
+    console.log(`  - New End DateTime (ISO): ${new Date(epochMillis).toISOString()}`);
+    
+    // ✅ POST request with query parameter
+    const response = await api.post(
+      `/api/booking-bikes/admin/bookings/${bookingId}/extend?newEndDateTime=${epochMillis}`
+    );
+    
+    console.log(`✅ [Booking API] Trip extended successfully:`, response.data);
+    return { data: response.data };
+  } catch (error) {
+    console.error(`❌ [Booking API] Error extending trip:`, error);
+    throw error;
+  }
+},
+
+
   // Confirm Razorpay payment
   confirmRazorpayPayment: async (orderId, paymentId, signature) => {
     try {
