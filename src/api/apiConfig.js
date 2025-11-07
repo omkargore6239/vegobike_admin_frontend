@@ -160,18 +160,48 @@ export const createFormData = (data) => {
   return formData;
 };
 // ✅ BIKE API - Matches BikeController
+// export const bikeAPI = {
+//   getAll: () => apiClient.get('/api/bikes/all'),
+//   getById: (id) => apiClient.get(`/api/bikes/${id}`),
+//   getAvailable: (params) => apiClient.get('/api/bikes/available', { params }),
+//   create: (bikeData) => {
+//     const formData = createFormData(bikeData);
+//     return apiClient.post('/api/bikes/add', formData);
+//   },
+//   update: (id, bikeData) => {
+//     const formData = createFormData(bikeData);
+//     return apiClient.put(`/api/bikes/update/${id}`, formData);
+//   },
+//   delete: (id) => apiClient.delete(`/api/bikes/${id}`),
+//   toggleStatus: (id) => apiClient.patch(`/api/bikes/${id}/status`),
+// };
 export const bikeAPI = {
-  getAll: () => apiClient.get('/api/bikes/all'),
+  getAll: () => apiClient.get("/api/bikes/all"),
   getById: (id) => apiClient.get(`/api/bikes/${id}`),
-  getAvailable: (params) => apiClient.get('/api/bikes/available', { params }),
+  getAvailable: (params) => apiClient.get("/api/bikes/available", { params }),
+
+  // ✅ FIX: Don't wrap FormData again!
   create: (bikeData) => {
+    // If bikeData is already FormData, send it directly
+    if (bikeData instanceof FormData) {
+      return apiClient.post("/api/bikes/add", bikeData);
+    }
+    // Otherwise create FormData
     const formData = createFormData(bikeData);
-    return apiClient.post('/api/bikes/add', formData);
+    return apiClient.post("/api/bikes/add", formData);
   },
+
+  // ✅ FIX: Same for update
   update: (id, bikeData) => {
+    // If bikeData is already FormData, send it directly
+    if (bikeData instanceof FormData) {
+      return apiClient.put(`/api/bikes/update/${id}`, bikeData);
+    }
+    // Otherwise create FormData
     const formData = createFormData(bikeData);
     return apiClient.put(`/api/bikes/update/${id}`, formData);
   },
+
   delete: (id) => apiClient.delete(`/api/bikes/${id}`),
   toggleStatus: (id) => apiClient.patch(`/api/bikes/${id}/status`),
 };
