@@ -6,11 +6,12 @@ import {
   FaUser, FaPhone, FaHashtag, FaClock, FaMoneyBillWave, FaShieldAlt,
   FaSearch, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaEdit, FaSave,
   FaUpload, FaDownload, FaFileAlt, FaPlus, FaTimes, FaSync, FaExclamationTriangle,
-  FaImage, FaCamera, FaFileInvoice, FaInfoCircle
+  FaImage, FaCamera, FaFileInvoice, FaInfoCircle,FaIdCard 
 } from "react-icons/fa";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { bookingAPI, documentAPI, additionalChargeAPI } from '../utils/apiClient';
+import apiClient, { BASE_URL } from '../api/apiConfig';
 
 const AllBookings = () => {
   const navigate = useNavigate();
@@ -654,15 +655,13 @@ const BookingListView = ({
 };
 
 // Booking Detail View Component - UPDATED ADDITIONAL CHARGES SECTION ONLY
-const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getStatusColor, getPaymentMethodIcon, refreshBookings, setBookings, navigate, showEndTripKmModal,
-  setShowEndTripKmModal,
-  endTripKmValue,
-  setEndTripKmValue,showExtendTripModal,
-  setShowExtendTripModal,
-  newEndDateTime,
-  setNewEndDateTime,
-  extendLoading,
-  setExtendLoading }) => {
+const BookingDetailView = ({ 
+  booking, onBack, formatDate, formatCurrency, getStatusColor, 
+  getPaymentMethodIcon, refreshBookings, setBookings, navigate, 
+  showEndTripKmModal, setShowEndTripKmModal, endTripKmValue, setEndTripKmValue,
+  showExtendTripModal, setShowExtendTripModal, newEndDateTime, 
+  setNewEndDateTime, extendLoading, setExtendLoading 
+}) => {
   const [formData, setFormData] = useState({});
   const [additionalCharges, setAdditionalCharges] = useState([]);
   const [newCharge, setNewCharge] = useState({ type: 'Additional Charges', amount: '' });
@@ -670,11 +669,17 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
   const [isSavingCharges, setIsSavingCharges] = useState(false);
   const [loadingCharges, setLoadingCharges] = useState(false);
   
+  // ✅ DOCUMENT VERIFICATION STATES
   const [userDocuments, setUserDocuments] = useState(null);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [verifyingDocument, setVerifyingDocument] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
-
+  const [documentUpdating, setDocumentUpdating] = useState({});
+  const [documentStatus, setDocumentStatus] = useState({
+    aadharFrontSide: 'PENDING',
+    aadharBackSide: 'PENDING',
+    drivingLicense: 'PENDING',
+  });
   // ✅ NEW: Fetch additional charges when booking changes
   useEffect(() => {
     if (booking?.id) {
@@ -739,23 +744,134 @@ const BookingDetailView = ({ booking, onBack, formatDate, formatCurrency, getSta
   }, [booking]);
 
   const fetchUserDocuments = async (userId) => {
-    if (!userId) return;
+  if (!userId) return;
+  
+  setLoadingDocuments(true);
+  try {
+    console.log(`📥 Fetching documents for user ${userId}`);
+    const response = await apiClient.get(`/api/documents/userdocuments/${userId}`);
+    
+    console.log('📄 Document API Response:', response.data);
 
-    setLoadingDocuments(true);
-    try {
-      const response = await documentAPI.getByUserId(userId);
-      const documents = response.data.data || response.data;
-      setUserDocuments(documents);
-    } catch (error) {
-      console.error('❌ Error fetching user documents:', error);
-      if (error.response?.status === 404) {
-        toast.info('ℹ️ No documents found for this user');
-      }
-    } finally {
-      setLoadingDocuments(false);
+    if (response.data) {
+      const docs = {
+        aadharFrontSide: response.data.adhaarFrontImageUrl || null,
+        aadharBackSide: response.data.adhaarBackImageUrl || null,
+        drivingLicense: response.data.drivingLicenseImageUrl || null,
+        adhaarFrontStatus: response.data.adhaarFrontStatus || 'PENDING',
+        adhaarBackStatus: response.data.adhaarBackStatus || 'PENDING',
+        licenseStatus: response.data.licenseStatus || 'PENDING',
+      };
+      
+      console.log('✅ Mapped documents:', docs);
+      setUserDocuments(docs);
     }
-  };
-// ✅ ADD THIS INSIDE BookingDetailView COMPONENT
+  } catch (error) {
+    console.error('❌ Error fetching documents:', error);
+    console.error('Error response:', error.response?.data);
+    
+    if (error.response?.status !== 404) {
+      toast.warning('Could not load customer documents');
+    }
+  } finally {
+    setLoadingDocuments(false);
+  }
+};
+
+
+// ✅ VERIFY/REJECT DOCUMENT HANDLER
+// ✅ FIXED DOCUMENT VERIFICATION HANDLER
+const handleDocumentAction = async (docType, action) => {
+  if (!booking?.customerId) {
+    toast.error("Invalid customer selected");
+    return;
+  }
+
+  setDocumentUpdating(prev => ({ ...prev, [docType]: true }));
+
+  try {
+    const fieldMapping = {
+      'aadharFrontSide': 'adhaarFrontStatus',
+      'aadharBackSide': 'adhaarBackStatus',
+      'drivingLicense': 'licenseStatus'
+    };
+    
+    const backendFieldName = fieldMapping[docType];
+    if (!backendFieldName) {
+      throw new Error(`Invalid document type: ${docType}`);
+    }
+
+    const statusUpdates = { [backendFieldName]: action };
+
+    console.log(`📤 Updating ${docType} to ${action} for user ${booking.customerId}`);
+    console.log('Request payload:', statusUpdates);
+
+    const response = await documentAPI.verify(booking.customerId, statusUpdates);
+
+    if (response.status === 200) {
+      console.log('✅ Backend updated successfully');
+
+      // ✅ Update userDocuments state with new status
+      setUserDocuments(prev => ({
+        ...prev,
+        [backendFieldName]: action  // Update the status field
+      }));
+
+      toast.success(`✅ Document ${action === 'VERIFIED' ? 'Verified' : 'Rejected'} successfully`);
+
+      // ✅ Verify backend update after 1 second
+      setTimeout(async () => {
+        try {
+          const verifyResponse = await apiClient.get(`/api/documents/userdocuments/${booking.customerId}`);
+          
+          if (verifyResponse.data) {
+            setUserDocuments({
+              aadharFrontSide: verifyResponse.data.adhaarFrontImageUrl || null,
+              aadharBackSide: verifyResponse.data.adhaarBackImageUrl || null,
+              drivingLicense: verifyResponse.data.drivingLicenseImageUrl || null,
+              adhaarFrontStatus: verifyResponse.data.adhaarFrontStatus || 'PENDING',
+              adhaarBackStatus: verifyResponse.data.adhaarBackStatus || 'PENDING',
+              licenseStatus: verifyResponse.data.licenseStatus || 'PENDING',
+            });
+            
+            console.log('✅ Confirmed status from backend:', verifyResponse.data);
+          }
+        } catch (err) {
+          console.error('⚠️ Failed to verify update:', err);
+        }
+      }, 1500);
+
+    } else {
+      throw new Error("Failed to update document status");
+    }
+  } catch (error) {
+    console.error("❌ Error updating document:", error);
+    console.error("Error details:", error.response?.data);
+    
+    const errorMessage = error.response?.data?.message || error.message || 'Failed to update document verification';
+    toast.error(`❌ ${errorMessage}`);
+  } finally {
+    setDocumentUpdating(prev => ({ ...prev, [docType]: false }));
+  }
+};
+
+
+// ✅ IMAGE MODAL HANDLERS
+// const openImageModal = (imageUrl, documentName) => {
+//   setSelectedImage({ url: imageUrl, name: documentName });
+// };
+
+// const closeImageModal = () => {
+//   setSelectedImage(null);
+// };
+
+// const getImageUrl = (imagePath) => {
+//   if (!imagePath) return null;
+//   if (imagePath.startsWith('http') || imagePath.startsWith('data:image')) return imagePath;
+//   return `${BASE_URL}/${imagePath.replace(/^\/+/, '')}`;
+// };
+
+
 // ✅ COMPLETE - Proper validation and API call
 const handleExtendTrip = async () => {
   // Step 1: Validate booking ID
@@ -915,91 +1031,89 @@ const handleCloseExtendModal = () => {
     );
   };
 
-  const DocumentCard = ({ documentType, imageUrl, status, label }) => {
-    const hasDocument = imageUrl && imageUrl.trim() !== '';
+  const getImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+  if (imagePath.startsWith('http') || imagePath.startsWith('data:image')) return imagePath;
+  
+  // ✅ Remove leading slashes and construct full URL
+  const cleanPath = imagePath.replace(/^\/+/, '');
+  return `${BASE_URL}/${cleanPath}`;
+};
+  // ✅ DOCUMENT CARD COMPONENT
+const DocumentCard = ({ label, docType, imageData, status, updating }) => {
+  const imageUrl = getImageUrl(imageData);
+  const hasImage = imageUrl && imageUrl.trim() !== '';
 
-    return (
-      <div className="text-center">
-        <div 
-          className={`w-full h-32 rounded-lg mb-2 flex items-center justify-center relative border-2 transition-all cursor-pointer ${
-            hasDocument 
-              ? 'border-blue-400 hover:border-blue-600 bg-gray-50' 
-              : 'border-dashed border-gray-300 bg-gray-100'
-          }`}
-          onClick={() => hasDocument && openImageModal(imageUrl, label)}
-        >
-          {hasDocument ? (
-            <>
-              <img 
-                src={imageUrl} 
-                alt={label}
-                className="max-h-full max-w-full object-contain rounded-lg"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999">No Image</text></svg>';
-                }}
-              />
-              <div className="absolute top-2 right-2">
-                {getVerificationBadge(status)}
-              </div>
-              <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 text-gray-800 px-2 py-1 rounded text-xs font-medium shadow">
-                <FaEye className="inline mr-1" />
-                Click to view
-              </div>
-            </>
-          ) : (
-            <div className="text-center">
-              <FaFileAlt className="mx-auto text-gray-400 text-3xl mb-2" />
-              <p className="text-gray-500 text-xs">No document uploaded</p>
-            </div>
-          )}
-        </div>
+    console.log(`[DocumentCard] ${label}:`, { imageData, imageUrl, hasImage });
 
-        <p className="text-xs font-semibold text-gray-700 mb-2">{label}</p>
+  return (
+    <div className="bg-white rounded-lg shadow-md border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-bold text-gray-900">{label}</h3>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+          status === 'VERIFIED' ? 'bg-green-100 text-green-700' :
+          status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+          'bg-yellow-100 text-yellow-700'
+        }`}>
+          {status}
+        </span>
+      </div>
 
-        {hasDocument && (
-          <div className="flex space-x-1">
-            <button 
-              onClick={() => handleDocumentVerification(documentType, 'VERIFIED')}
-              disabled={verifyingDocument === documentType || status === 'VERIFIED'}
-              className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors flex items-center justify-center ${
-                status === 'VERIFIED'
-                  ? 'bg-gray-300 cursor-not-allowed text-gray-600'
-                  : 'bg-green-500 hover:bg-green-600 text-white'
-              }`}
-            >
-              {verifyingDocument === documentType ? (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-              ) : (
-                <>
-                  <FaCheckCircle className="mr-1" />
-                  Verify
-                </>
-              )}
-            </button>
-            <button 
-              onClick={() => handleDocumentVerification(documentType, 'REJECTED')}
-              disabled={verifyingDocument === documentType || status === 'REJECTED'}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors flex items-center ${
-                status === 'REJECTED'
-                  ? 'bg-gray-300 cursor-not-allowed text-gray-600'
-                  : 'bg-red-500 hover:bg-red-600 text-white'
-              }`}
-            >
-              {verifyingDocument === documentType ? (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-              ) : (
-                <>
-                  <FaTimesCircle className="mr-1" />
-                  Reject
-                </>
-              )}
-            </button>
+       <div 
+        className={`w-full h-40 bg-gray-100 border-2 ${
+          hasImage ? 'border-indigo-200 cursor-pointer' : 'border-gray-200'
+        } flex items-center justify-center rounded-lg overflow-hidden`}
+        onClick={() => hasImage && openImageModal(imageUrl, label)}
+      >
+        {hasImage ? (
+          <img 
+            src={imageUrl} 
+            alt={label} 
+            className="w-full h-full object-cover"
+            crossOrigin="anonymous"
+            onError={(e) => {
+              console.error(`❌ Failed to load ${label}:`, imageUrl);
+              e.target.style.display = 'none';
+              e.target.parentNode.innerHTML = '<div class="text-center p-4"><FaExclamationTriangle class="text-red-500 text-3xl mx-auto mb-2" /><p class="text-red-500 text-xs">Failed to load</p></div>';
+            }}
+          />
+        ) : (
+          <div className="text-center">
+            <FaFileAlt className="text-gray-300 text-3xl mx-auto mb-2" />
+            <p className="text-gray-400 text-xs">No Document</p>
           </div>
         )}
       </div>
-    );
-  };
+
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => handleDocumentAction(docType, 'VERIFIED')}
+          disabled={status === 'VERIFIED' || updating || !hasImage}
+          className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold ${
+            status === 'VERIFIED' || updating || !hasImage
+              ? 'bg-green-200 text-green-600 cursor-not-allowed'
+              : 'bg-green-500 text-white hover:bg-green-600'
+          } flex items-center justify-center`}
+        >
+          {updating ? <div className="animate-spin h-3 w-3 border-2 border-white rounded-full border-t-transparent"></div> : <><FaCheckCircle className="mr-1" /> Verify</>}
+        </button>
+
+        <button
+          onClick={() => handleDocumentAction(docType, 'REJECTED')}
+          disabled={status === 'REJECTED' || updating || !hasImage}
+          className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold ${
+            status === 'REJECTED' || updating || !hasImage
+              ? 'bg-red-200 text-red-600 cursor-not-allowed'
+              : 'bg-red-500 text-white hover:bg-red-600'
+          } flex items-center justify-center`}
+        >
+          {updating ? <div className="animate-spin h-3 w-3 border-2 border-white rounded-full border-t-transparent"></div> : <><FaTimesCircle className="mr-1" /> Reject</>}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 
   const TripImageCard = ({ imageUrl, index, label }) => {
     const hasImage = imageUrl && imageUrl.trim() !== '';
@@ -1230,32 +1344,64 @@ const handleSubmitEndTripKm = async () => {
   console.log('🔴 handleSubmitEndTripKm called');
   console.log('📌 endTripKmValue from state:', endTripKmValue);
   
-  const kmValue = parseFloat(endTripKmValue);
+  const bookingId = booking?.id;
   
-  if (!endTripKmValue || isNaN(kmValue) || kmValue <= 0) {
-    toast.error('Please enter a valid End Trip KM');
+  if (!bookingId) {
+    toast.error('Booking ID not found');
     return;
   }
 
-  if (formData.startTripKm && kmValue < parseFloat(formData.startTripKm)) {
-    toast.error('End Trip KM cannot be less than Start Trip KM');
+  const kmValue = parseFloat(endTripKmValue);
+  
+  if (!kmValue || isNaN(kmValue) || kmValue <= 0) {
+    toast.error('Please enter a valid End Trip KM value');
     return;
   }
+
+  const startKm = formData?.startTripKm || 0;
+  if (kmValue <= startKm) {
+    toast.error(`End Trip KM must be greater than Start Trip KM (${startKm} km)`);
+    return;
+  }
+
+  console.log('✅ Submitting with:');
+  console.log('   - bookingId:', bookingId);
+  console.log('   - kmValue:', kmValue);
 
   setIsUpdating(true);
   
   try {
-    console.log('✅ Submitting with:');
-    console.log('   - bookingId:', booking.id);
-    console.log('   - kmValue:', kmValue);
+    console.log('🚀 [DIRECT] Making direct API call with endTripKm:', kmValue);
     
-    // ✅ Pass endTripKm as second parameter - matches user-side
-    const response = await bookingAPI.complete(booking.id, kmValue);
+    // ✅ Hardcoded URL - no import needed
+   const baseUrl = import.meta.env.VITE_BASE_URL;
+const url = `${baseUrl}/api/booking-bikes/${bookingId}/complete?endTripKm=${kmValue}`;
+console.log('🚀 [ENV] URL:', url);
+
     
-    console.log('✅ API Response:', response);
+    const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
     
-    setFormData(prev => ({ 
-      ...prev, 
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    console.log('📥 [DIRECT] Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('❌ [DIRECT] Error:', errorData);
+      throw new Error(errorData.message || 'Failed to complete trip');
+    }
+    
+    const data = await response.json();
+    console.log('✅ [DIRECT] Success:', data);
+    
+    setFormData(prev => ({
+      ...prev,
       currentBookingStatus: 'Completed',
       bookingStatus: 'Completed',
       endTripKm: kmValue
@@ -1264,28 +1410,19 @@ const handleSubmitEndTripKm = async () => {
     setShowEndTripKmModal(false);
     setEndTripKmValue('');
     
-    toast.success('Trip completed successfully!', { autoClose: 4000 });
-
-    if (refreshBookings) {
-      setTimeout(() => { refreshBookings(); }, 1500);
-    }
-
-  } catch (error) {
-    console.error('❌ Error completing trip:', error);
-    console.error('❌ Error response:', error.response?.data);
+    toast.success('✅ Trip completed successfully!', { autoClose: 4000 });
     
-    if (error.response?.data?.message) {
-      toast.error(error.response.data.message);
-    } else {
-      toast.error('Failed to complete trip');
+    if (refreshBookings) {
+      setTimeout(() => refreshBookings(), 1500);
     }
+    
+  } catch (error) {
+    console.error('❌ [DIRECT] Error completing trip:', error);
+    toast.error(error.message || 'Failed to complete trip');
   } finally {
     setIsUpdating(false);
   }
 };
-
-
-
 
 
 
@@ -1304,6 +1441,7 @@ const handleSubmitEndTripKm = async () => {
   const unsavedChargesCount = additionalCharges.filter(c => !c.savedToBackend).length;
 
   return (
+  
     <div className="max-w-7xl mx-auto">
       <div className="bg-white rounded-lg shadow-sm border">
         {/* Header with Back and Invoice buttons */}
@@ -1528,25 +1666,25 @@ const handleSubmitEndTripKm = async () => {
               </select>
             </div>
           </div>
-{/* EXTEND TRIP BUTTON - ADMIN ONLY */}
-{/* <div className="mb-3">
-  {booking.status === 'On Going' || booking.status === 'Start Trip' ? (
-    <button
-      onClick={() => setShowExtendTripModal(true)}
-      className="w-1/4 py-2 px-4 rounded-md text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center"
-    >
-      <FaClock className="mr-2" />
-      Extend Trip
-    </button>
-  ) : (
-    <div className="p-3 bg-gray-100 rounded-md border border-gray-300">
-      <p className="text-xs text-gray-600 flex items-center">
-        <FaInfoCircle className="mr-1" />
-        Trip extension only available for ongoing or started trips
-      </p>
-    </div>
-  )}
-</div>
+          {/* EXTEND TRIP BUTTON - ADMIN ONLY */}
+          {/* <div className="mb-3">
+            {booking.status === 'On Going' || booking.status === 'Start Trip' ? (
+              <button
+                onClick={() => setShowExtendTripModal(true)}
+                className="w-1/4 py-2 px-4 rounded-md text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center"
+              >
+                <FaClock className="mr-2" />
+                Extend Trip
+              </button>
+            ) : (
+              <div className="p-3 bg-gray-100 rounded-md border border-gray-300">
+                <p className="text-xs text-gray-600 flex items-center">
+                  <FaInfoCircle className="mr-1" />
+                  Trip extension only available for ongoing or started trips
+                </p>
+              </div>
+            )}
+          </div>
 
           <div className="mb-3">
             <button
@@ -1887,100 +2025,91 @@ const handleSubmitEndTripKm = async () => {
           )}
 
           {/* View Customer Documents Section */}
-          <div className="border-t pt-3 mt-4">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-              <FaFileAlt className="mr-2" />
-              Customer Documents
-              {loadingDocuments && (
-                <div className="ml-2 animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              )}
-            </h2>
+          {/* ✅ CUSTOMER DOCUMENT VERIFICATION SECTION */}
+{/* ✅ CUSTOMER DOCUMENT VERIFICATION SECTION */}
+<div className="border-t pt-3 mt-4">
+  <div className="flex items-center space-x-3 mb-4">
+    <div className="bg-indigo-100 p-3 rounded-xl">
+      <FaIdCard className="text-indigo-600 text-xl" />
+    </div>
+    <div>
+      <h2 className="text-sm font-bold text-gray-900">Customer Document Verification</h2>
+      <p className="text-gray-500 text-xs">Review and verify customer documents</p>
+    </div>
+  </div>
 
-            {loadingDocuments ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                <p className="text-gray-500 text-sm">Loading documents...</p>
-              </div>
-            ) : !userDocuments ? (
-              <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                <FaFileAlt className="mx-auto text-4xl text-gray-400 mb-2" />
-                <p className="text-gray-600 text-sm font-medium">No documents found for this user</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-4">
-                <DocumentCard 
-                  documentType="adhaarFront"
-                  imageUrl={userDocuments.adhaarFrontImageUrl}
-                  status={userDocuments.adhaarFrontStatus || 'PENDING'}
-                  label="Aadhaar Front Image"
-                />
-                <DocumentCard 
-                  documentType="adhaarBack"
-                  imageUrl={userDocuments.adhaarBackImageUrl}
-                  status={userDocuments.adhaarBackStatus || 'PENDING'}
-                  label="Aadhaar Back Image"
-                />
-                <DocumentCard 
-                  documentType="license"
-                  imageUrl={userDocuments.drivingLicenseImageUrl}
-                  status={userDocuments.licenseStatus || 'PENDING'}
-                  label="Driving License Image"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+  {loadingDocuments ? (
+    <div className="flex flex-col items-center justify-center py-12">
+      <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3"></div>
+      <p className="text-gray-600 text-sm">Loading documents...</p>
+    </div>
+  ) : userDocuments ? (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <DocumentCard
+        label="Aadhar Front Side"
+        docType="aadharFrontSide"
+        imageData={userDocuments.aadharFrontSide}
+        status={userDocuments.adhaarFrontStatus}
+        updating={documentUpdating.aadharFrontSide}
+      />
+      <DocumentCard
+        label="Aadhar Back Side"
+        docType="aadharBackSide"
+        imageData={userDocuments.aadharBackSide}
+        status={userDocuments.adhaarBackStatus}
+        updating={documentUpdating.aadharBackSide}
+      />
+      <DocumentCard
+        label="Driving License"
+        docType="drivingLicense"
+        imageData={userDocuments.drivingLicense}
+        status={userDocuments.licenseStatus}
+        updating={documentUpdating.drivingLicense}
+      />
+    </div>
+  ) : (
+    <div className="text-center py-12">
+      <FaExclamationTriangle className="text-yellow-500 text-4xl mx-auto mb-3" />
+      <p className="text-gray-600">No documents available for this customer</p>
+    </div>
+  )}
+</div>
 
-      {/* Image Modal */}
-      {selectedImage && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
-          onClick={closeImageModal}
+{/* ✅ IMAGE PREVIEW MODAL */}
+{selectedImage && (
+  <div 
+    className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4"
+    onClick={closeImageModal}
+  >
+    <div 
+      className="bg-white rounded-2xl max-w-5xl w-full" 
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="bg-indigo-600 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+        <h3 className="text-lg font-semibold text-white">{selectedImage.name}</h3>
+        <button 
+          onClick={closeImageModal} 
+          className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
         >
-          <div 
-            className="relative max-w-4xl max-h-screen bg-white rounded-lg shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">{selectedImage.name}</h3>
-              <button
-                onClick={closeImageModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-4">
-              <img 
-                src={selectedImage.url} 
-                alt={selectedImage.name}
-                className="max-w-full max-h-[80vh] object-contain mx-auto"
-              />
-            </div>
-            <div className="flex justify-end p-4 border-t space-x-2">
-              <button
-                onClick={closeImageModal}
-                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md text-sm font-medium"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  const link = document.createElement('a');
-                  link.href = selectedImage.url;
-                  link.download = selectedImage.name;
-                  link.click();
-                }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium flex items-center"
-              >
-                <FaDownload className="mr-2" />
-                Download
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          <FaTimes size={20} />
+        </button>
+      </div>
+      <div className="p-6 flex justify-center bg-gray-50">
+        <img 
+          src={selectedImage.url} 
+          alt={selectedImage.name} 
+          className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg"
+          onError={(e) => {
+            e.target.style.display = 'none';
+            toast.error('Failed to load image');
+          }}
+        />
+      </div>
+    </div>
+  </div>
+)}
+
+
       {/* ✅ END TRIP KM MODAL */}
 {showEndTripKmModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2173,10 +2302,10 @@ const handleSubmitEndTripKm = async () => {
         })()}
       </div>
 
-      {/* Footer */}
+    {/* Footer */}{/* Extend Trip Modal Footer */}
       <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end space-x-3">
         <button
-            onClick={handleCloseExtendModal}
+          onClick={handleCloseExtendModal}
           className="px-5 py-2.5 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors text-sm"
         >
           Cancel
@@ -2198,14 +2327,16 @@ const handleSubmitEndTripKm = async () => {
             </>
           )}
         </button>
-      </div>
+           </div>
     </div>
   </div>
 )}
 
-
+      </div>  
+    </div>   
     </div>
   );
 };
 
 export default AllBookings;
+

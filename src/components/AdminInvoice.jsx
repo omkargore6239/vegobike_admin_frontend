@@ -466,12 +466,12 @@ const AdminInvoice = () => {
               </div>
 
               {/* Subtotal */}
-              <div className="flex justify-between items-center py-2 border-b border-gray-200 bg-gray-50 -mx-6 px-6">
+              {/* <div className="flex justify-between items-center py-2 border-b border-gray-200 bg-gray-50 -mx-6 px-6">
                 <span className="text-gray-700 font-medium">Subtotal</span>
                 <span className="font-semibold text-gray-900">
                   {formatCurrency(booking.totalCharges || totalAmount)}
                 </span>
-              </div>
+              </div> */}
 
               {/* Advance Deposit */}
               {advanceAmount > 0 && (

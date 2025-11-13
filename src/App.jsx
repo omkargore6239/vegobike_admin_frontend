@@ -192,13 +192,21 @@ function App() {
 
             {/* ✅ ADD BIKE - Admin & Store Manager */}
             <Route 
-              path="addBike" 
-              element={
-                <ProtectedRoute routeName="addBike">
-                  <AddBikeForm />
-                </ProtectedRoute>
-              } 
-            />
+  path="addBike" 
+  element={
+    <ProtectedRoute routeName="addBike">
+      <AddBikeForm />
+    </ProtectedRoute>
+  } 
+/>
+<Route 
+  path="addBike/:id" 
+  element={
+    <ProtectedRoute routeName="addBike">
+      <AddBikeForm />
+    </ProtectedRoute>
+  } 
+/>
 
             <Route 
   path="createBooking" 

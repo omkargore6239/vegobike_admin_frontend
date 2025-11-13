@@ -1,4 +1,4 @@
-// AllRegisterCustomers.jsx - COMPLETE WITH SERVER-SIDE SEARCH
+// AllRegisterCustomers.jsx - COMPLETE CODE WITH DOCUMENT API
 
 import React, { useEffect, useState } from "react";
 import { 
@@ -58,9 +58,11 @@ const AllRegisterCustomers = () => {
     setError(`${contextMessage}${errorMessage}`);
   };
 
+  // ✅ UPDATED: Helper to construct image URLs
   const getImageUrl = (imagePath, type = 'profile') => {
     if (!imagePath) return null;
     
+    // If already a full URL
     if (imagePath.startsWith('http')) {
       return imagePath;
     }
@@ -73,13 +75,14 @@ const AllRegisterCustomers = () => {
       cleanPath = cleanPath.replace(/^uploads\/+/, '');
       cleanPath = cleanPath.replace(/^profile\/+/, '');
       const filename = cleanPath.split('/').pop();
-      return `${BASE_URL}/uploads/profile/${filename}`;
+      return `${BASE_URL}/uploads/profiles/${filename}`;
     } else {
+      // For document images
       cleanPath = cleanPath.replace(/^uploads\/documents\/+/, '');
       cleanPath = cleanPath.replace(/^uploads\/+/, '');
       cleanPath = cleanPath.replace(/^documents\/+/, '');
       const filename = cleanPath.split('/').pop();
-      return `${BASE_URL}/uploads/documents/${filename}`;
+      return `${BASE_URL}/uploads/documents_images/${filename}`;
     }
   };
 
@@ -145,8 +148,8 @@ const AllRegisterCustomers = () => {
           aadharFrontSide: user.aadharFrontSide || null,
           aadharBackSide: user.aadharBackSide || null,
           drivingLicense: user.drivingLicense || null,
-          adhaarFrontStatus: user.adhaarFrontStatus || 'PENDING',
-          adhaarBackStatus: user.adhaarBackStatus || 'PENDING',
+          adhaarFrontStatus: user.isAdhaarFrontVerified || 'PENDING',
+          adhaarBackStatus: user.isAdhaarBackVerified || 'PENDING',
           licenseStatus: user.licenseStatus || 'PENDING'
         }));
         
@@ -209,8 +212,8 @@ const AllRegisterCustomers = () => {
           aadharFrontSide: user.aadharFrontSide || null,
           aadharBackSide: user.aadharBackSide || null,
           drivingLicense: user.drivingLicense || null,
-          adhaarFrontStatus: user.adhaarFrontStatus || 'PENDING',
-          adhaarBackStatus: user.adhaarBackStatus || 'PENDING',
+          adhaarFrontStatus: user.isAdhaarFrontVerified || 'PENDING',
+          adhaarBackStatus: user.isAdhaarBackVerified || 'PENDING',
           licenseStatus: user.licenseStatus || 'PENDING'
         }));
         
@@ -253,8 +256,8 @@ const AllRegisterCustomers = () => {
 
   const getUserVerificationStatus = (user) => {
     const statuses = [
-      user.adhaarFrontStatus || 'PENDING',
-      user.adhaarBackStatus || 'PENDING', 
+      user.isAdhaarFrontVerified || 'PENDING',
+      user.isAdhaarBackVerified || 'PENDING', 
       user.licenseStatus || 'PENDING'
     ];
     
@@ -267,15 +270,60 @@ const AllRegisterCustomers = () => {
     }
   };
 
-  const handleView = (user) => {
-    setSelectedUser(user);
-    setViewMode(true);
-    setDocumentStatus({
-      aadharFrontSide: user.adhaarFrontStatus || 'PENDING',
-      aadharBackSide: user.adhaarBackStatus || 'PENDING',
-      drivingLicense: user.licenseStatus || 'PENDING',
-    });
-  };
+  // ✅ UPDATED: Fetch documents from API when viewing user
+  // ✅ FIXED: handleView function with correct field names
+const handleView = async (user) => {
+  setSelectedUser(user);
+  setViewMode(true);
+  
+  // Set initial status from user data
+  setDocumentStatus({
+    aadharFrontSide: user.adhaarFrontStatus || 'PENDING',
+    aadharBackSide: user.adhaarBackStatus || 'PENDING',
+    drivingLicense: user.licenseStatus || 'PENDING',
+  });
+
+  // Fetch fresh document data from backend
+  try {
+    console.log(`📥 Fetching documents for user ${user.id}`);
+    const response = await apiClient.get(`/api/documents/userdocuments/${user.id}`);
+    
+    console.log('Document API Response:', response.data);
+
+    if (response.data) {
+      const docs = response.data;
+
+      // Update selected user with fresh data
+      setSelectedUser(prev => ({
+        ...prev,
+        aadharFrontSide: docs.adhaarFrontImageUrl || prev.aadharFrontSide,
+        aadharBackSide: docs.adhaarBackImageUrl || prev.aadharBackSide,
+        drivingLicense: docs.drivingLicenseImageUrl || prev.drivingLicense,
+        adhaarFrontStatus: docs.adhaarFrontStatus || prev.adhaarFrontStatus,
+        adhaarBackStatus: docs.adhaarBackStatus || prev.adhaarBackStatus,
+         licenseStatus: docs.licenseStatus || prev.licenseStatus,
+      }));
+
+      // Update document statuses with fresh data
+      setDocumentStatus({
+        aadharFrontSide: docs.adhaarFrontStatus || 'PENDING',
+        aadharBackSide: docs.adhaarBackStatus || 'PENDING',
+         drivingLicense: docs.licenseStatus || 'PENDING',
+      });
+
+      console.log('✅ State updated with fresh document data');
+    }
+  } catch (error) {
+    console.error('❌ Error fetching documents:', error);
+    if (error.response?.status !== 404) {
+      toast.warning('Could not load latest document details');
+    }
+  }
+};
+
+
+
+
 
   const handleBack = () => {
     setViewMode(false);
@@ -297,84 +345,145 @@ const AllRegisterCustomers = () => {
   };
 
   const handleDocumentAction = async (docType, action) => {
-    if (!selectedUser || !selectedUser.id) {
-      toast.error("Invalid user selected");
-      return;
+  if (!selectedUser || !selectedUser.id) {
+    toast.error("Invalid user selected");
+    return;
+  }
+
+  setDocumentUpdating(prev => ({ ...prev, [docType]: true }));
+
+  try {
+    const fieldMapping = {
+      'aadharFrontSide': 'adhaarFrontStatus',
+      'aadharBackSide': 'adhaarBackStatus',
+      'drivingLicense': 'licenseStatus'
+    };
+    
+    const backendFieldName = fieldMapping[docType];
+    
+    if (!backendFieldName) {
+      throw new Error(`Invalid document type: ${docType}`);
     }
 
-    setDocumentUpdating(prev => ({ ...prev, [docType]: true }));
+    const statusUpdates = {
+      [backendFieldName]: action
+    };
 
-    try {
-      const fieldMapping = {
+    console.log(`📤 Updating ${docType} to ${action} for user ${selectedUser.id}`);
+    console.log('Query Params:', statusUpdates);
+
+    const response = await documentAPI.verify(selectedUser.id, statusUpdates);
+
+    if (response.status === 200) {
+      console.log('✅ Backend updated successfully');
+      console.log('Backend response:', response.data);
+
+      // ✅ UPDATE 1: Update documentStatus state
+      setDocumentStatus(prevStatus => {
+        const updated = {
+          ...prevStatus,
+          [docType]: action
+        };
+        console.log('Updated documentStatus:', updated);
+        return updated;
+      });
+
+      // ✅ UPDATE 2: Update selectedUser state
+      const userFieldMapping = {
         'aadharFrontSide': 'adhaarFrontStatus',
         'aadharBackSide': 'adhaarBackStatus',
-        'drivingLicense': 'licenseStatus'
+        'drivingLicense': 'drivingLicenseStatus'
       };
       
-      const backendFieldName = fieldMapping[docType];
+      const userStateField = userFieldMapping[docType];
       
-      if (!backendFieldName) {
-        throw new Error(`Invalid document type: ${docType}`);
-      }
-      
-      const statusUpdates = {
-        [backendFieldName]: action
-      };
-      
-      const response = await documentAPI.verify(selectedUser.id, statusUpdates);
-
-      if (response.status === 200) {
-        setDocumentStatus((prevStatus) => ({
-          ...prevStatus,
-          [docType]: action,
-        }));
-        
-        toast.success(
-          <div>
-            <div className="font-medium">Document {action === 'VERIFIED' ? 'Verified' : 'Rejected'}</div>
-            <div className="text-sm opacity-90">{docType} updated successfully</div>
-          </div>
-        );
-        
-        const stateFieldMapping = {
-          'aadharFrontSide': 'adhaarFrontStatus',
-          'aadharBackSide': 'adhaarBackStatus',
-          'drivingLicense': 'licenseStatus'
-        };
-        
-        const stateField = stateFieldMapping[docType];
-        
-        setData((prevData) =>
-          prevData.map((user) =>
-            user.id === selectedUser.id
-              ? { ...user, [stateField]: action }
-              : user
-          )
-        );
-        
-        setSelectedUser(prev => ({
+      setSelectedUser(prev => {
+        const updated = {
           ...prev,
-          [stateField]: action
-        }));
-        
-        setTimeout(() => {
-          if (searchQuery.trim()) {
-            handleSearch(searchQuery);
-          } else {
-            fetchUsers(currentPage, itemsPerPage);
+          [userStateField]: action
+        };
+        console.log('Updated selectedUser:', updated);
+        return updated;
+      });
+
+      // ✅ UPDATE 3: Update the main data array
+      setData(prevData => {
+        const updated = prevData.map(user =>
+          user.id === selectedUser.id
+            ? { ...user, [userStateField]: action }
+            : user
+        );
+        console.log('Updated data array for user', selectedUser.id);
+        return updated;
+      });
+
+      // ✅ UPDATE 4: Update filteredData
+      setFilteredData(prevData => {
+        const updated = prevData.map(user =>
+          user.id === selectedUser.id
+            ? { ...user, [userStateField]: action }
+            : user
+        );
+        return updated;
+      });
+
+      toast.success(
+        <div>
+          <div className="font-medium">
+            Document {action === 'VERIFIED' ? 'Verified' : 'Rejected'}
+          </div>
+          <div className="text-sm opacity-90">
+            {docType} updated successfully
+          </div>
+        </div>
+      );
+
+      // ✅ Verify backend update - USE CORRECT FIELD NAMES
+      setTimeout(async () => {
+        try {
+          const verifyResponse = await apiClient.get(
+            `/api/documents/userdocuments/${selectedUser.id}`
+          );
+          
+          if (verifyResponse.data) {
+            console.log('🔄 Backend verification response:', verifyResponse.data);
+            
+            // ✅ CORRECT: Use adhaarFrontStatus, adhaarBackStatus, drivingLicenseStatus
+            const confirmedStatus = {
+              aadharFrontSide: verifyResponse.data.adhaarFrontStatus || 'PENDING',
+              aadharBackSide: verifyResponse.data.adhaarBackStatus || 'PENDING',
+              drivingLicense: verifyResponse.data.licenseStatus || 'PENDING',
+            };
+            
+            setDocumentStatus(confirmedStatus);
+            
+            console.log('✅ Confirmed status from backend:', confirmedStatus);
           }
-        }, 1000);
-        
-      } else {
-        throw new Error("Failed to update document status");
-      }
-    } catch (error) {
-      console.error("❌ Error updating document status:", error);
-      toast.error(error.response?.data?.message || error.message || 'Failed to update document verification');
-    } finally {
-      setDocumentUpdating(prev => ({ ...prev, [docType]: false }));
+        } catch (err) {
+          console.error('⚠️ Failed to verify update:', err);
+        }
+      }, 1500);
+
+    } else {
+      throw new Error("Failed to update document status");
     }
-  };
+  } catch (error) {
+    console.error("❌ Error updating document status:", error);
+    console.error("Error details:", error.response?.data);
+    
+    toast.error(
+      error.response?.data?.message || 
+      error.message || 
+      'Failed to update document verification'
+    );
+  } finally {
+    setDocumentUpdating(prev => ({ ...prev, [docType]: false }));
+  }
+};
+
+
+
+
 
   const handleRetry = () => {
     setError("");
@@ -978,19 +1087,48 @@ const AllRegisterCustomers = () => {
 };
 
 const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, onImageClick }) => {
+  // ✅ FIXED: Handle full URLs from backend
   const getImageSource = () => {
-    if (!imageData) return null;
-    if (typeof imageData === 'string' && imageData.startsWith('data:image')) {
-      return imageData;
-    }
-    return `data:image/png;base64,${imageData}`;
-  };
+  if (!imageData) return null;
+  
+  console.log(`🖼️ ${label} - Raw data:`, imageData);
+  
+  // If it's already a full URL (from backend's imageUtils.getPublicUrl())
+  if (typeof imageData === 'string' && (imageData.startsWith('http://') || imageData.startsWith('https://'))) {
+    console.log('✅ Full URL detected');
+    return imageData;
+  }
+  
+  // If it's base64
+  if (typeof imageData === 'string' && imageData.startsWith('data:image')) {
+    return imageData;
+  }
+  
+  // If it's a relative path like "document_images/1762776325617.png"
+  if (typeof imageData === 'string' && imageData.includes('/')) {
+    const fullUrl = `${BASE_URL}/${imageData}`;
+    console.log('✅ Constructed URL from path:', fullUrl);
+    return fullUrl;
+  }
+  
+  // Otherwise treat as base64 without prefix
+  return `data:image/png;base64,${imageData}`;
+};
+
 
   const handleImageClick = () => {
     if (!imageData) {
       toast.warning("No image available to preview");
       return;
     }
+    
+    // If it's a URL, open directly
+    if (typeof imageData === 'string' && (imageData.startsWith('http://') || imageData.startsWith('https://'))) {
+      window.open(imageData, '_blank');
+      return;
+    }
+    
+    // Otherwise handle as base64
     const base64Data = typeof imageData === 'string' && imageData.startsWith('data:image')
       ? imageData.split(',')[1]
       : imageData;
@@ -1004,6 +1142,7 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
   };
 
   const config = statusConfig[status] || statusConfig['PENDING'];
+  const imageSource = getImageSource();
 
   return (
     <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all">
@@ -1018,21 +1157,24 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
 
         <div 
           className={`w-full h-56 bg-gray-100 border-2 ${
-            imageData ? 'border-indigo-200 hover:border-indigo-400' : 'border-gray-200'
-          } flex items-center justify-center rounded-xl overflow-hidden transition-all cursor-pointer hover:shadow-md`}
+            imageSource ? 'border-indigo-200 hover:border-indigo-400 cursor-pointer' : 'border-gray-200'
+          } flex items-center justify-center rounded-xl overflow-hidden transition-all hover:shadow-md`}
           onClick={handleImageClick}
         >
-          {imageData ? (
+          {imageSource ? (
             <img
-              src={getImageSource()}
+              src={imageSource}
               alt={label}
               className="w-full h-full object-cover"
+              crossOrigin="anonymous"
               onError={(e) => {
+                console.error(`❌ Failed to load ${label}:`, imageSource);
                 e.target.style.display = 'none';
                 const errorDiv = document.createElement('div');
-                errorDiv.innerHTML = '<div class="text-center"><p class="text-red-500 font-medium">Invalid image</p></div>';
+                errorDiv.innerHTML = '<div class="text-center p-4"><p class="text-red-500 font-medium">Failed to load image</p><p class="text-xs text-gray-500 mt-1">Check console for details</p></div>';
                 e.target.parentNode.appendChild(errorDiv);
               }}
+              onLoad={() => console.log(`✅ ${label} loaded successfully`)}
             />
           ) : (
             <div className="text-center">
@@ -1045,9 +1187,9 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
         <div className="mt-4 flex gap-2">
           <button
             onClick={onVerify}
-            disabled={status === 'VERIFIED' || updating}
+            disabled={status === 'VERIFIED' || updating || !imageSource}
             className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all flex items-center justify-center ${
-              status === 'VERIFIED' || updating
+              status === 'VERIFIED' || updating || !imageSource
                 ? 'bg-green-200 text-green-600 cursor-not-allowed'
                 : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-md hover:shadow-lg'
             }`}
@@ -1069,9 +1211,9 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
 
           <button
             onClick={onReject}
-            disabled={status === 'REJECTED' || updating}
+            disabled={status === 'REJECTED' || updating || !imageSource}
             className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all flex items-center justify-center ${
-              status === 'REJECTED' || updating
+              status === 'REJECTED' || updating || !imageSource
                 ? 'bg-red-200 text-red-600 cursor-not-allowed'
                 : 'bg-gradient-to-r from-red-500 to-rose-600 text-white hover:from-red-600 hover:to-rose-700 shadow-md hover:shadow-lg'
             }`}
@@ -1095,5 +1237,6 @@ const DocumentCard = ({ label, imageData, status, updating, onVerify, onReject, 
     </div>
   );
 };
+
 
 export default AllRegisterCustomers;

@@ -175,36 +175,35 @@ export const createFormData = (data) => {
 //   delete: (id) => apiClient.delete(`/api/bikes/${id}`),
 //   toggleStatus: (id) => apiClient.patch(`/api/bikes/${id}/status`),
 // };
+// ✅ SIMPLE: Bike API with just pagination params
 export const bikeAPI = {
-  getAll: () => apiClient.get("/api/bikes/all"),
+  getAll: (params = {}) => {
+    console.log('📤 [Bike API] Fetching bikes with params:', params);
+    return apiClient.get('/api/bikes/all', { params });
+  },
   getById: (id) => apiClient.get(`/api/bikes/${id}`),
   getAvailable: (params) => apiClient.get("/api/bikes/available", { params }),
-
-  // ✅ FIX: Don't wrap FormData again!
   create: (bikeData) => {
-    // If bikeData is already FormData, send it directly
     if (bikeData instanceof FormData) {
       return apiClient.post("/api/bikes/add", bikeData);
     }
-    // Otherwise create FormData
     const formData = createFormData(bikeData);
     return apiClient.post("/api/bikes/add", formData);
   },
-
-  // ✅ FIX: Same for update
   update: (id, bikeData) => {
-    // If bikeData is already FormData, send it directly
     if (bikeData instanceof FormData) {
       return apiClient.put(`/api/bikes/update/${id}`, bikeData);
     }
-    // Otherwise create FormData
     const formData = createFormData(bikeData);
     return apiClient.put(`/api/bikes/update/${id}`, formData);
   },
-
   delete: (id) => apiClient.delete(`/api/bikes/${id}`),
-  toggleStatus: (id) => apiClient.patch(`/api/bikes/${id}/status`),
+  toggleActive: (id) => apiClient.patch(`/api/bikes/${id}/toggle-active`),
 };
+
+
+
+
 // ✅ BRAND API
 export const brandAPI = {
   getAll: (params = {}) => apiClient.get('/api/brands/all', { params }),
@@ -235,6 +234,19 @@ export const modelAPI = {
   toggleStatus: (id) => apiClient.patch(`/api/models/${id}/status`),
   delete: (id) => apiClient.delete(`/api/models/delete/${id}`),
 };
+
+// ✅ YEAR API - Add this to your apiConfig.js
+export const yearAPI = {
+  getAll: (params = {}) => apiClient.get('/api/years/all', { params }),
+  getActive: () => apiClient.get('/api/years/active'),
+  getById: (id) => apiClient.get(`/api/years/${id}`),
+  create: (yearData) => apiClient.post('/api/years/add', yearData),
+  update: (id, yearData) => apiClient.put(`/api/years/update/${id}`, yearData),
+  toggleStatus: (id) => apiClient.patch(`/api/years/${id}/status`),
+  delete: (id) => apiClient.delete(`/api/years/delete/${id}`),
+};
+
+
 // ✅ STORE API
 export const storeAPI = {
   getAll: (params = {}) => apiClient.get('/api/stores/all', { params }),
@@ -395,21 +407,30 @@ export const bookingAPI = {
     images.forEach((image) => formData.append('images', image));
     return apiClient.post(`/api/booking-bikes/${bookingId}/end`, formData);
   },
-  // ✅ UPDATED - Add endTripKm parameter
+ 
+  // ✅ FIXED: Complete booking with endTripKm query parameter
 complete: (bookingId, endTripKm = null) => {
-  console.log('📤 Completing booking:', { bookingId, endTripKm });
+  console.log('📤 [COMPLETE API] Starting with:', { bookingId, endTripKm });
+  console.log('📤 [COMPLETE API] endTripKm type:', typeof endTripKm);
   
+  // Build URL
   let url = `/api/booking-bikes/${bookingId}/complete`;
   
-  // ✅ ONLY send as query parameter, no FormData
-  if (endTripKm) {
-    url += `?endTripKm=${parseFloat(endTripKm)}`;
-    console.log('✅ URL with param:', url);
+  // Add query parameter if endTripKm is valid
+  if (endTripKm !== null && endTripKm !== undefined && !isNaN(Number(endTripKm)) && Number(endTripKm) > 0) {
+    url = url + '?endTripKm=' + Number(endTripKm);
+    console.log('✅ [COMPLETE API] URL WITH param:', url);
+  } else {
+    console.log('⚠️ [COMPLETE API] URL WITHOUT param:', url);
   }
   
-  // ✅ Send ONLY the URL, no body, no FormData
+  console.log('🚀 [COMPLETE API] Making request to:', url);
+  
+  // Make POST request
   return apiClient.post(url);
 },
+
+
 
 
 

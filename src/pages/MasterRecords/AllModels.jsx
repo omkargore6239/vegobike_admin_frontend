@@ -1,1767 +1,46 @@
-// import React, { useEffect, useState } from "react";
-// import { FaEdit, FaTrash, FaImage, FaSearch, FaPlus } from "react-icons/fa";
-// import apiClient, { BASE_URL } from "../../api/apiConfig"; // Import BASE_URL from apiConfig
-
-// const AllModels = () => {
-//   const [data, setData] = useState([]);
-//   const [filteredData, setFilteredData] = useState([]);
-//   const [formVisible, setFormVisible] = useState(false);
-//   const [editingId, setEditingId] = useState(null);
-//   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-//   const [formData, setFormData] = useState({
-//     brandId: "",
-//     modelName: "",
-//     image: null,
-//   });
-//   const [brands, setBrands] = useState([]);
-//   const [loading, setLoading] = useState(true);
-//   const [submitting, setSubmitting] = useState(false);
-//   const [error, setError] = useState("");
-//   const [success, setSuccess] = useState("");
-//   const [searchQuery, setSearchQuery] = useState("");
-//   const [imagePreview, setImagePreview] = useState("");
-
-//   // ✅ Updated: Backend base URL for images from env variable
-//   const BACKEND_URL = BASE_URL;
-
-//   // Pagination states
-//   const [currentPage, setCurrentPage] = useState(0);
-//   const [itemsPerPage] = useState(10);
-//   const [totalPages, setTotalPages] = useState(0);
-//   const [totalElements, setTotalElements] = useState(0);
-//   const [hasNext, setHasNext] = useState(false);
-//   const [hasPrevious, setHasPrevious] = useState(false);
-
-//   // ROBUST helper function to get full image URL - handles ALL backend inconsistencies
-//   const getImageUrl = (imagePath) => {
-//     if (!imagePath) return null;
-    
-//     // If the path already includes the full URL, return as is
-//     if (imagePath.startsWith('http')) {
-//       return imagePath;
-//     }
-    
-//     let cleanPath = imagePath.trim();
-    
-//     // Remove all leading slashes
-//     cleanPath = cleanPath.replace(/^\/+/, '');
-    
-//     // Handle the most problematic case: "/uploads//uploads/models/filename.jpg"
-//     cleanPath = cleanPath.replace(/^uploads\/\/uploads\/models\/+/, '');
-    
-//     // Remove any occurrence of 'uploads/models/' from the beginning
-//     cleanPath = cleanPath.replace(/^uploads\/models\/+/, '');
-    
-//     // Remove any occurrence of just 'uploads/' from the beginning  
-//     cleanPath = cleanPath.replace(/^uploads\/+/, '');
-    
-//     // Remove any occurrence of just 'models/' from the beginning
-//     cleanPath = cleanPath.replace(/^models\/+/, '');
-    
-//     // Extract just the filename if there are still path segments
-//     const filename = cleanPath.split('/').pop();
-    
-//     // Construct the final URL with just the filename
-//     const finalUrl = `${BACKEND_URL}/uploads/models/${filename}`;
-//     console.log(`Image URL constructed: ${finalUrl} from original path: ${imagePath}`);
-//     return finalUrl;
-//   };
-
-//   // Clear messages after 5 seconds
-//   useEffect(() => {
-//     if (success || error) {
-//       const timer = setTimeout(() => {
-//         setSuccess("");
-//         setError("");
-//       }, 5000);
-//       return () => clearTimeout(timer);
-//     }
-//   }, [success, error]);
-
-//   // Handle search
-//   useEffect(() => {
-//     if (searchQuery.trim() === "") {
-//       setFilteredData(data);
-//     } else {
-//       const filtered = data.filter((model) =>
-//         model.modelName?.toLowerCase().includes(searchQuery.toLowerCase())
-//       );
-//       setFilteredData(filtered);
-//     }
-//   }, [searchQuery, data]);
-
-//   // Fetch brands for dropdown
-//   useEffect(() => {
-//     const fetchBrands = async () => {
-//       try {
-//         const response = await apiClient.get("/brands/active");
-//         if (response.data && response.data.success) {
-//           setBrands(response.data.data || []);
-//         }
-//       } catch (error) {
-//         console.error("Error fetching brands:", error);
-//       }
-//     };
-//     fetchBrands();
-//   }, []);
-
-//   // Fetch Models data with pagination
-//   const fetchModels = async (page = 0, size = 10) => {
-//     setLoading(true);
-//     setError("");
-//     try {
-//       let url = `/api/models/all?page=${page}&size=${size}&sort=createdAt,desc`;
-//       if (searchQuery.trim()) {
-//         url = `/api/models/search?query=${encodeURIComponent(searchQuery)}&page=${page}&size=${size}&sort=createdAt,desc`;
-//       }
-
-//       const response = await apiClient.get(url);
-//       console.log("Fetched models data:", response.data);
-      
-//       if (response.data && response.data.success) {
-//         const modelsData = response.data.data || [];
-        
-//         // Process each model to ensure proper image URLs
-//         const processedModels = modelsData.map((model, index) => {
-//           const processedModel = {
-//             ...model,
-//             id: model.id || model.modelId || `fallback-${index}-${Date.now()}`,
-//             modelImage: model.modelImage ? getImageUrl(model.modelImage) : null
-//           };
-          
-//           console.log(`Processed model ${model.modelName}:`, {
-//             id: processedModel.id,
-//             original: model.modelImage,
-//             processed: processedModel.modelImage
-//           });
-//           return processedModel;
-//         });
-        
-//         setData(processedModels);
-//         setFilteredData(processedModels);
-        
-//         if (response.data.pagination) {
-//           setCurrentPage(response.data.pagination.currentPage);
-//           setTotalPages(response.data.pagination.totalPages);
-//           setTotalElements(response.data.pagination.totalElements);
-//           setHasNext(response.data.pagination.hasNext);
-//           setHasPrevious(response.data.pagination.hasPrevious);
-//         }
-//       } else {
-//         setError("Failed to fetch models data");
-//         setData([]);
-//         setFilteredData([]);
-//       }
-//     } catch (error) {
-//       console.error("Error fetching models:", error);
-//       setError(error.response?.data?.message || "Error fetching models data");
-//       setData([]);
-//       setFilteredData([]);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     fetchModels(currentPage, itemsPerPage);
-//     window.scrollTo(0, 0);
-//   }, []);
-
-//   // Handle image selection with preview
-//   const handleImageChange = (e) => {
-//     const file = e.target.files[0];
-//     if (file) {
-//       if (!file.type.startsWith('image/')) {
-//         setError("Please select a valid image file");
-//         e.target.value = '';
-//         return;
-//       }
-      
-//       if (file.size > 5 * 1024 * 1024) {
-//         setError("Image size should be less than 5MB");
-//         e.target.value = '';
-//         return;
-//       }
-
-//       setFormData({ ...formData, image: file });
-      
-//       const reader = new FileReader();
-//       reader.onloadend = () => {
-//         setImagePreview(reader.result);
-//       };
-//       reader.readAsDataURL(file);
-      
-//       setError("");
-//     }
-//   };
-
-//   // Add Model
-//   const handleAddModel = async (e) => {
-//     e.preventDefault();
-//     setError("");
-//     setSuccess("");
-//     setSubmitting(true);
-
-//     if (!formData.brandId || !formData.modelName.trim()) {
-//       setError("Brand and Model name are required");
-//       setSubmitting(false);
-//       return;
-//     }
-
-//     const formDataToSend = new FormData();
-//     formDataToSend.append('brandId', formData.brandId);
-//     formDataToSend.append('modelName', formData.modelName.trim());
-//     if (formData.image) {
-//       formDataToSend.append('modelImage', formData.image);
-//     }
-
-//     try {
-//       const response = await apiClient.post("/api/models/add", formDataToSend, {
-//         headers: {
-//           'Content-Type': 'multipart/form-data',
-//         },
-//       });
-
-//       if (response.data && response.data.success) {
-//         setSuccess("Model added successfully!");
-//         resetForm();
-//         await fetchModels(currentPage, itemsPerPage);
-//       } else {
-//         setError(response.data?.message || "Failed to add model");
-//       }
-//     } catch (error) {
-//       console.error("Error adding model:", error);
-//       setError(error.response?.data?.message || "Error adding model");
-//     } finally {
-//       setSubmitting(false);
-//     }
-//   };
-
-//   // Edit Model
-//   const handleEditModel = async (e) => {
-//     e.preventDefault();
-//     setError("");
-//     setSuccess("");
-//     setSubmitting(true);
-
-//     if (!formData.brandId || !formData.modelName.trim()) {
-//       setError("Brand and Model name are required");
-//       setSubmitting(false);
-//       return;
-//     }
-
-//     if (!editingId) {
-//       setError("Invalid model ID");
-//       setSubmitting(false);
-//       return;
-//     }
-
-//     const formDataToSend = new FormData();
-    
-//     // Create the request object for the edit endpoint
-//     const requestData = {
-//       brandId: formData.brandId,
-//       modelName: formData.modelName.trim()
-//     };
-    
-//     formDataToSend.append('request', new Blob([JSON.stringify(requestData)], {
-//       type: 'application/json'
-//     }));
-    
-//     if (formData.image) {
-//       formDataToSend.append('image', formData.image);
-//     }
-
-//     try {
-//       const response = await apiClient.post(`/api/models/edit/${editingId}`, formDataToSend, {
-//         headers: {
-//           'Content-Type': 'multipart/form-data',
-//         },
-//       });
-
-//       if (response.data && response.data.success) {
-//         setSuccess("Model updated successfully!");
-//         resetForm();
-//         await fetchModels(currentPage, itemsPerPage);
-//       } else {
-//         setError(response.data?.message || "Failed to update model");
-//       }
-//     } catch (error) {
-//       console.error("Error updating model:", error);
-//       setError(error.response?.data?.message || "Error updating model");
-//     } finally {
-//       setSubmitting(false);
-//     }
-//   };
-
-//   // Delete Model
-//   const handleDeleteModel = async (id) => {
-//     if (!id || id.toString().startsWith('fallback-')) {
-//       setError("Invalid model ID");
-//       setConfirmDeleteId(null);
-//       return;
-//     }
-
-//     setError("");
-//     setSuccess("");
-//     try {
-//       const response = await apiClient.delete(`/api/models/delete/${id}`);
-//       if (response.data && response.data.success) {
-//         setSuccess("Model deleted successfully!");
-//         setConfirmDeleteId(null);
-        
-//         if (data.length === 1 && currentPage > 0) {
-//           await fetchModels(currentPage - 1, itemsPerPage);
-//         } else {
-//           await fetchModels(currentPage, itemsPerPage);
-//         }
-//       } else {
-//         setError(response.data?.message || "Failed to delete model");
-//         setConfirmDeleteId(null);
-//       }
-//     } catch (error) {
-//       console.error("Error deleting model:", error);
-//       setError(error.response?.data?.message || "Error deleting model");
-//       setConfirmDeleteId(null);
-//     }
-//   };
-
-//   // Edit form prefill
-//   const handleEditModelClick = (model) => {
-//     if (!model || !model.id || model.id.toString().startsWith('fallback-')) {
-//       setError("Invalid model data or missing ID");
-//       return;
-//     }
-
-//     setEditingId(model.id);
-//     setFormData({
-//       brandId: model.brandId || "",
-//       modelName: model.modelName || "",
-//       image: null,
-//     });
-    
-//     if (model.modelImage) {
-//       setImagePreview(model.modelImage);
-//     } else {
-//       setImagePreview("");
-//     }
-    
-//     setFormVisible(true);
-//     setError("");
-//     setSuccess("");
-    
-//     window.scrollTo({ top: 0, behavior: 'smooth' });
-//   };
-
-//   // Reset Form
-//   const resetForm = () => {
-//     setEditingId(null);
-//     setFormData({
-//       brandId: "",
-//       modelName: "",
-//       image: null,
-//     });
-//     setImagePreview("");
-//     setFormVisible(false);
-//     setError("");
-//     setSuccess("");
-//     setSubmitting(false);
-//   };
-
-//   // Pagination handlers
-//   const handleNextPage = () => {
-//     if (hasNext) {
-//       const nextPage = currentPage + 1;
-//       fetchModels(nextPage, itemsPerPage);
-//     }
-//   };
-
-//   const handlePrevPage = () => {
-//     if (hasPrevious) {
-//       const prevPage = currentPage - 1;
-//       fetchModels(prevPage, itemsPerPage);
-//     }
-//   };
-
-//   const handlePageClick = (pageNumber) => {
-//     fetchModels(pageNumber, itemsPerPage);
-//   };
-
-//   // Generate page numbers for pagination
-//   const getPageNumbers = () => {
-//     const pages = [];
-//     const maxVisible = 5;
-//     let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
-//     let end = Math.min(totalPages - 1, start + maxVisible - 1);
-    
-//     if (end - start + 1 < maxVisible) {
-//       start = Math.max(0, end - maxVisible + 1);
-//     }
-    
-//     for (let i = start; i <= end; i++) {
-//       pages.push(i);
-//     }
-//     return pages;
-//   };
-
-//   // Get current page data
-//   const getCurrentPageData = () => {
-//     return searchQuery.trim() !== "" ? filteredData : filteredData;
-//   };
-
-//   // Simple image error handler - just hide broken images
-//   const handleImageError = (e, modelName) => {
-//     console.error(`Image failed to load for model "${modelName}":`, e.target.src);
-//     e.target.style.display = 'none';
-//     const fallbackDiv = e.target.nextElementSibling;
-//     if (fallbackDiv) {
-//       fallbackDiv.style.display = 'flex';
-//     }
-//   };
-
-//   // Image load success handler
-//   const handleImageLoad = (e, modelName) => {
-//     console.log(`Image loaded successfully for model "${modelName}":`, e.target.src);
-//     e.target.style.display = 'block';
-//     const fallbackDiv = e.target.nextElementSibling;
-//     if (fallbackDiv) {
-//       fallbackDiv.style.display = 'none';
-//     }
-//   };
-
-//   // Get brand name by ID
-//   const getBrandName = (brandId) => {
-//     const brand = brands.find(b => b.brandId === brandId || b.id === brandId);
-//     return brand ? brand.brandName || brand.name : brandId;
-//   };
-
-//   return (
-//     <div className="bg-gray-50 min-h-screen p-4">
-//       {/* Header Section */}
-//       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
-//         <div>
-//           <h1 className="text-3xl font-bold text-gray-900">Models Management</h1>
-//           <p className="text-gray-600 mt-1">Manage your vehicle models catalog ({totalElements} models)</p>
-//         </div>
-//         {!formVisible && (
-//           <button
-//             onClick={() => setFormVisible(true)}
-//             className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl"
-//           >
-//             <FaPlus className="mr-2" />
-//             Add New Model
-//           </button>
-//         )}
-//       </div>
-
-//       {/* Success/Error Messages */}
-//       {success && (
-//         <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg animate-fade-in">
-//           <div className="flex">
-//             <div className="flex-shrink-0">
-//               <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-//                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-//               </svg>
-//             </div>
-//             <div className="ml-3">
-//               <p className="text-sm text-green-700 font-medium">{success}</p>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-      
-//       {error && (
-//         <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg animate-fade-in">
-//           <div className="flex">
-//             <div className="flex-shrink-0">
-//               <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-//                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-//               </svg>
-//             </div>
-//             <div className="ml-3">
-//               <p className="text-sm text-red-700 font-medium">{error}</p>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-
-//       {formVisible ? (
-//         <div className="bg-white rounded-xl shadow-lg p-8">
-//           <div className="mb-6">
-//             <h2 className="text-2xl font-bold text-gray-900">
-//               {editingId ? "Edit Model" : "Add New Model"}
-//             </h2>
-//             <p className="text-gray-600 mt-1">
-//               {editingId ? "Update model information below" : "Fill in the details to create a new model"}
-//             </p>
-//           </div>
-          
-//           <form onSubmit={editingId ? handleEditModel : handleAddModel} className="space-y-6">
-//             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-//               {/* Brand Selection */}
-//               <div className="space-y-2">
-//                 <label className="block text-sm font-medium text-gray-700">
-//                   Brand <span className="text-red-500">*</span>
-//                 </label>
-//                 <select
-//                   name="brandId"
-//                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
-//                   value={formData.brandId}
-//                   onChange={(e) =>
-//                     setFormData({ ...formData, brandId: e.target.value })
-//                   }
-//                   required
-//                   disabled={submitting}
-//                 >
-//                   <option value="">Select Brand</option>
-//                   {brands.map((brand) => (
-//                     <option key={brand.brandId || brand.id} value={brand.brandId || brand.id}>
-//                       {brand.brandName || brand.name}
-//                     </option>
-//                   ))}
-//                 </select>
-//               </div>
-
-//               {/* Model Name */}
-//               <div className="space-y-2">
-//                 <label className="block text-sm font-medium text-gray-700">
-//                   Model Name <span className="text-red-500">*</span>
-//                 </label>
-//                 <input
-//                   type="text"
-//                   name="modelName"
-//                   placeholder="Enter model name"
-//                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
-//                   value={formData.modelName}
-//                   onChange={(e) =>
-//                     setFormData({ ...formData, modelName: e.target.value })
-//                   }
-//                   required
-//                   maxLength={100}
-//                   disabled={submitting}
-//                 />
-//               </div>
-
-//               {/* Model Image */}
-//               <div className="space-y-2">
-//                 <label className="block text-sm font-medium text-gray-700">
-//                   Model Image
-//                 </label>
-//                 <div className="space-y-4">
-//                   <input
-//                     type="file"
-//                     name="image"
-//                     accept="image/jpeg,image/jpg,image/png,image/gif"
-//                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-//                     onChange={handleImageChange}
-//                     disabled={submitting}
-//                   />
-//                   <p className="text-xs text-gray-500">
-//                     Supported formats: JPG, PNG, GIF. Maximum size: 5MB
-//                   </p>
-//                 </div>
-//               </div>
-//             </div>
-
-//             {/* Image Preview */}
-//             {imagePreview && (
-//               <div className="mt-6">
-//                 <label className="block text-sm font-medium text-gray-700 mb-3">
-//                   Image Preview
-//                 </label>
-//                 <div className="relative w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-//                   <img
-//                     src={imagePreview}
-//                     alt="Model preview"
-//                     className="w-full h-full object-contain"
-//                     onError={(e) => handleImageError(e, "Preview")}
-//                     onLoad={(e) => handleImageLoad(e, "Preview")}
-//                   />
-//                   <div 
-//                     className="absolute inset-0 flex items-center justify-center bg-gray-100"
-//                     style={{ display: 'none' }}
-//                   >
-//                     <div className="text-center">
-//                       <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-//                       <p className="text-xs text-gray-500">Preview not available</p>
-//                     </div>
-//                   </div>
-//                 </div>
-//               </div>
-//             )}
-
-//             {/* Form Actions */}
-//             <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-//               <button
-//                 type="button"
-//                 className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
-//                 onClick={resetForm}
-//                 disabled={submitting}
-//               >
-//                 Cancel
-//               </button>
-//               <button
-//                 type="submit"
-//                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-//                 disabled={submitting}
-//               >
-//                 {submitting ? (
-//                   <span className="flex items-center">
-//                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-//                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-//                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-//                     </svg>
-//                     Processing...
-//                   </span>
-//                 ) : (
-//                   editingId ? "Update Model" : "Create Model"
-//                 )}
-//               </button>
-//             </div>
-//           </form>
-//         </div>
-//       ) : (
-//         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-//           {/* Search and Filters */}
-//           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-//             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
-//               <h3 className="text-lg font-semibold text-gray-900">
-//                 All Models ({totalElements} total)
-//               </h3>
-//               <div className="relative">
-//                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-//                   <FaSearch className="h-5 w-5 text-gray-400" />
-//                 </div>
-//                 <input
-//                   type="text"
-//                   placeholder="Search models..."
-//                   value={searchQuery}
-//                   onChange={(e) => setSearchQuery(e.target.value)}
-//                   className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-80"
-//                 />
-//               </div>
-//             </div>
-//           </div>
-          
-//           {/* Table */}
-//           <div className="overflow-x-auto">
-//             <table className="w-full">
-//               <thead className="bg-gray-100 border-b border-gray-200">
-//                 <tr>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     #
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Model Image
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Model Name
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Brand
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Actions
-//                   </th>
-//                 </tr>
-//               </thead>
-//               <tbody className="bg-white divide-y divide-gray-200">
-//                 {loading ? (
-//                   <tr key="loading-row">
-//                     <td colSpan="5" className="px-6 py-12 text-center">
-//                       <div className="flex flex-col items-center justify-center">
-//                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-//                         <p className="text-gray-500">Loading models...</p>
-//                       </div>
-//                     </td>
-//                   </tr>
-//                 ) : getCurrentPageData().length === 0 ? (
-//                   <tr key="empty-row">
-//                     <td colSpan="5" className="px-6 py-12 text-center">
-//                       <div className="text-gray-500">
-//                         <FaImage className="mx-auto h-16 w-16 text-gray-300 mb-4" />
-//                         <h3 className="text-lg font-medium text-gray-900 mb-2">No models found</h3>
-//                         <p className="text-gray-500">
-//                           {searchQuery ? `No models match "${searchQuery}"` : "Get started by creating your first model"}
-//                         </p>
-//                       </div>
-//                     </td>
-//                   </tr>
-//                 ) : (
-//                   getCurrentPageData().map((model, index) => (
-//                     <tr 
-//                       key={`model-row-${model.id}-${index}`} 
-//                       className="hover:bg-gray-50 transition duration-150"
-//                     >
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-//                         {searchQuery ? index + 1 : (currentPage * itemsPerPage + index + 1)}
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap">
-//                         <div className="flex-shrink-0 h-16 w-20 relative">
-//                           {model.modelImage ? (
-//                             <>
-//                               <img
-//                                 src={model.modelImage}
-//                                 alt={model.modelName}
-//                                 className="h-16 w-20 rounded-lg object-contain border border-gray-200 shadow-sm bg-white"
-//                                 onError={(e) => handleImageError(e, model.modelName)}
-//                                 onLoad={(e) => handleImageLoad(e, model.modelName)}
-//                                 style={{ display: 'block' }}
-//                               />
-//                               <div 
-//                                 className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center absolute top-0 left-0"
-//                                 style={{ display: 'none' }}
-//                               >
-//                                 <div className="text-center">
-//                                   <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-//                                   <p className="text-xs text-gray-500">No Image</p>
-//                                 </div>
-//                               </div>
-//                             </>
-//                           ) : (
-//                             <div className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-//                               <div className="text-center">
-//                                 <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-//                                 <p className="text-xs text-gray-500">No Image</p>
-//                               </div>
-//                             </div>
-//                           )}
-//                         </div>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap">
-//                         <div className="text-sm font-medium text-gray-900">{model.modelName}</div>
-//                         <div className="text-sm text-gray-500">ID: {model.id}</div>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap">
-//                         <div className="text-sm font-medium text-gray-900">{getBrandName(model.brandId)}</div>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-//                         <div className="flex items-center space-x-3">
-//                           <button
-//                             className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
-//                               model.id.toString().startsWith('fallback-')
-//                                 ? "text-gray-400 bg-gray-100 cursor-not-allowed"
-//                                 : "text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
-//                             }`}
-//                             onClick={() => handleEditModelClick(model)}
-//                             title="Edit model"
-//                             disabled={model.id.toString().startsWith('fallback-')}
-//                           >
-//                             <FaEdit className="mr-1" />
-//                             Edit
-//                           </button>
-//                           <button
-//                             className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
-//                               model.id.toString().startsWith('fallback-')
-//                                 ? "text-gray-400 bg-gray-100 cursor-not-allowed"
-//                                 : "text-red-700 bg-red-100 hover:bg-red-200"
-//                             }`}
-//                             onClick={() => setConfirmDeleteId(model.id)}
-//                             title="Delete model"
-//                             disabled={model.id.toString().startsWith('fallback-')}
-//                           >
-//                             <FaTrash className="mr-1" />
-//                             Delete
-//                           </button>
-//                         </div>
-//                       </td>
-//                     </tr>
-//                   ))
-//                 )}
-//               </tbody>
-//             </table>
-//           </div>
-
-//           {/* Pagination */}
-//           {!loading && !searchQuery && data.length > 0 && totalPages > 1 && (
-//             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-//               <div className="flex items-center justify-between">
-//                 <div className="flex-1 flex justify-between sm:hidden">
-//                   <button
-//                     className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                     disabled={!hasPrevious}
-//                     onClick={handlePrevPage}
-//                   >
-//                     Previous
-//                   </button>
-//                   <button
-//                     className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                     disabled={!hasNext}
-//                     onClick={handleNextPage}
-//                   >
-//                     Next
-//                   </button>
-//                 </div>
-//                 <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-//                   <div>
-//                     <p className="text-sm text-gray-700">
-//                       Showing{" "}
-//                       <span className="font-medium">{currentPage * itemsPerPage + 1}</span> to{" "}
-//                       <span className="font-medium">
-//                         {Math.min((currentPage + 1) * itemsPerPage, totalElements)}
-//                       </span>{" "}
-//                       of <span className="font-medium">{totalElements}</span> results
-//                     </p>
-//                   </div>
-//                   <div>
-//                     <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-//                       <button
-//                         className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                         disabled={!hasPrevious}
-//                         onClick={handlePrevPage}
-//                         title="Previous page"
-//                       >
-//                         <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-//                           <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-//                         </svg>
-//                       </button>
-                      
-//                       {getPageNumbers().map((pageNumber) => (
-//                         <button
-//                           key={`page-btn-${pageNumber}`}
-//                           className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition duration-200 ${
-//                             currentPage === pageNumber
-//                               ? "z-10 bg-indigo-50 border-indigo-500 text-indigo-600"
-//                               : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-//                           }`}
-//                           onClick={() => handlePageClick(pageNumber)}
-//                           title={`Go to page ${pageNumber + 1}`}
-//                         >
-//                           {pageNumber + 1}
-//                         </button>
-//                       ))}
-                      
-//                       <button
-//                         className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                         disabled={!hasNext}
-//                         onClick={handleNextPage}
-//                         title="Next page"
-//                       >
-//                         <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-//                           <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-//                         </svg>
-//                       </button>
-//                     </nav>
-//                   </div>
-//                 </div>
-//               </div>
-//             </div>
-//           )}
-
-//           {/* Delete Confirmation Modal */}
-//           {confirmDeleteId && (
-//             <div className="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-50">
-//               <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
-//                 <div className="flex items-center mb-4">
-//                   <div className="flex-shrink-0 w-10 h-10 mx-auto bg-red-100 rounded-full flex items-center justify-center">
-//                     <FaTrash className="w-5 h-5 text-red-600" />
-//                   </div>
-//                   <div className="ml-4">
-//                     <h3 className="text-lg font-medium text-gray-900">Delete Model</h3>
-//                     <p className="text-sm text-gray-500">This action cannot be undone</p>
-//                   </div>
-//                 </div>
-//                 <p className="text-sm text-gray-500 mb-6">
-//                   Are you sure you want to delete this model? All associated data and images will be permanently removed.
-//                 </p>
-//                 <div className="flex justify-end space-x-4">
-//                   <button
-//                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
-//                     onClick={() => setConfirmDeleteId(null)}
-//                   >
-//                     Cancel
-//                   </button>
-//                   <button
-//                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-200"
-//                     onClick={() => handleDeleteModel(confirmDeleteId)}
-//                   >
-//                     Delete
-//                   </button>
-//                 </div>
-//               </div>
-//             </div>
-//           )}
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
-// export default AllModels;
-
-
-// import React, { useEffect, useState } from "react";
-// import { FaEdit, FaTrash, FaImage, FaSearch, FaPlus } from "react-icons/fa";
-// import apiClient, { BASE_URL } from "../../api/apiConfig"; // Import BASE_URL from apiConfig
-
-// const AllModels = () => {
-//   const [data, setData] = useState([]);
-//   const [filteredData, setFilteredData] = useState([]);
-//   const [formVisible, setFormVisible] = useState(false);
-//   const [editingId, setEditingId] = useState(null);
-//   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-//   const [formData, setFormData] = useState({
-//     brandId: "",
-//     modelName: "",
-//     image: null,
-//   });
-//   const [loading, setLoading] = useState(true);
-//   const [submitting, setSubmitting] = useState(false);
-//   const [error, setError] = useState("");
-//   const [success, setSuccess] = useState("");
-//   const [searchQuery, setSearchQuery] = useState("");
-//   const [imagePreview, setImagePreview] = useState("");
-//   // Static brand data
-//   const brands = [
-//     { brandId: "1", brandName: "Honda" },
-//     { brandId: "2", brandName: "Yamaha" },
-//     { brandId: "3", brandName: "Suzuki" },
-//     { brandId: "4", brandName: "Kawasaki" },
-//     { brandId: "5", brandName: "Harley Davidson" },
-//     { brandId: "6", brandName: "Hero" },
-//     { brandId: "7", brandName: "Bajaj" },
-//     { brandId: "8", brandName: "TVS" },
-//     { brandId: "9", brandName: "Royal Enfield" },
-//     { brandId: "10", brandName: "KTM" }
-//   ];
-//   // ✅ Updated: Backend base URL for images from env variable
-//   const BACKEND_URL = BASE_URL;
-//   // Pagination states
-//   const [currentPage, setCurrentPage] = useState(0);
-//   const [itemsPerPage] = useState(10);
-//   const [totalPages, setTotalPages] = useState(0);
-//   const [totalElements, setTotalElements] = useState(0);
-//   const [hasNext, setHasNext] = useState(false);
-//   const [hasPrevious, setHasPrevious] = useState(false);
-//   // ROBUST helper function to get full image URL - handles ALL backend inconsistencies
-//   const getImageUrl = (imagePath) => {
-//     if (!imagePath) return null;
-
-//     // If the path already includes the full URL, return as is
-//     if (imagePath.startsWith('http')) {
-//       return imagePath;
-//     }
-
-//     let cleanPath = imagePath.trim();
-
-//     // Remove all leading slashes
-//     cleanPath = cleanPath.replace(/^\/+/, '');
-
-//     // Handle the most problematic case: "/uploads//uploads/models/filename.jpg"
-//     cleanPath = cleanPath.replace(/^uploads\/\/uploads\/models\/+/, '');
-
-//     // Remove any occurrence of 'uploads/models/' from the beginning
-//     cleanPath = cleanPath.replace(/^uploads\/models\/+/, '');
-
-//     // Remove any occurrence of just 'uploads/' from the beginning
-//     cleanPath = cleanPath.replace(/^uploads\/+/, '');
-
-//     // Remove any occurrence of just 'models/' from the beginning
-//     cleanPath = cleanPath.replace(/^models\/+/, '');
-
-//     // Extract just the filename if there are still path segments
-//     const filename = cleanPath.split('/').pop();
-
-//     // Construct the final URL with just the filename
-//     const finalUrl = `${BACKEND_URL}/uploads/models/${filename}`;
-//     console.log(`Image URL constructed: ${finalUrl} from original path: ${imagePath}`);
-//     return finalUrl;
-//   };
-//   // Clear messages after 5 seconds
-//   useEffect(() => {
-//     if (success || error) {
-//       const timer = setTimeout(() => {
-//         setSuccess("");
-//         setError("");
-//       }, 5000);
-//       return () => clearTimeout(timer);
-//     }
-//   }, [success, error]);
-//   // Handle search
-//   useEffect(() => {
-//     if (searchQuery.trim() === "") {
-//       setFilteredData(data);
-//     } else {
-//       const filtered = data.filter((model) =>
-//         model.modelName?.toLowerCase().includes(searchQuery.toLowerCase())
-//       );
-//       setFilteredData(filtered);
-//     }
-//   }, [searchQuery, data]);
-//   // Fetch Models data with pagination
-//   const fetchModels = async (page = 0, size = 10) => {
-//     setLoading(true);
-//     setError("");
-//     try {
-//       let url = `/api/models/all?page=${page}&size=${size}&sort=createdAt,desc`;
-//       if (searchQuery.trim()) {
-//         url = `/api/models/search?query=${encodeURIComponent(searchQuery)}&page=${page}&size=${size}&sort=createdAt,desc`;
-//       }
-//       const response = await apiClient.get(url);
-//       console.log("Fetched models data:", response.data);
-
-//       if (response.data && response.data.success) {
-//         const modelsData = response.data.data || [];
-
-//         // Process each model to ensure proper image URLs
-//         const processedModels = modelsData.map((model, index) => {
-//           const processedModel = {
-//             ...model,
-//             id: model.id || model.modelId || `fallback-${index}-${Date.now()}`,
-//             modelImage: model.modelImage ? getImageUrl(model.modelImage) : null
-//           };
-
-//           console.log(`Processed model ${model.modelName}:`, {
-//             id: processedModel.id,
-//             original: model.modelImage,
-//             processed: processedModel.modelImage
-//           });
-//           return processedModel;
-//         });
-
-//         setData(processedModels);
-//         setFilteredData(processedModels);
-
-//         if (response.data.pagination) {
-//           setCurrentPage(response.data.pagination.currentPage);
-//           setTotalPages(response.data.pagination.totalPages);
-//           setTotalElements(response.data.pagination.totalElements);
-//           setHasNext(response.data.pagination.hasNext);
-//           setHasPrevious(response.data.pagination.hasPrevious);
-//         }
-//       } else {
-//         setError("Failed to fetch models data");
-//         setData([]);
-//         setFilteredData([]);
-//       }
-//     } catch (error) {
-//       console.error("Error fetching models:", error);
-//       setError(error.response?.data?.message || "Error fetching models data");
-//       setData([]);
-//       setFilteredData([]);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-//   useEffect(() => {
-//     fetchModels(currentPage, itemsPerPage);
-//     window.scrollTo(0, 0);
-//   }, []);
-//   // Handle image selection with preview
-//   const handleImageChange = (e) => {
-//     const file = e.target.files[0];
-//     if (file) {
-//       if (!file.type.startsWith('image/')) {
-//         setError("Please select a valid image file");
-//         e.target.value = '';
-//         return;
-//       }
-
-//       if (file.size > 5 * 1024 * 1024) {
-//         setError("Image size should be less than 5MB");
-//         e.target.value = '';
-//         return;
-//       }
-//       setFormData({ ...formData, image: file });
-
-//       const reader = new FileReader();
-//       reader.onloadend = () => {
-//         setImagePreview(reader.result);
-//       };
-//       reader.readAsDataURL(file);
-
-//       setError("");
-//     }
-//   };
-//   // Add Model
-//   const handleAddModel = async (e) => {
-//     e.preventDefault();
-//     setError("");
-//     setSuccess("");
-//     setSubmitting(true);
-//     if (!formData.brandId || !formData.modelName.trim()) {
-//       setError("Brand and Model name are required");
-//       setSubmitting(false);
-//       return;
-//     }
-//     const formDataToSend = new FormData();
-//     formDataToSend.append('brandId', formData.brandId);
-//     formDataToSend.append('modelName', formData.modelName.trim());
-//     if (formData.image) {
-//       formDataToSend.append('modelImage', formData.image);
-//     }
-//     try {
-//       const response = await apiClient.post("/api/models/add", formDataToSend, {
-//         headers: {
-//           'Content-Type': 'multipart/form-data',
-//         },
-//       });
-//       if (response.data && response.data.success) {
-//         setSuccess("Model added successfully!");
-//         resetForm();
-//         await fetchModels(currentPage, itemsPerPage);
-//       } else {
-//         setError(response.data?.message || "Failed to add model");
-//       }
-//     } catch (error) {
-//       console.error("Error adding model:", error);
-//       setError(error.response?.data?.message || "Error adding model");
-//     } finally {
-//       setSubmitting(false);
-//     }
-//   };
-//   // Edit Model
-//   const handleEditModel = async (e) => {
-//     e.preventDefault();
-//     setError("");
-//     setSuccess("");
-//     setSubmitting(true);
-//     if (!formData.brandId || !formData.modelName.trim()) {
-//       setError("Brand and Model name are required");
-//       setSubmitting(false);
-//       return;
-//     }
-//     if (!editingId) {
-//       setError("Invalid model ID");
-//       setSubmitting(false);
-//       return;
-//     }
-//     const formDataToSend = new FormData();
-
-//     // Create the request object for the edit endpoint
-//     const requestData = {
-//       brandId: formData.brandId,
-//       modelName: formData.modelName.trim()
-//     };
-
-//     formDataToSend.append('request', new Blob([JSON.stringify(requestData)], {
-//       type: 'application/json'
-//     }));
-
-//     if (formData.image) {
-//       formDataToSend.append('image', formData.image);
-//     }
-//     try {
-//       const response = await apiClient.post(`/api/models/edit/${editingId}`, formDataToSend, {
-//         headers: {
-//           'Content-Type': 'multipart/form-data',
-//         },
-//       });
-//       if (response.data && response.data.success) {
-//         setSuccess("Model updated successfully!");
-//         resetForm();
-//         await fetchModels(currentPage, itemsPerPage);
-//       } else {
-//         setError(response.data?.message || "Failed to update model");
-//       }
-//     } catch (error) {
-//       console.error("Error updating model:", error);
-//       setError(error.response?.data?.message || "Error updating model");
-//     } finally {
-//       setSubmitting(false);
-//     }
-//   };
-//   // Delete Model
-//   const handleDeleteModel = async (id) => {
-//     if (!id || id.toString().startsWith('fallback-')) {
-//       setError("Invalid model ID");
-//       setConfirmDeleteId(null);
-//       return;
-//     }
-//     setError("");
-//     setSuccess("");
-//     try {
-//       const response = await apiClient.delete(`/api/models/delete/${id}`);
-//       if (response.data && response.data.success) {
-//         setSuccess("Model deleted successfully!");
-//         setConfirmDeleteId(null);
-
-//         if (data.length === 1 && currentPage > 0) {
-//           await fetchModels(currentPage - 1, itemsPerPage);
-//         } else {
-//           await fetchModels(currentPage, itemsPerPage);
-//         }
-//       } else {
-//         setError(response.data?.message || "Failed to delete model");
-//         setConfirmDeleteId(null);
-//       }
-//     } catch (error) {
-//       console.error("Error deleting model:", error);
-//       setError(error.response?.data?.message || "Error deleting model");
-//       setConfirmDeleteId(null);
-//     }
-//   };
-//   // Edit form prefill
-//   const handleEditModelClick = (model) => {
-//     if (!model || !model.id || model.id.toString().startsWith('fallback-')) {
-//       setError("Invalid model data or missing ID");
-//       return;
-//     }
-//     setEditingId(model.id);
-//     setFormData({
-//       brandId: model.brandId || "",
-//       modelName: model.modelName || "",
-//       image: null,
-//     });
-
-//     if (model.modelImage) {
-//       setImagePreview(model.modelImage);
-//     } else {
-//       setImagePreview("");
-//     }
-
-//     setFormVisible(true);
-//     setError("");
-//     setSuccess("");
-
-//     window.scrollTo({ top: 0, behavior: 'smooth' });
-//   };
-//   // Reset Form
-//   const resetForm = () => {
-//     setEditingId(null);
-//     setFormData({
-//       brandId: "",
-//       modelName: "",
-//       image: null,
-//     });
-//     setImagePreview("");
-//     setFormVisible(false);
-//     setError("");
-//     setSuccess("");
-//     setSubmitting(false);
-//   };
-//   // Pagination handlers
-//   const handleNextPage = () => {
-//     if (hasNext) {
-//       const nextPage = currentPage + 1;
-//       fetchModels(nextPage, itemsPerPage);
-//     }
-//   };
-//   const handlePrevPage = () => {
-//     if (hasPrevious) {
-//       const prevPage = currentPage - 1;
-//       fetchModels(prevPage, itemsPerPage);
-//     }
-//   };
-//   const handlePageClick = (pageNumber) => {
-//     fetchModels(pageNumber, itemsPerPage);
-//   };
-//   // Generate page numbers for pagination
-//   const getPageNumbers = () => {
-//     const pages = [];
-//     const maxVisible = 5;
-//     let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
-//     let end = Math.min(totalPages - 1, start + maxVisible - 1);
-
-//     if (end - start + 1 < maxVisible) {
-//       start = Math.max(0, end - maxVisible + 1);
-//     }
-
-//     for (let i = start; i <= end; i++) {
-//       pages.push(i);
-//     }
-//     return pages;
-//   };
-//   // Get current page data
-//   const getCurrentPageData = () => {
-//     return searchQuery.trim() !== "" ? filteredData : filteredData;
-//   };
-//   // Simple image error handler - just hide broken images
-//   const handleImageError = (e, modelName) => {
-//     console.error(`Image failed to load for model "${modelName}":`, e.target.src);
-//     e.target.style.display = 'none';
-//     const fallbackDiv = e.target.nextElementSibling;
-//     if (fallbackDiv) {
-//       fallbackDiv.style.display = 'flex';
-//     }
-//   };
-//   // Image load success handler
-//   const handleImageLoad = (e, modelName) => {
-//     console.log(`Image loaded successfully for model "${modelName}":`, e.target.src);
-//     e.target.style.display = 'block';
-//     const fallbackDiv = e.target.nextElementSibling;
-//     if (fallbackDiv) {
-//       fallbackDiv.style.display = 'none';
-//     }
-//   };
-//   // Get brand name by ID
-//   const getBrandName = (brandId) => {
-//     const brand = brands.find(b => b.brandId === brandId || b.id === brandId);
-//     return brand ? brand.brandName || brand.name : brandId;
-//   };
-//   return (
-//     <div className="bg-gray-50 min-h-screen p-4">
-//       {/* Header Section */}
-//       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
-//         <div>
-//           <h1 className="text-3xl font-bold text-gray-900">Models Management</h1>
-//           <p className="text-gray-600 mt-1">Manage your vehicle models catalog ({totalElements} models)</p>
-//         </div>
-//         {!formVisible && (
-//           <button
-//             onClick={() => setFormVisible(true)}
-//             className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl"
-//           >
-//             <FaPlus className="mr-2" />
-//             Add New Model
-//           </button>
-//         )}
-//       </div>
-//       {/* Success/Error Messages */}
-//       {success && (
-//         <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg animate-fade-in">
-//           <div className="flex">
-//             <div className="flex-shrink-0">
-//               <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-//                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-//               </svg>
-//             </div>
-//             <div className="ml-3">
-//               <p className="text-sm text-green-700 font-medium">{success}</p>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-
-//       {error && (
-//         <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg animate-fade-in">
-//           <div className="flex">
-//             <div className="flex-shrink-0">
-//               <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-//                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-//               </svg>
-//             </div>
-//             <div className="ml-3">
-//               <p className="text-sm text-red-700 font-medium">{error}</p>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//       {formVisible ? (
-//         <div className="bg-white rounded-xl shadow-lg p-8">
-//           <div className="mb-6">
-//             <h2 className="text-2xl font-bold text-gray-900">
-//               {editingId ? "Edit Model" : "Add New Model"}
-//             </h2>
-//             <p className="text-gray-600 mt-1">
-//               {editingId ? "Update model information below" : "Fill in the details to create a new model"}
-//             </p>
-//           </div>
-
-//           <form onSubmit={editingId ? handleEditModel : handleAddModel} className="space-y-6">
-//             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-//               {/* Brand Selection */}
-//               <div className="space-y-2">
-//                 <label className="block text-sm font-medium text-gray-700">
-//                   Brand <span className="text-red-500">*</span>
-//                 </label>
-//                 <select
-//                   name="brandId"
-//                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
-//                   value={formData.brandId}
-//                   onChange={(e) =>
-//                     setFormData({ ...formData, brandId: e.target.value })
-//                   }
-//                   required
-//                   disabled={submitting}
-//                 >
-//                   <option value="">Select Brand</option>
-//                   {brands.map((brand) => (
-//                     <option key={brand.brandId || brand.id} value={brand.brandId || brand.id}>
-//                       {brand.brandName || brand.name}
-//                     </option>
-//                   ))}
-//                 </select>
-//               </div>
-//               {/* Model Name */}
-//               <div className="space-y-2">
-//                 <label className="block text-sm font-medium text-gray-700">
-//                   Model Name <span className="text-red-500">*</span>
-//                 </label>
-//                 <input
-//                   type="text"
-//                   name="modelName"
-//                   placeholder="Enter model name"
-//                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
-//                   value={formData.modelName}
-//                   onChange={(e) =>
-//                     setFormData({ ...formData, modelName: e.target.value })
-//                   }
-//                   required
-//                   maxLength={100}
-//                   disabled={submitting}
-//                 />
-//               </div>
-//               {/* Model Image */}
-//               <div className="space-y-2">
-//                 <label className="block text-sm font-medium text-gray-700">
-//                   Model Image
-//                 </label>
-//                 <div className="space-y-4">
-//                   <input
-//                     type="file"
-//                     name="image"
-//                     accept="image/jpeg,image/jpg,image/png,image/gif"
-//                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-//                     onChange={handleImageChange}
-//                     disabled={submitting}
-//                   />
-//                   <p className="text-xs text-gray-500">
-//                     Supported formats: JPG, PNG, GIF. Maximum size: 5MB
-//                   </p>
-//                 </div>
-//               </div>
-//             </div>
-//             {/* Image Preview */}
-//             {imagePreview && (
-//               <div className="mt-6">
-//                 <label className="block text-sm font-medium text-gray-700 mb-3">
-//                   Image Preview
-//                 </label>
-//                 <div className="relative w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-//                   <img
-//                     src={imagePreview}
-//                     alt="Model preview"
-//                     className="w-full h-full object-contain"
-//                     onError={(e) => handleImageError(e, "Preview")}
-//                     onLoad={(e) => handleImageLoad(e, "Preview")}
-//                   />
-//                   <div
-//                     className="absolute inset-0 flex items-center justify-center bg-gray-100"
-//                     style={{ display: 'none' }}
-//                   >
-//                     <div className="text-center">
-//                       <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-//                       <p className="text-xs text-gray-500">Preview not available</p>
-//                     </div>
-//                   </div>
-//                 </div>
-//               </div>
-//             )}
-//             {/* Form Actions */}
-//             <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-//               <button
-//                 type="button"
-//                 className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
-//                 onClick={resetForm}
-//                 disabled={submitting}
-//               >
-//                 Cancel
-//               </button>
-//               <button
-//                 type="submit"
-//                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-//                 disabled={submitting}
-//               >
-//                 {submitting ? (
-//                   <span className="flex items-center">
-//                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-//                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-//                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-//                     </svg>
-//                     Processing...
-//                   </span>
-//                 ) : (
-//                   editingId ? "Update Model" : "Create Model"
-//                 )}
-//               </button>
-//             </div>
-//           </form>
-//         </div>
-//       ) : (
-//         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-//           {/* Search and Filters */}
-//           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-//             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
-//               <h3 className="text-lg font-semibold text-gray-900">
-//                 All Models ({totalElements} total)
-//               </h3>
-//               <div className="relative">
-//                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-//                   <FaSearch className="h-5 w-5 text-gray-400" />
-//                 </div>
-//                 <input
-//                   type="text"
-//                   placeholder="Search models..."
-//                   value={searchQuery}
-//                   onChange={(e) => setSearchQuery(e.target.value)}
-//                   className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-80"
-//                 />
-//               </div>
-//             </div>
-//           </div>
-
-//           {/* Table */}
-//           <div className="overflow-x-auto">
-//             <table className="w-full">
-//               <thead className="bg-gray-100 border-b border-gray-200">
-//                 <tr>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     #
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Model Image
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Model Name
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Brand
-//                   </th>
-//                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-//                     Actions
-//                   </th>
-//                 </tr>
-//               </thead>
-//               <tbody className="bg-white divide-y divide-gray-200">
-//                 {loading ? (
-//                   <tr key="loading-row">
-//                     <td colSpan="5" className="px-6 py-12 text-center">
-//                       <div className="flex flex-col items-center justify-center">
-//                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-//                         <p className="text-gray-500">Loading models...</p>
-//                       </div>
-//                     </td>
-//                   </tr>
-//                 ) : getCurrentPageData().length === 0 ? (
-//                   <tr key="empty-row">
-//                     <td colSpan="5" className="px-6 py-12 text-center">
-//                       <div className="text-gray-500">
-//                         <FaImage className="mx-auto h-16 w-16 text-gray-300 mb-4" />
-//                         <h3 className="text-lg font-medium text-gray-900 mb-2">No models found</h3>
-//                         <p className="text-gray-500">
-//                           {searchQuery ? `No models match "${searchQuery}"` : "Get started by creating your first model"}
-//                         </p>
-//                       </div>
-//                     </td>
-//                   </tr>
-//                 ) : (
-//                   getCurrentPageData().map((model, index) => (
-//                     <tr
-//                       key={`model-row-${model.id}-${index}`}
-//                       className="hover:bg-gray-50 transition duration-150"
-//                     >
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-//                         {searchQuery ? index + 1 : (currentPage * itemsPerPage + index + 1)}
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap">
-//                         <div className="flex-shrink-0 h-16 w-20 relative">
-//                           {model.modelImage ? (
-//                             <>
-//                               <img
-//                                 src={model.modelImage}
-//                                 alt={model.modelName}
-//                                 className="h-16 w-20 rounded-lg object-contain border border-gray-200 shadow-sm bg-white"
-//                                 onError={(e) => handleImageError(e, model.modelName)}
-//                                 onLoad={(e) => handleImageLoad(e, model.modelName)}
-//                                 style={{ display: 'block' }}
-//                               />
-//                               <div
-//                                 className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center absolute top-0 left-0"
-//                                 style={{ display: 'none' }}
-//                               >
-//                                 <div className="text-center">
-//                                   <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-//                                   <p className="text-xs text-gray-500">No Image</p>
-//                                 </div>
-//                               </div>
-//                             </>
-//                           ) : (
-//                             <div className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-//                               <div className="text-center">
-//                                 <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-//                                 <p className="text-xs text-gray-500">No Image</p>
-//                               </div>
-//                             </div>
-//                           )}
-//                         </div>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap">
-//                         <div className="text-sm font-medium text-gray-900">{model.modelName}</div>
-//                         <div className="text-sm text-gray-500">ID: {model.id}</div>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap">
-//                         <div className="text-sm font-medium text-gray-900">{getBrandName(model.brandId)}</div>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-//                         <div className="flex items-center space-x-3">
-//                           <button
-//                             className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
-//                               model.id.toString().startsWith('fallback-')
-//                                 ? "text-gray-400 bg-gray-100 cursor-not-allowed"
-//                                 : "text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
-//                             }`}
-//                             onClick={() => handleEditModelClick(model)}
-//                             title="Edit model"
-//                             disabled={model.id.toString().startsWith('fallback-')}
-//                           >
-//                             <FaEdit className="mr-1" />
-//                             Edit
-//                           </button>
-//                           <button
-//                             className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
-//                               model.id.toString().startsWith('fallback-')
-//                                 ? "text-gray-400 bg-gray-100 cursor-not-allowed"
-//                                 : "text-red-700 bg-red-100 hover:bg-red-200"
-//                             }`}
-//                             onClick={() => setConfirmDeleteId(model.id)}
-//                             title="Delete model"
-//                             disabled={model.id.toString().startsWith('fallback-')}
-//                           >
-//                             <FaTrash className="mr-1" />
-//                             Delete
-//                           </button>
-//                         </div>
-//                       </td>
-//                     </tr>
-//                   ))
-//                 )}
-//               </tbody>
-//             </table>
-//           </div>
-//           {/* Pagination */}
-//           {!loading && !searchQuery && data.length > 0 && totalPages > 1 && (
-//             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-//               <div className="flex items-center justify-between">
-//                 <div className="flex-1 flex justify-between sm:hidden">
-//                   <button
-//                     className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                     disabled={!hasPrevious}
-//                     onClick={handlePrevPage}
-//                   >
-//                     Previous
-//                   </button>
-//                   <button
-//                     className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                     disabled={!hasNext}
-//                     onClick={handleNextPage}
-//                   >
-//                     Next
-//                   </button>
-//                 </div>
-//                 <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-//                   <div>
-//                     <p className="text-sm text-gray-700">
-//                       Showing{" "}
-//                       <span className="font-medium">{currentPage * itemsPerPage + 1}</span> to{" "}
-//                       <span className="font-medium">
-//                         {Math.min((currentPage + 1) * itemsPerPage, totalElements)}
-//                       </span>{" "}
-//                       of <span className="font-medium">{totalElements}</span> results
-//                     </p>
-//                   </div>
-//                   <div>
-//                     <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-//                       <button
-//                         className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                         disabled={!hasPrevious}
-//                         onClick={handlePrevPage}
-//                         title="Previous page"
-//                       >
-//                         <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-//                           <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-//                         </svg>
-//                       </button>
-
-//                       {getPageNumbers().map((pageNumber) => (
-//                         <button
-//                           key={`page-btn-${pageNumber}`}
-//                           className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition duration-200 ${
-//                             currentPage === pageNumber
-//                               ? "z-10 bg-indigo-50 border-indigo-500 text-indigo-600"
-//                               : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-//                           }`}
-//                           onClick={() => handlePageClick(pageNumber)}
-//                           title={`Go to page ${pageNumber + 1}`}
-//                         >
-//                           {pageNumber + 1}
-//                         </button>
-//                       ))}
-
-//                       <button
-//                         className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-//                         disabled={!hasNext}
-//                         onClick={handleNextPage}
-//                         title="Next page"
-//                       >
-//                         <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-//                           <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-//                         </svg>
-//                       </button>
-//                     </nav>
-//                   </div>
-//                 </div>
-//               </div>
-//             </div>
-//           )}
-//           {/* Delete Confirmation Modal */}
-//           {confirmDeleteId && (
-//             <div className="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-50">
-//               <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
-//                 <div className="flex items-center mb-4">
-//                   <div className="flex-shrink-0 w-10 h-10 mx-auto bg-red-100 rounded-full flex items-center justify-center">
-//                     <FaTrash className="w-5 h-5 text-red-600" />
-//                   </div>
-//                   <div className="ml-4">
-//                     <h3 className="text-lg font-medium text-gray-900">Delete Model</h3>
-//                     <p className="text-sm text-gray-500">This action cannot be undone</p>
-//                   </div>
-//                 </div>
-//                 <p className="text-sm text-gray-500 mb-6">
-//                   Are you sure you want to delete this model? All associated data and images will be permanently removed.
-//                 </p>
-//                 <div className="flex justify-end space-x-4">
-//                   <button
-//                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
-//                     onClick={() => setConfirmDeleteId(null)}
-//                   >
-//                     Cancel
-//                   </button>
-//                   <button
-//                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-200"
-//                     onClick={() => handleDeleteModel(confirmDeleteId)}
-//                   >
-//                     Delete
-//                   </button>
-//                 </div>
-//               </div>
-//             </div>
-//           )}
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
-// export default AllModels;
-
-
-import React, { useEffect, useState } from "react";
-import { FaEdit, FaTrash, FaImage, FaSearch, FaPlus } from "react-icons/fa";
-import apiClient, { BASE_URL } from "../../api/apiConfig"; // Import BASE_URL from apiConfig
+// AllModels.jsx - FULLY MOBILE RESPONSIVE + brandId Support ✅
+
+import React, { useEffect, useState, useMemo, useRef } from "react";
+import {
+  FaEdit,
+  FaTrash,
+  FaImage,
+  FaSearch,
+  FaPlus,
+  FaTimes,
+  FaList,
+  FaTh,
+  FaEye,
+  FaToggleOn,
+  FaToggleOff,
+} from "react-icons/fa";
+import apiClient, { BASE_URL } from "../../api/apiConfig";
 
 const AllModels = () => {
+  // State
   const [data, setData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [formVisible, setFormVisible] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [viewMode, setViewMode] = useState("table");
+
   const [formData, setFormData] = useState({
     brandId: "",
     modelName: "",
     image: null,
   });
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [brandsLoading, setBrandsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
   const [imagePreview, setImagePreview] = useState("");
-  const [brands, setBrands] = useState([]);
-  const [brandsLoading, setBrandsLoading] = useState(true);
-  // ✅ Updated: Backend base URL for images from env variable
-  const BACKEND_URL = BASE_URL;
-  // Pagination states
+  const [validationErrors, setValidationErrors] = useState({});
+
+  // Pagination
   const [currentPage, setCurrentPage] = useState(0);
   const [itemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
@@ -1769,58 +48,25 @@ const AllModels = () => {
   const [hasNext, setHasNext] = useState(false);
   const [hasPrevious, setHasPrevious] = useState(false);
 
-  // Fetch brands data from API
-  const fetchBrands = async () => {
-    setBrandsLoading(true);
-    try {
-      const response = await apiClient.get("/api/brands/all");
-      if (response.data && response.data.success) {
-        setBrands(response.data.data || []);
-      } else {
-        console.error("Failed to fetch brands data");
-        setBrands([]);
-      }
-    } catch (error) {
-      console.error("Error fetching brands:", error);
-      setBrands([]);
-    } finally {
-      setBrandsLoading(false);
-    }
-  };
+  // Image error tracking
+  const imageErrorTrackerRef = useRef(new Set());
 
-  // ROBUST helper function to get full image URL - handles ALL backend inconsistencies
+  const BACKEND_URL = BASE_URL;
+
+  // Helper: Get full image URL
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
-
-    // If the path already includes the full URL, return as is
-    if (imagePath.startsWith('http')) {
-      return imagePath;
-    }
+    if (imagePath.startsWith("http")) return imagePath;
 
     let cleanPath = imagePath.trim();
+    cleanPath = cleanPath.replace(/^\/+/, "");
+    cleanPath = cleanPath.replace(/^uploads\/\/uploads\/models\/+/, "");
+    cleanPath = cleanPath.replace(/^uploads\/models\/+/, "");
+    cleanPath = cleanPath.replace(/^uploads\/+/, "");
+    cleanPath = cleanPath.replace(/^models\/+/, "");
 
-    // Remove all leading slashes
-    cleanPath = cleanPath.replace(/^\/+/, '');
-
-    // Handle the most problematic case: "/uploads//uploads/models/filename.jpg"
-    cleanPath = cleanPath.replace(/^uploads\/\/uploads\/models\/+/, '');
-
-    // Remove any occurrence of 'uploads/models/' from the beginning
-    cleanPath = cleanPath.replace(/^uploads\/models\/+/, '');
-
-    // Remove any occurrence of just 'uploads/' from the beginning
-    cleanPath = cleanPath.replace(/^uploads\/+/, '');
-
-    // Remove any occurrence of just 'models/' from the beginning
-    cleanPath = cleanPath.replace(/^models\/+/, '');
-
-    // Extract just the filename if there are still path segments
-    const filename = cleanPath.split('/').pop();
-
-    // Construct the final URL with just the filename
-    const finalUrl = `${BACKEND_URL}/uploads/models/${filename}`;
-    console.log(`Image URL constructed: ${finalUrl} from original path: ${imagePath}`);
-    return finalUrl;
+    const filename = cleanPath.split("/").pop();
+    return `${BACKEND_URL}/uploads/models/${filename}`;
   };
 
   // Clear messages after 5 seconds
@@ -1834,51 +80,55 @@ const AllModels = () => {
     }
   }, [success, error]);
 
-  // Handle search
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredData(data);
-    } else {
-      const filtered = data.filter((model) =>
-        model.modelName?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredData(filtered);
-    }
-  }, [searchQuery, data]);
+  // ✅ Fetch Brands
+  const fetchBrands = async () => {
+    setBrandsLoading(true);
+    try {
+      const response = await apiClient.get("/api/brands/active");
 
-  // Fetch Models data with pagination
+      console.log("✅ Brands API Response:", response.data);
+
+      let brandsData = [];
+      if (response.data?.success && response.data?.data) {
+        brandsData = Array.isArray(response.data.data)
+          ? response.data.data
+          : response.data.data.content || [];
+      } else if (Array.isArray(response.data)) {
+        brandsData = response.data;
+      }
+
+      setBrands(brandsData || []);
+      console.log("✅ Brands loaded:", brandsData.length);
+    } catch (error) {
+      console.error("❌ Error fetching brands:", error);
+      setError("Failed to load brands");
+    } finally {
+      setBrandsLoading(false);
+    }
+  };
+
+  // ✅ Fetch Models
   const fetchModels = async (page = 0, size = 10) => {
     setLoading(true);
     setError("");
     try {
-      let url = `/api/models/all?page=${page}&size=${size}&sort=createdAt,desc`;
-      if (searchQuery.trim()) {
-        url = `/api/models/search?query=${encodeURIComponent(searchQuery)}&page=${page}&size=${size}&sort=createdAt,desc`;
-      }
-      const response = await apiClient.get(url);
-      console.log("Fetched models data:", response.data);
+      const response = await apiClient.get(
+        `/api/models/all?page=${page}&size=${size}&sort=createdAt,desc`
+      );
+
+      console.log("✅ Models API Response:", response.data);
 
       if (response.data && response.data.success) {
         const modelsData = response.data.data || [];
 
-        // Process each model to ensure proper image URLs
-        const processedModels = modelsData.map((model, index) => {
-          const processedModel = {
-            ...model,
-            id: model.id || model.modelId || `fallback-${index}-${Date.now()}`,
-            modelImage: model.modelImage ? getImageUrl(model.modelImage) : null
-          };
-
-          console.log(`Processed model ${model.modelName}:`, {
-            id: processedModel.id,
-            original: model.modelImage,
-            processed: processedModel.modelImage
-          });
-          return processedModel;
-        });
+        const processedModels = modelsData.map((model) => ({
+          ...model,
+          id: model.id || model.modelId,
+          brandId: model.brandId || null,
+          modelImage: model.modelImage ? getImageUrl(model.modelImage) : null,
+        }));
 
         setData(processedModels);
-        setFilteredData(processedModels);
 
         if (response.data.pagination) {
           setCurrentPage(response.data.pagination.currentPage);
@@ -1888,49 +138,90 @@ const AllModels = () => {
           setHasPrevious(response.data.pagination.hasPrevious);
         }
       } else {
-        setError("Failed to fetch models data");
+        setError("Failed to fetch models");
         setData([]);
-        setFilteredData([]);
       }
     } catch (error) {
-      console.error("Error fetching models:", error);
-      setError(error.response?.data?.message || "Error fetching models data");
+      console.error("❌ Error fetching models:", error);
+      setError(error.response?.data?.message || "Error fetching models");
       setData([]);
-      setFilteredData([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // Initial load
   useEffect(() => {
-    fetchModels(currentPage, itemsPerPage);
+    fetchModels(0, itemsPerPage);
     fetchBrands();
-    window.scrollTo(0, 0);
   }, []);
 
-  // Handle image selection with preview
+  // Search filter
+  const filteredData = useMemo(() => {
+    if (!searchQuery.trim()) return data;
+    const query = searchQuery.toLowerCase();
+    return data.filter((model) =>
+      model.modelName?.toLowerCase().includes(query)
+    );
+  }, [data, searchQuery]);
+
+  // Get brand name by ID
+  const getBrandName = (brandId) => {
+    if (!brandId) return "Unknown";
+    const brand = brands.find(
+      (b) => parseInt(b.id || b.brandId) === parseInt(brandId)
+    );
+    return brand?.brandName || brand?.name || "Unknown";
+  };
+
+  // Validate form
+  const validateForm = () => {
+    const errors = {};
+
+    if (!formData.modelName || formData.modelName.trim().length === 0) {
+      errors.modelName = "Model name is required";
+    } else if (formData.modelName.trim().length < 2) {
+      errors.modelName = "Model name must be at least 2 characters";
+    } else if (formData.modelName.trim().length > 100) {
+      errors.modelName = "Model name must not exceed 100 characters";
+    }
+
+    if (!formData.brandId || formData.brandId === "") {
+      errors.brandId = "Brand is required";
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Handle input change
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+
+    if (validationErrors[name]) {
+      setValidationErrors({ ...validationErrors, [name]: "" });
+    }
+  };
+
+  // Handle image change
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
-        setError("Please select a valid image file");
-        e.target.value = '';
+      const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      if (!validTypes.includes(file.type)) {
+        setError("Invalid image format");
         return;
       }
 
-      if (file.size > 5 * 1024 * 1024) {
-        setError("Image size should be less than 5MB");
-        e.target.value = '';
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        setError("Image size must not exceed 5MB");
         return;
       }
+
       setFormData({ ...formData, image: file });
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-
+      setImagePreview(URL.createObjectURL(file));
       setError("");
     }
   };
@@ -1938,88 +229,92 @@ const AllModels = () => {
   // Add Model
   const handleAddModel = async (e) => {
     e.preventDefault();
+
+    if (!validateForm()) return;
+
+    setSubmitting(true);
     setError("");
     setSuccess("");
-    setSubmitting(true);
-    if (!formData.brandId || !formData.modelName.trim()) {
-      setError("Brand and Model name are required");
-      setSubmitting(false);
-      return;
-    }
-    const formDataToSend = new FormData();
-    formDataToSend.append('brandId', formData.brandId);
-    formDataToSend.append('modelName', formData.modelName.trim());
-    if (formData.image) {
-      formDataToSend.append('modelImage', formData.image);
-    }
+
     try {
-      const response = await apiClient.post("/api/models/add", formDataToSend, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      const formDataToSend = new FormData();
+      formDataToSend.append("brandId", formData.brandId);
+      formDataToSend.append("modelName", formData.modelName.trim());
+      if (formData.image) {
+        formDataToSend.append("modelImage", formData.image);
+      }
+
+      console.log("🚀 Adding Model:", {
+        brandId: formData.brandId,
+        modelName: formData.modelName.trim(),
       });
+
+      const response = await apiClient.post("/api/models/add", formDataToSend, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
       if (response.data && response.data.success) {
-        setSuccess("Model added successfully!");
+        setSuccess(response.data.message || "Model added successfully!");
         resetForm();
-        await fetchModels(currentPage, itemsPerPage);
+        fetchModels(0, itemsPerPage);
       } else {
         setError(response.data?.message || "Failed to add model");
       }
     } catch (error) {
-      console.error("Error adding model:", error);
       setError(error.response?.data?.message || "Error adding model");
+      console.error("❌ Error adding model:", error);
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Edit Model
-  const handleEditModel = async (e) => {
+  // Update Model
+  const handleUpdateModel = async (e) => {
     e.preventDefault();
+
+    if (!validateForm()) return;
+
+    setSubmitting(true);
     setError("");
     setSuccess("");
-    setSubmitting(true);
-    if (!formData.brandId || !formData.modelName.trim()) {
-      setError("Brand and Model name are required");
-      setSubmitting(false);
-      return;
-    }
-    if (!editingId) {
-      setError("Invalid model ID");
-      setSubmitting(false);
-      return;
-    }
-    const formDataToSend = new FormData();
 
-    // Create the request object for the edit endpoint
-    const requestData = {
-      brandId: formData.brandId,
-      modelName: formData.modelName.trim()
-    };
-
-    formDataToSend.append('request', new Blob([JSON.stringify(requestData)], {
-      type: 'application/json'
-    }));
-
-    if (formData.image) {
-      formDataToSend.append('image', formData.image);
-    }
     try {
-      const response = await apiClient.post(`/api/models/edit/${editingId}`, formDataToSend, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const formDataToSend = new FormData();
+
+      const requestData = {
+        brandId: formData.brandId,
+        modelName: formData.modelName.trim(),
+      };
+
+      formDataToSend.append(
+        "request",
+        new Blob([JSON.stringify(requestData)], {
+          type: "application/json",
+        })
+      );
+
+      if (formData.image) {
+        formDataToSend.append("image", formData.image);
+      }
+
+      const response = await apiClient.post(
+        `/api/models/edit/${editingId}`,
+        formDataToSend,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
+
       if (response.data && response.data.success) {
-        setSuccess("Model updated successfully!");
+        setSuccess(response.data.message || "Model updated successfully!");
         resetForm();
-        await fetchModels(currentPage, itemsPerPage);
+        fetchModels(currentPage, itemsPerPage);
       } else {
         setError(response.data?.message || "Failed to update model");
       }
     } catch (error) {
-      console.error("Error updating model:", error);
       setError(error.response?.data?.message || "Error updating model");
+      console.error("❌ Error updating model:", error);
     } finally {
       setSubmitting(false);
     }
@@ -2027,11 +322,6 @@ const AllModels = () => {
 
   // Delete Model
   const handleDeleteModel = async (id) => {
-    if (!id || id.toString().startsWith('fallback-')) {
-      setError("Invalid model ID");
-      setConfirmDeleteId(null);
-      return;
-    }
     setError("");
     setSuccess("");
     try {
@@ -2041,45 +331,37 @@ const AllModels = () => {
         setConfirmDeleteId(null);
 
         if (data.length === 1 && currentPage > 0) {
-          await fetchModels(currentPage - 1, itemsPerPage);
+          fetchModels(currentPage - 1, itemsPerPage);
         } else {
-          await fetchModels(currentPage, itemsPerPage);
+          fetchModels(currentPage, itemsPerPage);
         }
       } else {
         setError(response.data?.message || "Failed to delete model");
         setConfirmDeleteId(null);
       }
     } catch (error) {
-      console.error("Error deleting model:", error);
       setError(error.response?.data?.message || "Error deleting model");
       setConfirmDeleteId(null);
     }
   };
 
-  // Edit form prefill
+  // Edit Model
   const handleEditModelClick = (model) => {
-    if (!model || !model.id || model.id.toString().startsWith('fallback-')) {
-      setError("Invalid model data or missing ID");
-      return;
-    }
+    console.log("📝 Editing Model:", model);
+
     setEditingId(model.id);
     setFormData({
-      brandId: model.brandId || "",
+      brandId: model.brandId ? model.brandId.toString() : "",
       modelName: model.modelName || "",
       image: null,
     });
 
-    if (model.modelImage) {
-      setImagePreview(model.modelImage);
-    } else {
-      setImagePreview("");
-    }
-
+    setImagePreview(model.modelImage || "");
     setFormVisible(true);
     setError("");
     setSuccess("");
-
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setValidationErrors({});
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // Reset Form
@@ -2094,29 +376,23 @@ const AllModels = () => {
     setFormVisible(false);
     setError("");
     setSuccess("");
+    setValidationErrors({});
     setSubmitting(false);
   };
 
-  // Pagination handlers
+  // Pagination
   const handleNextPage = () => {
-    if (hasNext) {
-      const nextPage = currentPage + 1;
-      fetchModels(nextPage, itemsPerPage);
-    }
+    if (hasNext) fetchModels(currentPage + 1, itemsPerPage);
   };
 
   const handlePrevPage = () => {
-    if (hasPrevious) {
-      const prevPage = currentPage - 1;
-      fetchModels(prevPage, itemsPerPage);
-    }
+    if (hasPrevious) fetchModels(currentPage - 1, itemsPerPage);
   };
 
   const handlePageClick = (pageNumber) => {
     fetchModels(pageNumber, itemsPerPage);
   };
 
-  // Generate page numbers for pagination
   const getPageNumbers = () => {
     const pages = [];
     const maxVisible = 5;
@@ -2133,489 +409,502 @@ const AllModels = () => {
     return pages;
   };
 
-  // Get current page data
-  const getCurrentPageData = () => {
-    return searchQuery.trim() !== "" ? filteredData : filteredData;
-  };
-
-  // Simple image error handler - just hide broken images
-  const handleImageError = (e, modelName) => {
-    console.error(`Image failed to load for model "${modelName}":`, e.target.src);
-    e.target.style.display = 'none';
-    const fallbackDiv = e.target.nextElementSibling;
-    if (fallbackDiv) {
-      fallbackDiv.style.display = 'flex';
+  // Image error handler
+  const handleImageError = (e, modelId) => {
+    const key = `${modelId}-${e.target.src}`;
+    if (imageErrorTrackerRef.current.has(key)) {
+      e.target.style.display = "none";
+      return;
     }
+    imageErrorTrackerRef.current.add(key);
+    e.target.style.display = "none";
   };
 
-  // Image load success handler
-  const handleImageLoad = (e, modelName) => {
-    console.log(`Image loaded successfully for model "${modelName}":`, e.target.src);
-    e.target.style.display = 'block';
-    const fallbackDiv = e.target.nextElementSibling;
-    if (fallbackDiv) {
-      fallbackDiv.style.display = 'none';
+  // Model Image Component
+  const ModelImage = ({ model }) => {
+    if (!model.modelImage) {
+      return (
+        <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-200 rounded-lg flex items-center justify-center text-gray-500">
+          <FaImage className="text-lg sm:text-xl" />
+        </div>
+      );
     }
+
+    return (
+      <img
+        src={model.modelImage}
+        alt={model.modelName}
+        className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-lg border-2 border-gray-200 shadow-sm bg-white"
+        onError={(e) => handleImageError(e, model.id)}
+        loading="lazy"
+      />
+    );
   };
 
-  // Get brand name by ID
-  const getBrandName = (brandId) => {
-    const brand = brands.find(b => b.brandId === brandId || b.id === brandId);
-    return brand ? brand.brandName || brand.name : brandId;
+  // Model Card Component (Mobile)
+  const ModelCard = ({ model }) => {
+    return (
+      <div className="bg-white rounded-xl shadow-md hover:shadow-xl transition-shadow p-4 border border-gray-200">
+        <div className="flex items-start justify-between mb-3">
+          <ModelImage model={model} />
+          <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+            {getBrandName(model.brandId)}
+          </span>
+        </div>
+
+        <h3 className="font-bold text-gray-900 text-lg mb-2">{model.modelName}</h3>
+
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">ID:</span>
+            <span className="font-mono text-xs text-gray-700">#{model.id}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Created:</span>
+            <span className="text-xs text-gray-700">
+              {model.createdAt
+                ? new Date(model.createdAt).toLocaleDateString()
+                : "N/A"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex gap-2 border-t pt-3">
+          <button
+            className="flex-1 flex items-center justify-center gap-1 py-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+            onClick={() => handleEditModelClick(model)}
+            disabled={submitting}
+          >
+            <FaEdit /> Edit
+          </button>
+          <button
+            className="px-3 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+            onClick={() => setConfirmDeleteId(model.id)}
+            disabled={submitting}
+          >
+            <FaTrash />
+          </button>
+          {model.modelImage && (
+            <button
+              className="px-3 py-2 text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              onClick={() => window.open(model.modelImage, "_blank")}
+            >
+              <FaEye />
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+    <div className="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen p-3 sm:p-4 md:p-6">
+      {/* Header - Mobile Responsive */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Models Management</h1>
-          <p className="text-gray-600 mt-1">Manage your vehicle models catalog ({totalElements} models)</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">
+            🚗 Models Management
+          </h1>
+          <p className="text-gray-600 text-sm sm:text-base mt-1">
+            Manage your vehicle models catalog ({totalElements} models)
+          </p>
         </div>
         {!formVisible && (
           <button
             onClick={() => setFormVisible(true)}
-            className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-900 text-white rounded-lg hover:bg-indigo-700 transition shadow-md text-sm sm:text-base"
+            disabled={loading}
           >
-            <FaPlus className="mr-2" />
+            <FaPlus />
             Add New Model
           </button>
         )}
       </div>
 
-      {/* Success/Error Messages */}
+      {/* Messages */}
       {success && (
-        <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg animate-fade-in">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-green-700 font-medium">{success}</p>
-            </div>
+        <div className="mb-4 p-3 sm:p-4 bg-green-100 text-green-700 rounded-lg border-l-4 border-green-500 shadow-md">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <p className="text-sm sm:text-base">{success}</p>
           </div>
         </div>
       )}
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg animate-fade-in">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-red-700 font-medium">{error}</p>
-            </div>
+        <div className="mb-4 p-3 sm:p-4 bg-red-100 text-red-700 rounded-lg border-l-4 border-red-500 shadow-md">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+            </svg>
+            <p className="text-sm sm:text-base">{error}</p>
           </div>
         </div>
       )}
 
-      {formVisible ? (
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              {editingId ? "Edit Model" : "Add New Model"}
+      {/* Form */}
+      {formVisible && (
+        <div className="bg-white p-4 sm:p-6 rounded-xl shadow-lg mb-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+              {editingId ? "✏️ Edit Model" : "➕ Add New Model"}
             </h2>
-            <p className="text-gray-600 mt-1">
-              {editingId ? "Update model information below" : "Fill in the details to create a new model"}
-            </p>
+            <button
+              onClick={resetForm}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              disabled={submitting}
+            >
+              <FaTimes className="text-gray-600 text-lg" />
+            </button>
           </div>
 
-          <form onSubmit={editingId ? handleEditModel : handleAddModel} className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Brand Selection */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
+          <form onSubmit={editingId ? handleUpdateModel : handleAddModel}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Brand */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Brand <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="brandId"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
                   value={formData.brandId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, brandId: e.target.value })
-                  }
-                  required
-                  disabled={submitting || brandsLoading}
+                  onChange={handleInputChange}
+                  disabled={brandsLoading || submitting}
+                  className={`w-full px-3 py-2.5 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm transition ${
+                    validationErrors.brandId
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300"
+                  }`}
                 >
-                  <option value="">Select Brand</option>
-                  {brandsLoading ? (
-                    <option value="" disabled>Loading brands...</option>
-                  ) : brands.length > 0 ? (
-                    brands.map((brand) => (
-                      <option key={brand.brandId || brand.id} value={brand.brandId || brand.id}>
-                        {brand.brandName || brand.name}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="" disabled>No brands available</option>
-                  )}
+                  <option value="">
+                    {brandsLoading ? "Loading..." : "-- Select Brand --"}
+                  </option>
+                  {brands.map((brand) => (
+                    <option key={brand.id || brand.brandId} value={brand.id || brand.brandId}>
+                      {brand.brandName || brand.name}
+                    </option>
+                  ))}
                 </select>
+                {validationErrors.brandId && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {validationErrors.brandId}
+                  </p>
+                )}
               </div>
 
               {/* Model Name */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Model Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   name="modelName"
-                  placeholder="Enter model name"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
                   value={formData.modelName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, modelName: e.target.value })
-                  }
-                  required
-                  maxLength={100}
-                  disabled={submitting}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2.5 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm transition ${
+                    validationErrors.modelName
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300"
+                  }`}
+                  placeholder="Enter model name"
+                  maxLength="100"
                 />
+                {validationErrors.modelName && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {validationErrors.modelName}
+                  </p>
+                )}
               </div>
 
-              {/* Model Image */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Model Image
                 </label>
-                <div className="space-y-4">
-                  <input
-                    type="file"
-                    name="image"
-                    accept="image/jpeg,image/jpg,image/png,image/gif"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                    onChange={handleImageChange}
-                    disabled={submitting}
+                <input
+                  type="file"
+                  name="image"
+                  onChange={handleImageChange}
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                />
+                <p className="text-xs text-gray-500 mt-1">Max: 5MB</p>
+                {imagePreview && (
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="mt-3 w-20 h-20 sm:w-24 sm:h-24 object-contain rounded-lg border-2 border-indigo-200 shadow-sm bg-white"
                   />
-                  <p className="text-xs text-gray-500">
-                    Supported formats: JPG, PNG, GIF. Maximum size: 5MB
-                  </p>
-                </div>
+                )}
               </div>
             </div>
 
-            {/* Image Preview */}
-            {imagePreview && (
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Image Preview
-                </label>
-                <div className="relative w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-                  <img
-                    src={imagePreview}
-                    alt="Model preview"
-                    className="w-full h-full object-contain"
-                    onError={(e) => handleImageError(e, "Preview")}
-                    onLoad={(e) => handleImageLoad(e, "Preview")}
-                  />
-                  <div
-                    className="absolute inset-0 flex items-center justify-center bg-gray-100"
-                    style={{ display: 'none' }}
-                  >
-                    <div className="text-center">
-                      <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-                      <p className="text-xs text-gray-500">Preview not available</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Form Actions */}
-            <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+            <div className="flex flex-col-reverse sm:flex-row justify-end mt-6 gap-2">
               <button
                 type="button"
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
                 onClick={resetForm}
+                className="w-full sm:w-auto px-6 py-2.5 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition text-sm font-medium"
                 disabled={submitting}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={submitting}
+                className="w-full sm:w-auto px-6 py-2.5 text-white bg-indigo-900 rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium shadow-md"
               >
                 {submitting ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </span>
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </div>
+                ) : editingId ? (
+                  "Update Model"
                 ) : (
-                  editingId ? "Update Model" : "Create Model"
+                  "Add Model"
                 )}
               </button>
             </div>
           </form>
         </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          {/* Search and Filters */}
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
-              <h3 className="text-lg font-semibold text-gray-900">
-                All Models ({totalElements} total)
-              </h3>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaSearch className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search models..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-80"
-                />
+      )}
+
+      {/* Search and View Toggle */}
+      {!formVisible && (
+        <div className="bg-white p-4 sm:p-6 shadow-md rounded-xl">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
+            <div className="relative w-full sm:w-auto">
+              <FaSearch className="absolute left-3 top-3 text-gray-400 text-sm" />
+              <input
+                type="text"
+                placeholder="Search models..."
+                className="border border-gray-300 rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between w-full sm:w-auto gap-3">
+              <div className="text-xs sm:text-sm text-gray-600">
+                Total: <span className="font-semibold text-indigo-900">{totalElements}</span>
+              </div>
+
+              {/* View Toggle - Desktop only */}
+              <div className="hidden sm:flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode("table")}
+                  className={`px-3 py-1.5 rounded-md transition-colors text-sm ${
+                    viewMode === "table"
+                      ? "bg-white text-indigo-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <FaList />
+                </button>
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={`px-3 py-1.5 rounded-md transition-colors text-sm ${
+                    viewMode === "grid"
+                      ? "bg-white text-indigo-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <FaTh />
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    #
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Model Image
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Model Name
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Brand
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  <tr key="loading-row">
-                    <td colSpan="5" className="px-6 py-12 text-center">
-                      <div className="flex flex-col items-center justify-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                        <p className="text-gray-500">Loading models...</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : getCurrentPageData().length === 0 ? (
-                  <tr key="empty-row">
-                    <td colSpan="5" className="px-6 py-12 text-center">
-                      <div className="text-gray-500">
-                        <FaImage className="mx-auto h-16 w-16 text-gray-300 mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">No models found</h3>
-                        <p className="text-gray-500">
-                          {searchQuery ? `No models match "${searchQuery}"` : "Get started by creating your first model"}
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
+          {/* Content */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-900 mb-4"></div>
+              <span className="text-gray-600 text-sm">Loading models...</span>
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+              <FaSearch className="text-4xl mb-4" />
+              <span className="text-sm">
+                {searchQuery ? "No models match your search" : "No models found"}
+              </span>
+              {!searchQuery && (
+                <button
+                  onClick={() => setFormVisible(true)}
+                  className="mt-4 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-700 transition text-sm"
+                >
+                  Add Your First Model
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Mobile: Grid */}
+              <div className="block sm:hidden">
+                <div className="grid grid-cols-1 gap-4">
+                  {filteredData.map((model) => (
+                    <ModelCard key={model.id} model={model} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Desktop: Table or Grid */}
+              <div className="hidden sm:block">
+                {viewMode === "grid" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredData.map((model) => (
+                      <ModelCard key={model.id} model={model} />
+                    ))}
+                  </div>
                 ) : (
-                  getCurrentPageData().map((model, index) => (
-                    <tr
-                      key={`model-row-${model.id}-${index}`}
-                      className="hover:bg-gray-50 transition duration-150"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {searchQuery ? index + 1 : (currentPage * itemsPerPage + index + 1)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex-shrink-0 h-16 w-20 relative">
-                          {model.modelImage ? (
-                            <>
-                              <img
-                                src={model.modelImage}
-                                alt={model.modelName}
-                                className="h-16 w-20 rounded-lg object-contain border border-gray-200 shadow-sm bg-white"
-                                onError={(e) => handleImageError(e, model.modelName)}
-                                onLoad={(e) => handleImageLoad(e, model.modelName)}
-                                style={{ display: 'block' }}
-                              />
-                              <div
-                                className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center absolute top-0 left-0"
-                                style={{ display: 'none' }}
-                              >
-                                <div className="text-center">
-                                  <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-                                  <p className="text-xs text-gray-500">No Image</p>
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="h-16 w-20 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                              <div className="text-center">
-                                <FaImage className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-                                <p className="text-xs text-gray-500">No Image</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{model.modelName}</div>
-                        <div className="text-sm text-gray-500">ID: {model.id}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{getBrandName(model.brandId)}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center space-x-3">
-                          <button
-                            className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
-                              model.id.toString().startsWith('fallback-')
-                                ? "text-gray-400 bg-gray-100 cursor-not-allowed"
-                                : "text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
-                            }`}
-                            onClick={() => handleEditModelClick(model)}
-                            title="Edit model"
-                            disabled={model.id.toString().startsWith('fallback-')}
+                  <div className="overflow-x-auto rounded-lg shadow">
+                    <table className="w-full text-sm text-left text-gray-500">
+                      <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                        <tr>
+                          <th className="px-6 py-3">#</th>
+                          <th className="px-6 py-3">Image</th>
+                          <th className="px-6 py-3">Model Name</th>
+                          <th className="px-6 py-3">Brand</th>
+                          <th className="px-6 py-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredData.map((model, index) => (
+                          <tr
+                            key={model.id}
+                            className="bg-white border-b hover:bg-gray-50 transition-colors"
                           >
-                            <FaEdit className="mr-1" />
-                            Edit
-                          </button>
-                          {/* <button
-                            className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 ${
-                              model.id.toString().startsWith('fallback-')
-                                ? "text-gray-400 bg-gray-100 cursor-not-allowed"
-                                : "text-red-700 bg-red-100 hover:bg-red-200"
-                            }`}
-                            onClick={() => setConfirmDeleteId(model.id)}
-                            title="Delete model"
-                            disabled={model.id.toString().startsWith('fallback-')}
-                          >
-                            <FaTrash className="mr-1" />
-                            Delete
-                          </button> */}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            <td className="px-6 py-4 font-medium text-gray-900">
+                              {currentPage * itemsPerPage + index + 1}
+                            </td>
+                            <td className="px-6 py-4">
+                              <ModelImage model={model} />
+                            </td>
+                            <td className="px-6 py-4 font-medium text-gray-900">
+                              {model.modelName}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                {getBrandName(model.brandId)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center space-x-1">
+                                <button
+                                  className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                                  onClick={() => handleEditModelClick(model)}
+                                  disabled={submitting}
+                                >
+                                  <FaEdit />
+                                </button>
+                                <button
+                                  className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                                  onClick={() => setConfirmDeleteId(model.id)}
+                                  disabled={submitting}
+                                >
+                                  <FaTrash />
+                                </button>
+                                {model.modelImage && (
+                                  <button
+                                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                    onClick={() => window.open(model.modelImage, "_blank")}
+                                  >
+                                    <FaEye />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </>
+          )}
 
           {/* Pagination */}
-          {!loading && !searchQuery && data.length > 0 && totalPages > 1 && (
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 flex justify-between sm:hidden">
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-6">
+              <p className="text-xs sm:text-sm text-gray-500 text-center sm:text-left">
+                Showing {totalElements === 0 ? 0 : currentPage * itemsPerPage + 1} to{" "}
+                {Math.min((currentPage + 1) * itemsPerPage, totalElements)} of {totalElements}
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  className="px-3 py-2 text-xs sm:text-sm text-white bg-indigo-900 rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors"
+                  disabled={!hasPrevious || loading}
+                  onClick={handlePrevPage}
+                >
+                  Previous
+                </button>
+                {getPageNumbers().map((page) => (
                   <button
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    disabled={!hasPrevious}
-                    onClick={handlePrevPage}
+                    key={page}
+                    className={`px-3 py-2 rounded-lg transition-colors text-xs sm:text-sm ${
+                      currentPage === page
+                        ? "bg-indigo-900 text-white"
+                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
+                    onClick={() => handlePageClick(page)}
+                    disabled={loading}
                   >
-                    Previous
+                    {page + 1}
                   </button>
-                  <button
-                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    disabled={!hasNext}
-                    onClick={handleNextPage}
-                  >
-                    Next
-                  </button>
-                </div>
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
-                      Showing{" "}
-                      <span className="font-medium">{currentPage * itemsPerPage + 1}</span> to{" "}
-                      <span className="font-medium">
-                        {Math.min((currentPage + 1) * itemsPerPage, totalElements)}
-                      </span>{" "}
-                      of <span className="font-medium">{totalElements}</span> results
-                    </p>
-                  </div>
-                  <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                      <button
-                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                        disabled={!hasPrevious}
-                        onClick={handlePrevPage}
-                        title="Previous page"
-                      >
-                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-
-                      {getPageNumbers().map((pageNumber) => (
-                        <button
-                          key={`page-btn-${pageNumber}`}
-                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition duration-200 ${
-                            currentPage === pageNumber
-                              ? "z-10 bg-indigo-50 border-indigo-500 text-indigo-600"
-                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-                          }`}
-                          onClick={() => handlePageClick(pageNumber)}
-                          title={`Go to page ${pageNumber + 1}`}
-                        >
-                          {pageNumber + 1}
-                        </button>
-                      ))}
-
-                      <button
-                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                        disabled={!hasNext}
-                        onClick={handleNextPage}
-                        title="Next page"
-                      >
-                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </nav>
-                  </div>
-                </div>
+                ))}
+                <button
+                  disabled={!hasNext || loading}
+                  onClick={handleNextPage}
+                  className={`px-3 py-2 text-xs sm:text-sm rounded-lg transition-colors ${
+                    !hasNext
+                      ? "bg-gray-300 text-gray-500"
+                      : "bg-indigo-900 text-white hover:bg-indigo-700"
+                  }`}
+                >
+                  Next
+                </button>
               </div>
             </div>
           )}
+        </div>
+      )}
 
-          {/* Delete Confirmation Modal */}
-          {confirmDeleteId && (
-            <div className="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-50">
-              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
-                <div className="flex items-center mb-4">
-                  <div className="flex-shrink-0 w-10 h-10 mx-auto bg-red-100 rounded-full flex items-center justify-center">
-                    <FaTrash className="w-5 h-5 text-red-600" />
+      {/* Delete Confirmation Modal */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-4 sm:p-6 rounded-xl max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-bold mb-4">Confirm Delete</h3>
+            <p className="mb-6 text-gray-600 text-sm">
+              Are you sure you want to delete this model? This action cannot be undone.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+              <button
+                className="w-full sm:w-auto px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
+                onClick={() => setConfirmDeleteId(null)}
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="w-full sm:w-auto px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:bg-red-400 text-sm"
+                onClick={() => handleDeleteModel(confirmDeleteId)}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Deleting...
                   </div>
-                  <div className="ml-4">
-                    <h3 className="text-lg font-medium text-gray-900">Delete Model</h3>
-                    <p className="text-sm text-gray-500">This action cannot be undone</p>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-500 mb-6">
-                  Are you sure you want to delete this model? All associated data and images will be permanently removed.
-                </p>
-                <div className="flex justify-end space-x-4">
-                  <button
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition duration-200"
-                    onClick={() => setConfirmDeleteId(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-200"
-                    onClick={() => handleDeleteModel(confirmDeleteId)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
+                ) : (
+                  "Delete"
+                )}
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -2623,3 +912,4 @@ const AllModels = () => {
 };
 
 export default AllModels;
+  

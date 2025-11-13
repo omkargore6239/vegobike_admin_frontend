@@ -678,83 +678,42 @@ export const invoiceAPI = {
 
 // ✅ DOCUMENT API - FULLY UPDATED
 export const documentAPI = {
-  // Get documents by user ID
+  // Get user documents by userId - FIXED ENDPOINT
   getByUserId: async (userId) => {
     try {
       console.log(`📄 [Document API] Fetching documents for user: ${userId}`);
-      const response = await api.get(`/api/documents/${userId}`);
-      console.log(`✅ [Document API] Documents fetched:`, response.data);
-      return { data: response.data.data || response.data };
+      const response = await api.get(`/api/documents/userdocuments/${userId}`);  // ✅ FIXED
+      console.log('📄 [Document API] Response:', response.data);
+      return response;
     } catch (error) {
-      console.error(`❌ [Document API] Error fetching documents:`, error);
+      console.error('❌ [Document API] Error fetching documents:', error);
       throw error;
     }
   },
-  
-  // Upload documents
-  upload: async (userId, adhaarFrontFile, adhaarBackFile, licenseFile) => {
-    try {
-      const formData = new FormData();
-      formData.append('userId', userId);
-      if (adhaarFrontFile) formData.append('adhaarFront', adhaarFrontFile);
-      if (adhaarBackFile) formData.append('adhaarBack', adhaarBackFile);
-      if (licenseFile) formData.append('drivingLicense', licenseFile);
-      
-      console.log(`📄 [Document API] Uploading documents for user: ${userId}`);
-      const response = await api.post('/api/documents/upload-files', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      console.log(`✅ [Document API] Documents uploaded:`, response.data);
-      return { data: response.data.data || response.data };
-    } catch (error) {
-      console.error(`❌ [Document API] Error uploading documents:`, error);
-      throw error;
-    }
+
+  // Upload documents with files
+  uploadFiles: async (userId, adhaarFront, adhaarBack, drivingLicense) => {
+    const formData = new FormData();
+    formData.append('userId', userId);
+    if (adhaarFront) formData.append('adhaarFront', adhaarFront);
+    if (adhaarBack) formData.append('adhaarBack', adhaarBack);
+    if (drivingLicense) formData.append('drivingLicense', drivingLicense);
+    
+    return api.post('/api/documents/upload-files', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
   },
   
-  // ✅ UPDATED: Verify documents using PUT with body instead of PATCH with params
-  verify: async (userId, statusUpdates) => {
-    try {
-      console.log(`📄 [Document API] Verifying documents for user: ${userId}`, statusUpdates);
-      
-      const response = await api.put(`/api/documents/verify/${userId}`, statusUpdates);
-      
-      console.log(`✅ [Document API] Verification updated:`, response.data);
-      return { data: response.data.data || response.data };
-    } catch (error) {
-      console.error(`❌ [Document API] Error updating verification:`, error);
-      throw error;
-    }
-  },
-  
-  // Legacy method for backward compatibility
-  updateVerification: async (userId, adhaarFrontStatus, adhaarBackStatus, licenseStatus) => {
-    try {
-      const params = new URLSearchParams();
-      if (adhaarFrontStatus !== null && adhaarFrontStatus !== undefined) {
-        params.append('adhaarFrontStatus', adhaarFrontStatus);
-      }
-      if (adhaarBackStatus !== null && adhaarBackStatus !== undefined) {
-        params.append('adhaarBackStatus', adhaarBackStatus);
-      }
-      if (licenseStatus !== null && licenseStatus !== undefined) {
-        params.append('licenseStatus', licenseStatus);
-      }
-      
-      console.log(`📄 [Document API] Updating verification for user: ${userId}`);
-      
-      const response = await api.patch(`/api/documents/verify/${userId}?${params.toString()}`);
-      
-      console.log(`✅ [Document API] Verification updated:`, response.data);
-      return { data: response.data.data || response.data };
-    } catch (error) {
-      console.error(`❌ [Document API] Error updating verification:`, error);
-      throw error;
-    }
+  // Verify documents - use query params for @RequestParam
+  verify: (userId, statusUpdates) => {
+    return api.patch(`/api/documents/verify/${userId}`, null, {
+      params: statusUpdates
+    });
   },
 };
 
-// Add to your bookingAPI object in apiClient.js
 // ✅ CORRECTED - Add /api prefix to match your backend
 export const additionalChargeAPI = {
   save: (bookingId, chargesType, chargesAmount) => 
