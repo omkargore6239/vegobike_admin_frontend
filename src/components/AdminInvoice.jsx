@@ -15,7 +15,8 @@ import {
   FaHashtag,
   FaRoad,
   FaExclamationTriangle,
-  FaReceipt
+  FaReceipt,
+  FaInfoCircle
 } from 'react-icons/fa';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -73,13 +74,11 @@ const AdminInvoice = () => {
     try {
       console.log('📄 Fetching invoice and booking data for ID:', bookingId);
       
-      // Fetch both invoice and booking data in parallel
       const [invoiceResponse, bookingResponse] = await Promise.all([
         invoiceAPI.getByBookingId(bookingId),
         bookingAPI.getById(bookingId)
       ]);
       
-      // Extract data from responses
       const invoiceData = invoiceResponse.data || invoiceResponse;
       const bookingData = bookingResponse.data?.data || bookingResponse.data;
       
@@ -121,13 +120,15 @@ const AdminInvoice = () => {
     }
   };
 
+  // Updated: Format currency WITHOUT decimals (rounded)
   const formatCurrency = (amount) => {
+    const roundedAmount = Math.round(amount || 0);
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(amount || 0);
+    }).format(roundedAmount);
   };
 
   const handlePrint = () => {
@@ -155,16 +156,19 @@ const AdminInvoice = () => {
     });
   };
 
+  // Updated: Calculate trip distance and round
   const calculateTripDistance = () => {
     if (booking?.startTripKm && booking?.endTripKm) {
-      return (booking.endTripKm - booking.startTripKm).toFixed(2);
+      const distance = booking.endTripKm - booking.startTripKm;
+      return Math.round(distance);
     }
     return 'N/A';
   };
 
-  // Helper to safely get value from invoice or booking
+  // Updated: Helper to safely get and round amounts
   const getAmount = (invoiceField, bookingField, defaultValue = 0) => {
-    return invoiceField || bookingField || defaultValue;
+    const value = invoiceField || bookingField || defaultValue;
+    return Math.round(value);
   };
 
   if (loading) {
@@ -189,25 +193,83 @@ const AdminInvoice = () => {
               ? 'Invoice not found. Please complete the booking first.'
               : 'Unable to load invoice data. Please try again.'}
           </p>
-          <button
-            onClick={handleBackToBookings}
-            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
-          >
-            Back to Bookings
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={fetchInvoiceData}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              🔄 Try Again
+            </button>
+            <button
+              onClick={handleBackToBookings}
+              className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              ← Back to Bookings
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Calculate amounts - use booking data as fallback
-  const baseAmount = getAmount(invoice.amount, booking.charges);
-  const gstAmount = getAmount(invoice.taxAmount, booking.gst);
-  const additionalAmount = getAmount(invoice.additionalAmount, booking.additionalCharges);
-  const lateFeeCharges = getAmount(invoice.lateFeeCharges, booking.lateFeeCharges);
-  const lateChargesKm = getAmount(invoice.lateChargesKm, booking.lateChargesKm);
-  const advanceAmount = getAmount(invoice.advanceAmount, booking.advanceAmount);
-  const totalAmount = getAmount(invoice.totalAmount, booking.finalAmount);
+  
+
+  // === Calculation for Billing Section ===
+// Show deposit as plus THEN subtract in final calculation
+
+const basePrice =
+  Math.round(booking?.packagePrice ??
+  booking?.charges ??
+  invoice?.amount ??
+  0);
+
+const deliveryCharges = Math.round(invoice?.deliveryCharges || booking?.deliveryCharges || 0);
+const couponDiscount = Math.round(invoice?.couponAmount || booking?.couponAmount || 0);
+const lateFee = Math.round(invoice?.lateFeeCharges || booking?.lateFeeCharges || 0);
+const extraKmCharges = Math.round(invoice?.lateChargesKm || booking?.lateChargesKm || 0);
+const additionalCharges = Math.round(invoice?.additionalAmount || booking?.additionalCharges || 0);
+const depositAmount = Math.round(invoice?.advanceAmount || booking?.advanceAmount || 0);
+
+// Pre-GST total (includes deposit as received)
+const preGstTotal =
+  basePrice +
+  deliveryCharges +
+  lateFee +
+  extraKmCharges +
+  additionalCharges +
+  depositAmount -
+  couponDiscount;
+
+// GST
+const gstAmount = Math.round(invoice?.taxAmount || booking?.gst || preGstTotal * 0.05);
+
+const totalWithGst = preGstTotal + gstAmount;
+
+// Subtract deposit/advance at the end to get net payable.
+const amountPayable = Math.max(0, totalWithGst - depositAmount);
+
+
+  // Trip distance in full digits
+  const tripDistance = calculateTripDistance();
+  
+  // Debug logs for admin verification
+  console.log('💰 ADMIN INVOICE - CALCULATION BREAKDOWN:', {
+  '1. Base Rental': basePrice,
+  '2. Delivery Charges': deliveryCharges,
+  '3. Coupon Discount': `-${couponDiscount}`,
+  '4. Late Fee': lateFee,
+  '5. Extra KM Charges': extraKmCharges,
+  '6. Additional Charges': additionalCharges,
+  '7. Deposit/Advance': depositAmount,
+  '➡️ Pre-GST Total': preGstTotal,
+  '8. GST (5%)': gstAmount,
+  '➡️ Total (With GST & Deposit)': totalWithGst,
+  '9. Minus Deposit': `-${depositAmount}`,
+  '✅ Final Amount Payable': amountPayable,
+  '🚴 Trip Distance': `${tripDistance} km`,
+  '📊 Status': invoice.status
+});
+
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4">
@@ -254,13 +316,13 @@ const AdminInvoice = () => {
             <div>
               <div className="flex items-center mb-2">
                 <FaMotorcycle className="text-4xl mr-3" />
-                <h1 className="text-3xl font-bold">Bike Rental Invoice</h1>
+                <h1 className="text-3xl font-bold">Admin Invoice - VegoBike</h1>
               </div>
               <p className="text-indigo-100">Professional Bike Rental Services</p>
             </div>
 
             <div className="text-right">
-              <div className="bg-white bg-opacity-20 px-4 py-2 rounded-lg inline-block">
+              <div className=" bg-opacity-20 px-4 py-2 rounded-lg inline-block">
                 <p className="text-sm opacity-90">Invoice Number</p>
                 <p className="text-xl font-bold">{invoice.invoiceNumber}</p>
               </div>
@@ -271,15 +333,24 @@ const AdminInvoice = () => {
         {/* Status Badge */}
         <div className="px-8 py-4 bg-gray-50 border-b">
           <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              
-              {/* <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-                invoice.status === 'PAID' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-yellow-100 text-yellow-800'
-              }`}>
-                {invoice.status === 'PAID' ? 'Payment Completed' : 'Payment Pending'}
-              </span> */}
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center">
+                <FaCheckCircle className="text-green-500 text-2xl mr-2" />
+                <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+                  invoice.status === 'PAID' 
+                    ? 'bg-green-100 text-green-800' 
+                    : booking.status === 'COMPLETED'
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {invoice.status === 'PAID' ? 'Payment Completed' : booking.status || 'Payment Pending'}
+                </span>
+              </div>
+              {booking.paymentType && (
+                <div className="bg-purple-100 text-purple-800 px-4 py-2 rounded-full text-sm font-semibold">
+                  {booking.paymentType === 2 ? '💳 Online Payment' : '💵 Cash Payment'}
+                </div>
+              )}
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-600">Invoice Date</p>
@@ -290,7 +361,7 @@ const AdminInvoice = () => {
 
         {/* Customer & Booking Details */}
         <div className="p-8">
-          <div className="grid grid-cols-2 gap-8 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-8">
             {/* Customer Information */}
             <div className="bg-gray-50 p-6 rounded-lg">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -308,14 +379,16 @@ const AdminInvoice = () => {
                   </p>
                   <p className="font-semibold text-gray-900">{booking.customerNumber || 'N/A'}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Customer ID</p>
-                  <p className="font-semibold text-gray-900">{invoice.customerId}</p>
-                </div>
+                {invoice.customerId && (
+                  <div>
+                    <p className="text-sm text-gray-600">Customer ID</p>
+                    <p className="font-semibold text-gray-900">{invoice.customerId}</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Booking Information */}
+            {/* Booking Information - REMOVED TOTAL HOURS */}
             <div className="bg-gray-50 p-6 rounded-lg">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                 <FaFileInvoice className="mr-2 text-indigo-600" />
@@ -338,21 +411,23 @@ const AdminInvoice = () => {
                     to {formatDate(booking.endDate)}
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Hours</p>
-                  <p className="font-semibold text-gray-900">{booking.totalHours} hours</p>
-                </div>
+                {booking.addressType && (
+                  <div>
+                    <p className="text-sm text-gray-600">Address Type</p>
+                    <p className="font-semibold text-gray-900">{booking.addressType}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Vehicle Details */}
+          {/* Vehicle Details - Updated with rounded KM */}
           <div className="bg-indigo-50 p-6 rounded-lg mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <FaMotorcycle className="mr-2 text-indigo-600" />
               Vehicle Information
             </h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-gray-600">Registration Number</p>
                 <p className="font-bold text-gray-900 text-lg">
@@ -369,146 +444,165 @@ const AdminInvoice = () => {
                 <p className="text-sm text-gray-600 flex items-center">
                   <FaRoad className="mr-1" /> Trip Distance
                 </p>
-                <p className="font-bold text-gray-900">{calculateTripDistance()} km</p>
+                <p className="font-bold text-gray-900">
+                  {tripDistance !== 'N/A' ? `${tripDistance} km` : 'N/A'}
+                </p>
               </div>
             </div>
 
             {booking.startTripKm && booking.endTripKm && (
-              <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-indigo-200">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-indigo-200">
                 <div>
                   <p className="text-sm text-gray-600">Start Trip KM</p>
-                  <p className="font-semibold text-gray-900">{booking.startTripKm} km</p>
+                  <p className="font-semibold text-gray-900">{Math.round(booking.startTripKm)} km</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">End Trip KM</p>
-                  <p className="font-semibold text-gray-900">{booking.endTripKm} km</p>
+                  <p className="font-semibold text-gray-900">{Math.round(booking.endTripKm)} km</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total KM Traveled</p>
+                  <p className="font-semibold text-gray-900">{tripDistance} km</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Charges Breakdown */}
+          {/* ============================================ */}
+          {/* IMPROVED CHARGES BREAKDOWN - ADMIN VIEW */}
+          {/* ============================================ */}
           <div className="bg-white border-2 border-gray-200 rounded-lg p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <FaMoneyBillWave className="mr-2 text-green-600" />
-              Charges Breakdown
+              Detailed Financial Breakdown
             </h2>
 
-            <div className="space-y-3">
-              {/* Base Charges */}
-              <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                <span className="text-gray-700">Base Ride Fee ({booking.totalHours} hours)</span>
-                <span className="font-semibold text-gray-900">{formatCurrency(booking.charges)}</span>
-              </div>
-
-              {/* Delivery Charges */}
-              {booking.deliveryCharges > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                  <span className="text-gray-700">Delivery Charges</span>
-                  <span className="font-semibold text-gray-900">
-                    +{formatCurrency(booking.deliveryCharges)}
-                  </span>
+            {/* Admin Info Banner */}
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded">
+              <div className="flex items-start">
+                <FaInfoCircle className="text-blue-500 mt-0.5 mr-3 flex-shrink-0" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-semibold mb-1">Admin Financial Summary</p>
+                  <p>All amounts are rounded to nearest rupee. This breakdown shows complete transaction details including discounts, extra charges, and payment status.</p>
                 </div>
-              )}
-
-              {/* Late Fee (Hours) */}
-              {lateFeeCharges > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                  <span className="text-gray-700 flex items-center">
-                    <FaClock className="mr-2 text-orange-500" />
-                    Late Fee (Hours)
-                  </span>
-                  <span className="font-semibold text-orange-600">
-                    +{formatCurrency(lateFeeCharges)}
-                  </span>
-                </div>
-              )}
-
-              {/* Late Fee (KM) */}
-              {lateChargesKm > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                  <span className="text-gray-700 flex items-center">
-                    <FaRoad className="mr-2 text-orange-500" />
-                    Extra KM Charges
-                  </span>
-                  <span className="font-semibold text-orange-600">
-                    +{formatCurrency(lateChargesKm)}
-                  </span>
-                </div>
-              )}
-
-              {/* Additional Charges */}
-              {additionalAmount > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                  <div className="flex flex-col">
-                    <span className="text-gray-700 flex items-center">
-                      <FaReceipt className="mr-2 text-purple-500" />
-                      Additional Charges
-                    </span>
-                    {(invoice.additionalDetails || booking.additionalChargesDetails) && (
-                      <span className="text-xs text-gray-500 ml-6 mt-1">
-                        {invoice.additionalDetails || booking.additionalChargesDetails}
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-semibold text-purple-600">
-                    +{formatCurrency(additionalAmount)}
-                  </span>
-                </div>
-              )}
-
-              {/* GST */}
-              <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                <span className="text-gray-700">GST (5%)</span>
-                <span className="font-semibold text-gray-900">
-                  +{formatCurrency(gstAmount)}
-                </span>
-              </div>
-
-              {/* Subtotal */}
-              {/* <div className="flex justify-between items-center py-2 border-b border-gray-200 bg-gray-50 -mx-6 px-6">
-                <span className="text-gray-700 font-medium">Subtotal</span>
-                <span className="font-semibold text-gray-900">
-                  {formatCurrency(booking.totalCharges || totalAmount)}
-                </span>
-              </div> */}
-
-              {/* Advance Deposit */}
-              {advanceAmount > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                  <span className="text-gray-700">Advance Deposit (Paid)</span>
-                  <span className="font-semibold text-blue-600">
-                    {formatCurrency(advanceAmount)}
-                  </span>
-                </div>
-              )}
-
-              {/* Total Amount */}
-              <div className="flex justify-between items-center py-4 bg-gradient-to-r from-indigo-50 to-blue-50 -mx-6 px-6 mt-4">
-                <span className="text-lg font-bold text-gray-900">Total Amount</span>
-                <span className="text-2xl font-bold text-indigo-600">
-                  {formatCurrency(totalAmount)}
-                </span>
               </div>
             </div>
+
+            <div className="space-y-3">
+
+  {/* Base Price for package/date */}
+  <div className="flex justify-between items-center py-3 bg-blue-50 -mx-6 px-6 rounded-lg">
+    <div className="flex flex-col">
+      <span className="text-gray-900 font-semibold text-base">Base Price</span>
+      <span className="text-xs text-gray-600">
+        {booking.packageName ? `Package: ${booking.packageName}` : 'Selected rental package'}
+      </span>
+    </div>
+    <span className="font-bold text-blue-700 text-xl">{formatCurrency(basePrice)}</span>
+  </div>
+
+  {/* Delivery Charges */}
+  {deliveryCharges > 0 && (
+    <div className="flex justify-between items-center py-2 border-t border-gray-200">
+      <span>Delivery Charges</span>
+      <span>+ {formatCurrency(deliveryCharges)}</span>
+    </div>
+  )}
+
+  {/* Late Fee */}
+  {lateFee > 0 && (
+    <div className="flex justify-between items-center py-2 border-t border-gray-200">
+      <span className="text-orange-600 flex items-center">
+        <FaClock className="mr-2" />
+        Late Return Fee
+      </span>
+      <span>+ {formatCurrency(lateFee)}</span>
+    </div>
+  )}
+
+  {/* Extra KM */}
+  {extraKmCharges > 0 && (
+    <div className="flex justify-between items-center py-2 border-t border-gray-200">
+      <span className="text-orange-600 flex items-center">
+        <FaRoad className="mr-2" />
+        Extra KM Charges
+      </span>
+      <span>+ {formatCurrency(extraKmCharges)}</span>
+    </div>
+  )}
+
+  {/* Additional Charges */}
+  {additionalCharges > 0 && (
+    <div className="flex justify-between items-center py-2 border-t border-gray-200">
+      <span className="text-purple-600 flex items-center">
+        <FaReceipt className="mr-2" />
+        Additional Charges
+      </span>
+      <span>+ {formatCurrency(additionalCharges)}</span>
+    </div>
+  )}
+
+  {/* Deposit/Advance as PLUS line */}
+  {depositAmount > 0 && (
+    <div className="flex justify-between items-center py-2 border-t border-gray-200">
+      <span className="text-blue-900 font-medium">Deposit Amount Received</span>
+      <span className="font-bold text-blue-700">
+        + {formatCurrency(depositAmount)}
+      </span>
+    </div>
+  )}
+
+  {/* Coupon Discount */}
+  {couponDiscount > 0 && (
+    <div className="flex justify-between items-center py-2 border-t border-gray-200 bg-green-50 -mx-6 px-6">
+      <span className="text-green-700 font-medium">🎉 Coupon Discount</span>
+      <span>- {formatCurrency(couponDiscount)}</span>
+    </div>
+  )}
+
+  {/* GST */}
+  <div className="flex justify-between items-center py-2 border-t border-gray-200">
+    <span className="text-gray-700">GST (5%)</span>
+    <span>+ {formatCurrency(gstAmount)}</span>
+  </div>
+
+  {/* Grand Total */}
+  <div className="flex justify-between items-center py-4 bg-gradient-to-r from-indigo-100 to-blue-100 -mx-6 px-6 border-t-2 border-indigo-300">
+    <span className="text-gray-900 font-bold text-lg">Total Amount (With GST & Deposit)</span>
+    <span className="text-2xl font-bold text-indigo-700">
+      {formatCurrency(totalWithGst)}
+    </span>
+  </div>
+
+  {/* Deposit/Advance as SUBTRACT */}
+  {depositAmount > 0 && (
+    <div className="flex justify-between items-center py-3 border-t border-gray-200 bg-blue-50 -mx-6 px-6">
+      <span className="text-blue-900 font-medium">(-) Deposit Adjustment</span>
+      <span className="font-bold text-blue-700">
+        - {formatCurrency(depositAmount)}
+      </span>
+    </div>
+  )}
+
+  {/* Final Net Payable */}
+  <div className="flex justify-between items-center py-5 bg-gradient-to-r from-green-100 to-emerald-100 -mx-6 px-6 rounded-b-lg">
+    <div className="flex flex-col">
+      <span className="text-green-900 font-bold text-xl">Amount Payable</span>
+      <span className="text-sm text-green-700 font-medium">
+        {amountPayable === 0 ? 'Fully Paid ✓' : 'Balance to be paid'}
+      </span>
+    </div>
+    <span className="text-3xl font-black text-green-700">
+      {formatCurrency(amountPayable)}
+    </span>
+  </div>
+</div>
+
           </div>
 
-          {/* Payment Method & Address */}
-          {/* <div className="mt-6 grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-600 mb-1">Payment Method</p>
-              <p className="font-semibold text-gray-900">
-                {booking.paymentType === 2 ? 'Online Payment' : 'Cash'}
-              </p>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-600 mb-1">Address Type</p>
-              <p className="font-semibold text-gray-900">{booking.addressType}</p>
-            </div>
-          </div> */}
-
+          {/* Address Information */}
           {booking.address && (
-            <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+            <div className="mt-6 bg-gray-50 p-4 rounded-lg">
               <p className="text-sm text-gray-600 mb-1">Pickup/Delivery Address</p>
               <p className="text-gray-900">{booking.address}</p>
             </div>
@@ -518,8 +612,13 @@ const AdminInvoice = () => {
         {/* Footer */}
         <div className="bg-gray-50 px-8 py-6 border-t">
           <div className="text-center text-sm text-gray-600">
-            <p className="mb-2">Thank you for choosing our bike rental service!</p>
-            <p>For any queries, please contact our support team.</p>
+            <p className="mb-2 font-semibold">VegoBike - Admin Invoice System</p>
+            <p>This is an administrative copy for internal records and accounting.</p>
+            <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-500">
+              <span>📧 admin@vegobike.in</span>
+              <span>📞 +91 9921426002</span>
+              <span>🌐 www.vegobike.in</span>
+            </div>
             <p className="mt-4 text-xs text-gray-500">
               This is a computer-generated invoice and does not require a signature.
             </p>
@@ -546,6 +645,10 @@ const AdminInvoice = () => {
             top: 0;
             width: 100%;
           }
+        }
+        @page {
+          margin: 0.5cm;
+          size: A4;
         }
       `}</style>
     </div>

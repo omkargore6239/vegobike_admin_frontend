@@ -1,21 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { FaEdit, FaSort, FaSortUp, FaSortDown } from 'react-icons/fa';
 
 const AllVehicleTypes = () => {
   // State management
   const [vehicleTypes, setVehicleTypes] = useState([]);
-  const [activeVehicleTypes, setActiveVehicleTypes] = useState([]);
+  const [activevehicleTypes, setActivevehicleTypes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [togglingIds, setTogglingIds] = useState(new Set());
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingVehicleType, setEditingVehicleType] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [vehicleTypesPerPage] = useState(10);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  
+  // ✅ Backend pagination states
+  const [currentPage, setCurrentPage] = useState(0); // Backend uses 0-based indexing
+  const [vehicleTypesPerPage, setVehicleTypesPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  
+  // ✅ Sorting states
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState('DESC');
+  
   const [showActiveOnly, setShowActiveOnly] = useState(false);
 
-  // ✅ UPDATED: Form state to match VehicleType model
+  // Form state
   const [formData, setFormData] = useState({
-    name: '',           // ✅ Changed from vehicleTypeName to name
+    name: '',
     isActive: 1
   });
 
@@ -25,17 +39,27 @@ const AllVehicleTypes = () => {
   // API Configuration
   const API_BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:8081';
 
-  const API_ENDPOINTS = {
+  const API_ENDPOINTS = useMemo(() => ({
     getAllVehicleTypes: `${API_BASE_URL}/api/vehicle-types/all`,
     getVehicleTypeById: (id) => `${API_BASE_URL}/api/vehicle-types/${id}`,
     createVehicleType: `${API_BASE_URL}/api/vehicle-types/add`,
     updateVehicleType: (id) => `${API_BASE_URL}/api/vehicle-types/update/${id}`,
     getActiveVehicleTypes: `${API_BASE_URL}/api/vehicle-types/active`,
     toggleVehicleTypeStatus: (id) => `${API_BASE_URL}/api/vehicle-types/${id}/toggle-status`
-  };
+  }), [API_BASE_URL]);
 
-  // Enhanced fetch function
-  const makeApiCall = async (url, options = {}) => {
+  // ✅ Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(0); // Reset to first page on search
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // API call function
+  const makeApiCall = useCallback(async (url, options = {}) => {
     const token = localStorage.getItem('adminToken');
     
     const defaultHeaders = {
@@ -53,9 +77,6 @@ const AllVehicleTypes = () => {
 
     try {
       console.log('🔄 Making API call to:', url);
-      console.log('📤 Request method:', defaultOptions.method || 'GET');
-      console.log('📤 Request body:', defaultOptions.body);
-
       const response = await fetch(url, defaultOptions);
       console.log('📥 Response status:', response.status);
       
@@ -83,73 +104,156 @@ const AllVehicleTypes = () => {
             errorMessage = responseData;
           }
         } else {
-          errorMessage = response.statusText || ` ${response.status}`;
+          errorMessage = response.statusText || `HTTP ${response.status}`;
         }
         
-        console.error('Type is Already Exist', {
-          url,
-          status: response.status,
-          statusText: response.statusText,
-          errorMessage,
-          responseData
-        });
-        
-        throw new Error(`   ${response.status}: ${errorMessage}`);
+        throw new Error(`HTTP ${response.status}: ${errorMessage}`);
       }
       
       console.log('✅ API Response data:', responseData);
       return responseData;
       
     } catch (error) {
-      console.error('Type is Already Exist');
-      console.error('Type is Already Exist', {
-        name: error.name,
-        message: error.message,
-        url: url
-      });
+      console.error('💥 API Call Error:', error);
       throw error;
     }
-  };
+  }, []);
 
-  // Fetch all vehicle types
-  const fetchAllVehicleTypes = async () => {
+  // ✅ Fetch all vehicle types with backend pagination
+  const fetchAllVehicleTypes = useCallback(async () => {
+    if (loading) return;
+    
     setLoading(true);
     setError(null);
     
     try {
-      console.log('🔄 Fetching all vehicle types from:', API_ENDPOINTS.getAllVehicleTypes);
-      const data = await makeApiCall(API_ENDPOINTS.getAllVehicleTypes);
-      setVehicleTypes(Array.isArray(data) ? data : []);
-      console.log('✅ Vehicle types fetched successfully:', data?.length || 0, 'types');
+      // Build query parameters
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        size: vehicleTypesPerPage.toString(),
+        sortBy: sortBy,
+        direction: sortDirection
+      });
+
+      // Add search parameter only if it exists
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        params.append('name', debouncedSearchTerm.trim());
+      }
+
+      // Add isActive filter when showing active only
+      if (showActiveOnly) {
+        params.append('isActive', '1');
+      }
+
+      const url = `${API_ENDPOINTS.getAllVehicleTypes}?${params.toString()}`;
+      console.log('🔄 Fetching vehicle types from:', url);
+      
+      const response = await makeApiCall(url);
+      
+      // ✅ Handle the response structure
+      if (response.success && response.data) {
+        setVehicleTypes(response.data);
+        
+        // Update pagination metadata
+        if (response.pagination) {
+          setCurrentPage(response.pagination.currentPage);
+          setTotalPages(response.pagination.totalPages);
+          setTotalElements(response.pagination.totalElements);
+          setHasNext(response.pagination.hasNext);
+          setHasPrevious(response.pagination.hasPrevious);
+        }
+        
+        console.log('✅ Vehicle types data updated:', response.data.length, 'types on page', currentPage + 1);
+      } else {
+        setVehicleTypes([]);
+        setTotalPages(0);
+        setTotalElements(0);
+      }
+      
     } catch (err) {
       setError('Failed to fetch vehicle types: ' + err.message);
       console.error('❌ Error fetching vehicle types:', err);
+      setVehicleTypes([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_ENDPOINTS.getAllVehicleTypes, makeApiCall, currentPage, vehicleTypesPerPage, sortBy, sortDirection, debouncedSearchTerm, showActiveOnly, loading]);
 
   // Fetch active vehicle types
-  const fetchActiveVehicleTypes = async () => {
+  const fetchActiveVehicleTypes = useCallback(async () => {
     try {
       console.log('🔄 Fetching active vehicle types from:', API_ENDPOINTS.getActiveVehicleTypes);
       const data = await makeApiCall(API_ENDPOINTS.getActiveVehicleTypes);
-      setActiveVehicleTypes(Array.isArray(data) ? data : []);
-      console.log('✅ Active vehicle types fetched successfully:', data?.length || 0, 'types');
+      
+      const activeVehicleTypesData = Array.isArray(data) ? data : [];
+      setActivevehicleTypes(activeVehicleTypesData);
+      console.log('✅ Active vehicle types data updated:', activeVehicleTypesData.length, 'types');
+      
     } catch (err) {
       console.error('❌ Error fetching active vehicle types:', err);
     }
-  };
+  }, [API_ENDPOINTS.getActiveVehicleTypes, makeApiCall]);
 
-  // Load data on component mount
+  // ✅ Fetch vehicle types when pagination/sort/search changes
   useEffect(() => {
-    console.log('🚀 Vehicle Types component mounted, API Base URL:', API_BASE_URL);
+    console.log('🚀 Component mounted or dependencies changed');
     fetchAllVehicleTypes();
-    fetchActiveVehicleTypes();
-  }, []);
+    if (!showActiveOnly) {
+      fetchActiveVehicleTypes();
+    }
+  }, [currentPage, vehicleTypesPerPage, sortBy, sortDirection, debouncedSearchTerm, showActiveOnly]);
 
-  // ✅ UPDATED: Form validation for name field only
-  const validateForm = () => {
+  // ✅ Toggle vehicle type status
+  const toggleVehicleTypeStatus = useCallback(async (vehicleTypeId) => {
+    setTogglingIds(prev => new Set([...prev, vehicleTypeId]));
+    setError(null);
+
+    try {
+      const toggleUrl = API_ENDPOINTS.toggleVehicleTypeStatus(vehicleTypeId);
+      console.log('🔄 Toggling status for vehicle type:', vehicleTypeId, 'URL:', toggleUrl);
+      
+      const result = await makeApiCall(toggleUrl, {
+        method: 'PATCH'
+      });
+      
+      console.log('✅ Toggle result:', result);
+      
+      // Update local state immediately
+      setVehicleTypes(prevTypes => 
+        prevTypes.map(type => 
+          type.id === vehicleTypeId ? result : type
+        )
+      );
+
+      // Update active vehicle types list
+      if (result.isActive === 1) {
+        setActivevehicleTypes(prev => {
+          const filtered = prev.filter(t => t.id !== vehicleTypeId);
+          return [...filtered, result];
+        });
+      } else {
+        setActivevehicleTypes(prev => prev.filter(t => t.id !== vehicleTypeId));
+      }
+
+      console.log(`✅ Vehicle type ${vehicleTypeId} status changed to:`, result.isActive === 1 ? 'Active' : 'Inactive');
+
+    } catch (err) {
+      setError(`Failed to toggle vehicle type status: ${err.message}`);
+      console.error('❌ Toggle status error:', err);
+      
+      // Refresh data on error
+      await Promise.all([fetchAllVehicleTypes(), fetchActiveVehicleTypes()]);
+    } finally {
+      setTogglingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(vehicleTypeId);
+        return newSet;
+      });
+    }
+  }, [API_ENDPOINTS, makeApiCall, fetchAllVehicleTypes, fetchActiveVehicleTypes]);
+
+  // Form validation
+  const validateForm = useCallback(() => {
     const errors = {};
     if (!formData.name.trim()) {
       errors.name = 'Vehicle type name is required';
@@ -159,10 +263,10 @@ const AllVehicleTypes = () => {
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [formData.name]);
 
   // Handle form input changes
-  const handleInputChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
     let finalValue = value;
     
@@ -175,26 +279,27 @@ const AllVehicleTypes = () => {
       [name]: finalValue
     }));
     
-    // Clear validation error when user starts typing
-    if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
+    setFormErrors(prev => {
+      if (prev[name]) {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      }
+      return prev;
+    });
+  }, []);
 
-  // ✅ UPDATED: Reset form with correct fields
-  const handleAddVehicleType = () => {
+  // Open modal for adding new vehicle type
+  const handleAddVehicleType = useCallback(() => {
     setEditingVehicleType(null);
     setFormData({ name: '', isActive: 1 });
     setFormErrors({});
     setError(null);
     setShowModal(true);
-  };
+  }, []);
 
-  // ✅ UPDATED: Open modal for editing with correct field names
-  const handleEditVehicleType = (vehicleType) => {
+  // Open modal for editing vehicle type
+  const handleEditVehicleType = useCallback((vehicleType) => {
     setEditingVehicleType(vehicleType);
     setFormData({
       name: vehicleType.name || '',
@@ -203,11 +308,12 @@ const AllVehicleTypes = () => {
     setFormErrors({});
     setError(null);
     setShowModal(true);
-  };
+  }, []);
 
-  // ✅ UPDATED: Submit form with correct field structure
-  const handleSubmit = async (e) => {
+  // Submit form
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+    
     if (!validateForm()) return;
 
     setLoading(true);
@@ -220,123 +326,84 @@ const AllVehicleTypes = () => {
       
       const method = editingVehicleType ? 'PUT' : 'POST';
 
-      // ✅ UPDATED: Send only the fields that exist in VehicleType model
       const vehicleTypeData = {
         name: formData.name.trim(),
         isActive: formData.isActive
       };
-
-      console.log(`🔄 ${editingVehicleType ? 'Updating' : 'Creating'} vehicle type with URL:`, url);
-      console.log('📤 Submitting vehicle type data:', vehicleTypeData);
 
       const result = await makeApiCall(url, {
         method,
         body: JSON.stringify(vehicleTypeData)
       });
 
-      console.log('✅ Submit result:', result);
+      console.log('✅ Vehicle type saved successfully:', result);
 
-      // Update local state
-      if (editingVehicleType) {
-        setVehicleTypes(prev => prev.map(vt => 
-          vt.id === editingVehicleType.id ? result : vt
-        ));
-        console.log('✅ Vehicle type updated successfully');
-      } else {
-        setVehicleTypes(prev => [...prev, result]);
-        console.log('✅ Vehicle type created successfully');
-      }
-
-      // Close modal and reset form
       setShowModal(false);
       resetForm();
       
-      // Refresh data
-      await fetchAllVehicleTypes();
-      await fetchActiveVehicleTypes();
+      await Promise.all([fetchAllVehicleTypes(), fetchActiveVehicleTypes()]);
 
     } catch (err) {
       setError(`Failed to ${editingVehicleType ? 'update' : 'add'} vehicle type: ${err.message}`);
-      console.error('❌ Submit error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, validateForm, editingVehicleType, API_ENDPOINTS, makeApiCall, fetchAllVehicleTypes, fetchActiveVehicleTypes]);
 
-  // ✅ UPDATED: Reset form with correct fields
-  const resetForm = () => {
+  // Reset form data
+  const resetForm = useCallback(() => {
     setFormData({ name: '', isActive: 1 });
     setFormErrors({});
-  };
+  }, []);
 
-  // Toggle vehicle type status
-  const toggleVehicleTypeStatus = async (vehicleType) => {
-    if (loading) return;
-    
-    setLoading(true);
-    setError(null);
+  // Handle show active vehicle types toggle
+  const handleShowActiveToggle = useCallback(() => {
+    setShowActiveOnly(prev => !prev);
+    setCurrentPage(0);
+  }, []);
 
-    try {
-      const toggleUrl = API_ENDPOINTS.toggleVehicleTypeStatus(vehicleType.id);
-      console.log('🔄 Toggling status for vehicle type:', vehicleType.id, 'URL:', toggleUrl);
-      
-      const result = await makeApiCall(toggleUrl, {
-        method: 'PATCH'
-      });
-      
-      console.log('✅ Toggle result:', result);
-      
-      // Update vehicle types list
-      setVehicleTypes(prev => prev.map(vt => 
-        vt.id === vehicleType.id ? result : vt
-      ));
+  // Handle page size change
+  const handlePageSizeChange = useCallback((e) => {
+    setVehicleTypesPerPage(Number(e.target.value));
+    setCurrentPage(0);
+  }, []);
 
-      // Update active vehicle types list
-      if (result.isActive === 1) {
-        setActiveVehicleTypes(prev => {
-          const exists = prev.some(vt => vt.id === result.id);
-          if (exists) {
-            return prev.map(vt => vt.id === result.id ? result : vt);
-          } else {
-            return [...prev, result];
-          }
-        });
-      } else {
-        setActiveVehicleTypes(prev => prev.filter(vt => vt.id !== result.id));
-      }
-
-    } catch (err) {
-      setError('Failed to update vehicle type status: ' + err.message);
-      console.error('❌ Toggle status error:', err);
-    } finally {
-      setLoading(false);
+  // Handle sort change
+  const handleSortChange = useCallback((field) => {
+    if (sortBy === field) {
+      setSortDirection(prev => prev === 'ASC' ? 'DESC' : 'ASC');
+    } else {
+      setSortBy(field);
+      setSortDirection('DESC');
     }
-  };
+    setCurrentPage(0);
+  }, [sortBy]);
 
-  // Filter and pagination logic
-  const handleShowActiveToggle = () => {
-    setShowActiveOnly(!showActiveOnly);
-    setCurrentPage(1);
-  };
+  // Get sort icon
+  const getSortIcon = useCallback((field) => {
+    if (sortBy !== field) {
+      return <FaSort className="inline ml-1 text-gray-400" />;
+    }
+    return sortDirection === 'ASC' 
+      ? <FaSortUp className="inline ml-1 text-blue-600" />
+      : <FaSortDown className="inline ml-1 text-blue-600" />;
+  }, [sortBy, sortDirection]);
 
-  const getDisplayVehicleTypes = () => {
-    return showActiveOnly ? activeVehicleTypes : vehicleTypes;
-  };
-
-  // ✅ UPDATED: Search by name field
-  const filteredVehicleTypes = getDisplayVehicleTypes().filter(vehicleType =>
-    (vehicleType.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const indexOfLastVehicleType = currentPage * vehicleTypesPerPage;
-  const indexOfFirstVehicleType = indexOfLastVehicleType - vehicleTypesPerPage;
-  const currentVehicleTypes = filteredVehicleTypes.slice(indexOfFirstVehicleType, indexOfLastVehicleType);
-  const totalPages = Math.ceil(filteredVehicleTypes.length / vehicleTypesPerPage);
-
-  // Reset pagination when search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, showActiveOnly]);
+  // Format date helper
+  const formatDate = useCallback((timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
+  }, []);
 
   return (
     <div className="p-6 max-w-7xl mx-auto bg-gray-50 min-h-screen">
@@ -344,7 +411,9 @@ const AllVehicleTypes = () => {
       <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-lg">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Vehicle Types Management</h1>
-         
+          <p className="text-sm text-gray-500 mt-1">
+            {showActiveOnly ? 'Active Vehicle Types' : 'All Vehicle Types'} - Server-side Pagination
+          </p>
         </div>
         <div className="flex gap-3">
           <button 
@@ -368,26 +437,41 @@ const AllVehicleTypes = () => {
         </div>
       </div>
 
-      {/* Search and Stats */}
+      {/* Search, Filter, and Stats */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm">
-        <div className="flex-1">
+        <div className="flex-1 flex gap-3 items-center flex-wrap">
           <input
             type="text"
             placeholder="Search vehicle types by name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full max-w-md px-4 py-2 border-2 border-gray-200 rounded-full text-sm focus:outline-none focus:border-blue-500 transition duration-300"
+            className="flex-1 min-w-[250px] max-w-md px-4 py-2 border-2 border-gray-200 rounded-full text-sm focus:outline-none focus:border-blue-500 transition duration-300"
           />
+          
+          {!showActiveOnly && (
+            <select
+              value={vehicleTypesPerPage}
+              onChange={handlePageSizeChange}
+              className="px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition duration-300"
+              disabled={loading}
+            >
+              <option value={5}>5 per page</option>
+              <option value={10}>10 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+            </select>
+          )}
         </div>
+        
         <div className="flex flex-wrap gap-4">
           <span className="px-4 py-2 bg-gray-100 rounded-full text-sm font-medium">
-            Total: {vehicleTypes.length}
+            Total: {totalElements}
           </span>
           <span className="px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-            Active: {activeVehicleTypes.length}
+            Active: {activevehicleTypes.length}
           </span>
           <span className="px-4 py-2 bg-red-100 text-red-700 rounded-full text-sm font-medium">
-            Inactive: {vehicleTypes.length - activeVehicleTypes.length}
+            Inactive: {totalElements - activevehicleTypes.length}
           </span>
         </div>
       </div>
@@ -400,7 +484,7 @@ const AllVehicleTypes = () => {
             <p className="text-sm">{error}</p>
           </div>
           <button 
-            onClick={() => setError(null)} 
+            onClick={() => setError(null)}
             className="text-red-500 hover:text-red-700 text-xl font-bold"
           >
             ×
@@ -411,29 +495,69 @@ const AllVehicleTypes = () => {
       {/* Loading Overlay */}
       {loading && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Processing...</p>
+          <div className="bg-white p-6 rounded-lg shadow-xl">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600 font-medium">Processing...</p>
           </div>
         </div>
       )}
 
-      {/* ✅ UPDATED: Vehicle Types Table - removed description column */}
+      {/* Vehicle Types Table */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden mb-6">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b-2 border-gray-200">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">ID</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Vehicle Type Name</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Created At</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Updated At</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSortChange('id')}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    ID
+                    {getSortIcon('id')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSortChange('name')}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    Vehicle Type Name
+                    {getSortIcon('name')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSortChange('isActive')}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    Status
+                    {getSortIcon('isActive')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSortChange('createdAt')}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    Created At
+                    {getSortIcon('createdAt')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSortChange('updatedAt')}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    Updated At
+                    {getSortIcon('updatedAt')}
+                  </button>
+                </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {currentVehicleTypes.length === 0 ? (
+              {vehicleTypes.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="px-6 py-12 text-center text-gray-500 italic">
                     {loading 
@@ -447,8 +571,8 @@ const AllVehicleTypes = () => {
                   </td>
                 </tr>
               ) : (
-                currentVehicleTypes.map((vehicleType) => (
-                  <tr key={vehicleType.id} className="hover:bg-gray-50 transition duration-200">
+                vehicleTypes.map((vehicleType) => (
+                  <tr key={vehicleType.id} className="hover:bg-blue-50 transition duration-200">
                     <td className="px-6 py-4 text-sm text-gray-600 font-medium">{vehicleType.id}</td>
                     <td className="px-6 py-4 font-semibold text-blue-600">{vehicleType.name || 'N/A'}</td>
                     <td className="px-6 py-4">
@@ -457,39 +581,33 @@ const AllVehicleTypes = () => {
                           vehicleType.isActive === 1 
                             ? 'bg-green-100 text-green-800 hover:bg-green-200' 
                             : 'bg-red-100 text-red-800 hover:bg-red-200'
-                        }`}
-                        onClick={() => toggleVehicleTypeStatus(vehicleType)}
-                        disabled={loading}
+                        } ${togglingIds.has(vehicleType.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onClick={() => toggleVehicleTypeStatus(vehicleType.id)}
+                        disabled={loading || togglingIds.has(vehicleType.id)}
                         title="Click to toggle status"
                       >
-                        {vehicleType.isActive === 1 ? 'Active' : 'Inactive'}
+                        {togglingIds.has(vehicleType.id) 
+                          ? 'Updating...' 
+                          : (vehicleType.isActive === 1 ? 'Active' : 'Inactive')
+                        }
                       </button>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {vehicleType.createdAt ? new Date(vehicleType.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      }) : 'N/A'}
+                      {formatDate(vehicleType.createdAt)}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {vehicleType.updatedAt ? new Date(vehicleType.updatedAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      }) : 'N/A'}
+                      {formatDate(vehicleType.updatedAt)}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex space-x-2">
-                        <button 
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs font-medium transition duration-200 disabled:opacity-60"
-                          onClick={() => handleEditVehicleType(vehicleType)}
-                          disabled={loading}
-                          title="Edit vehicle type"
-                        >
-                          Edit
-                        </button>
-                      </div>
+                      <button 
+                        className="inline-flex items-center gap-1 bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-2 rounded-lg text-xs font-medium transition duration-200 disabled:opacity-60"
+                        onClick={() => handleEditVehicleType(vehicleType)}
+                        disabled={loading || togglingIds.has(vehicleType.id)}
+                        title="Edit vehicle type"
+                      >
+                        <FaEdit />
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -499,32 +617,78 @@ const AllVehicleTypes = () => {
         </div>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center items-center space-x-4 bg-white p-4 rounded-xl shadow-sm">
-          <button 
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1 || loading}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-          >
-            Previous
-          </button>
+      {/* Enhanced Pagination */}
+      {totalPages > 0 && (
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm">
+          <div className="text-sm text-gray-600">
+            Showing <span className="font-semibold text-blue-600">{(currentPage * vehicleTypesPerPage) + 1}</span> to{' '}
+            <span className="font-semibold text-blue-600">
+              {Math.min((currentPage + 1) * vehicleTypesPerPage, totalElements)}
+            </span>{' '}
+            of <span className="font-semibold text-blue-600">{totalElements}</span> vehicle types
+          </div>
           
-          <span className="px-4 py-2 text-sm font-medium text-gray-700">
-            Page {currentPage} of {totalPages} ({filteredVehicleTypes.length} vehicle types)
-          </span>
+          <div className="flex items-center space-x-2">
+            <button 
+              onClick={() => setCurrentPage(0)}
+              disabled={!hasPrevious || loading}
+              className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+              title="First Page"
+            >
+              &laquo; First
+            </button>
+            
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 0))}
+              disabled={!hasPrevious || loading}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+            >
+              &lsaquo; Prev
+            </button>
+            
+            <span className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg">
+              Page {currentPage + 1} of {totalPages}
+            </span>
+            
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1))}
+              disabled={!hasNext || loading}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+            >
+              Next &rsaquo;
+            </button>
+            
+            <button 
+              onClick={() => setCurrentPage(totalPages - 1)}
+              disabled={!hasNext || loading}
+              className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+              title="Last Page"
+            >
+              Last &raquo;
+            </button>
+          </div>
           
-          <button 
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages || loading}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-          >
-            Next
-          </button>
+          {/* Page Jump */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Go to:</span>
+            <input
+              type="number"
+              min="1"
+              max={totalPages}
+              value={currentPage + 1}
+              onChange={(e) => {
+                const page = parseInt(e.target.value) - 1;
+                if (page >= 0 && page < totalPages) {
+                  setCurrentPage(page);
+                }
+              }}
+              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:border-blue-500"
+            />
+          </div>
         </div>
       )}
 
-      {/* ✅ UPDATED: Modal with only name field */}
+      {/* Modal for Add/Edit Vehicle Type */}
       {showModal && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
@@ -538,12 +702,12 @@ const AllVehicleTypes = () => {
             className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-800">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-blue-600">
+              <h2 className="text-xl font-bold text-white">
                 {editingVehicleType ? `Edit Vehicle Type (ID: ${editingVehicleType.id})` : 'Add New Vehicle Type'}
               </h2>
               <button 
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold w-8 h-8 flex items-center justify-center"
+                className="text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center"
                 onClick={() => setShowModal(false)}
               >
                 ×
@@ -553,7 +717,7 @@ const AllVehicleTypes = () => {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Vehicle Type Name *
+                  Vehicle Type Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -570,35 +734,35 @@ const AllVehicleTypes = () => {
                   maxLength={100}
                 />
                 {formErrors.name && (
-                  <p className="mt-1 text-xs text-red-600">{formErrors.name}</p>
+                  <p className="mt-1 text-xs text-red-600 font-medium">{formErrors.name}</p>
                 )}
               </div>
 
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-lg">
                 <input
                   type="checkbox"
                   id="isActive"
                   name="isActive"
                   checked={formData.isActive === 1}
                   onChange={handleInputChange}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                 />
                 <label htmlFor="isActive" className="text-sm font-medium text-gray-700 cursor-pointer">
-                  Active Vehicle Type
+                  Set as Active Vehicle Type
                 </label>
               </div>
 
               <div className="flex space-x-3 pt-4 border-t border-gray-200">
                 <button 
                   type="button" 
-                  className="flex-1 px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition duration-200"
+                  className="flex-1 px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition duration-200 shadow"
                   onClick={() => setShowModal(false)}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition duration-200 disabled:opacity-60"
+                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition duration-200 disabled:opacity-60 shadow"
                   disabled={loading}
                 >
                   {loading ? 'Saving...' : (editingVehicleType ? 'Update Type' : 'Add Type')}

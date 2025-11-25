@@ -1,6 +1,4 @@
-// AllModels.jsx - FULLY MOBILE RESPONSIVE + brandId Support ✅
-
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import {
   FaEdit,
   FaTrash,
@@ -11,8 +9,9 @@ import {
   FaList,
   FaTh,
   FaEye,
-  FaToggleOn,
-  FaToggleOff,
+  FaSort,
+  FaSortUp,
+  FaSortDown,
 } from "react-icons/fa";
 import apiClient, { BASE_URL } from "../../api/apiConfig";
 
@@ -21,6 +20,8 @@ const AllModels = () => {
   const [data, setData] = useState([]);
   const [brands, setBrands] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
   const [formVisible, setFormVisible] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -34,27 +35,42 @@ const AllModels = () => {
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [togglingIds, setTogglingIds] = useState(new Set());
   const [brandsLoading, setBrandsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [imagePreview, setImagePreview] = useState("");
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Pagination
+  // ✅ Backend pagination states (0-based indexing)
   const [currentPage, setCurrentPage] = useState(0);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [hasNext, setHasNext] = useState(false);
   const [hasPrevious, setHasPrevious] = useState(false);
+
+  // ✅ Sorting states
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState('DESC');
 
   // Image error tracking
   const imageErrorTrackerRef = useRef(new Set());
 
   const BACKEND_URL = BASE_URL;
 
+  // ✅ Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setCurrentPage(0); // Reset to first page on search
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // Helper: Get full image URL
-  const getImageUrl = (imagePath) => {
+  const getImageUrl = useCallback((imagePath) => {
     if (!imagePath) return null;
     if (imagePath.startsWith("http")) return imagePath;
 
@@ -67,7 +83,7 @@ const AllModels = () => {
 
     const filename = cleanPath.split("/").pop();
     return `${BACKEND_URL}/uploads/models/${filename}`;
-  };
+  }, [BACKEND_URL]);
 
   // Clear messages after 5 seconds
   useEffect(() => {
@@ -81,7 +97,7 @@ const AllModels = () => {
   }, [success, error]);
 
   // ✅ Fetch Brands
-  const fetchBrands = async () => {
+  const fetchBrands = useCallback(async () => {
     setBrandsLoading(true);
     try {
       const response = await apiClient.get("/api/brands/active");
@@ -105,16 +121,31 @@ const AllModels = () => {
     } finally {
       setBrandsLoading(false);
     }
-  };
+  }, []);
 
-  // ✅ Fetch Models
-  const fetchModels = async (page = 0, size = 10) => {
+  // ✅ Fetch Models with backend pagination
+  const fetchModels = useCallback(async () => {
+    if (loading && currentPage !== 0) return; // Prevent multiple calls
+    
     setLoading(true);
     setError("");
     try {
-      const response = await apiClient.get(
-        `/api/models/all?page=${page}&size=${size}&sort=createdAt,desc`
-      );
+      // Build query parameters for /search endpoint
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        size: itemsPerPage.toString(),
+        sort: `${sortBy},${sortDirection.toLowerCase()}`
+      });
+
+      // Add search query parameter only if it exists
+      if (debouncedSearchQuery && debouncedSearchQuery.trim()) {
+        params.append('query', debouncedSearchQuery.trim());
+      }
+
+      const url = `/api/models/search?${params.toString()}`;
+      console.log("📡 Fetching models:", url);
+      
+      const response = await apiClient.get(url);
 
       console.log("✅ Models API Response:", response.data);
 
@@ -128,8 +159,17 @@ const AllModels = () => {
           modelImage: model.modelImage ? getImageUrl(model.modelImage) : null,
         }));
 
-        setData(processedModels);
+        // ✅ Filter by brand on client-side if needed (since backend doesn't support brand filter)
+        let filteredModels = processedModels;
+        if (brandFilter && brandFilter !== "") {
+          filteredModels = processedModels.filter(model => 
+            model.brandId && parseInt(model.brandId) === parseInt(brandFilter)
+          );
+        }
 
+        setData(filteredModels);
+
+        // ✅ Update pagination metadata
         if (response.data.pagination) {
           setCurrentPage(response.data.pagination.currentPage);
           setTotalPages(response.data.pagination.totalPages);
@@ -148,34 +188,61 @@ const AllModels = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, itemsPerPage, sortBy, sortDirection, debouncedSearchQuery, brandFilter, getImageUrl, loading]);
 
-  // Initial load
+  // ✅ Initial load - Fetch brands FIRST, then models
   useEffect(() => {
-    fetchModels(0, itemsPerPage);
     fetchBrands();
-  }, []);
+  }, [fetchBrands]);
 
-  // Search filter
-  const filteredData = useMemo(() => {
-    if (!searchQuery.trim()) return data;
-    const query = searchQuery.toLowerCase();
-    return data.filter((model) =>
-      model.modelName?.toLowerCase().includes(query)
-    );
-  }, [data, searchQuery]);
+  // ✅ Fetch models when dependencies change
+  useEffect(() => {
+    if (brands.length > 0 || brandFilter === "") {
+      fetchModels();
+    }
+  }, [currentPage, itemsPerPage, sortBy, sortDirection, debouncedSearchQuery, brandFilter, brands.length]);
 
   // Get brand name by ID
-  const getBrandName = (brandId) => {
+  const getBrandName = useCallback((brandId) => {
     if (!brandId) return "Unknown";
-    const brand = brands.find(
-      (b) => parseInt(b.id || b.brandId) === parseInt(brandId)
-    );
+    
+    const brand = brands.find((b) => {
+      const bId = b.id || b.brandId;
+      return parseInt(bId) === parseInt(brandId);
+    });
+    
     return brand?.brandName || brand?.name || "Unknown";
-  };
+  }, [brands]);
+
+  // Handle page size change
+  const handlePageSizeChange = useCallback((e) => {
+    setItemsPerPage(Number(e.target.value));
+    setCurrentPage(0);
+  }, []);
+
+  // Handle sort change
+  const handleSortChange = useCallback((field) => {
+    if (sortBy === field) {
+      setSortDirection(prev => prev === 'ASC' ? 'DESC' : 'ASC');
+    } else {
+      setSortBy(field);
+      setSortDirection('DESC');
+    }
+    setCurrentPage(0);
+  }, [sortBy]);
+
+  // Get sort icon
+  const getSortIcon = useCallback((field) => {
+    if (sortBy !== field) {
+      return <FaSort className="inline ml-1 text-gray-400 text-xs" />;
+    }
+    return sortDirection === 'ASC' 
+      ? <FaSortUp className="inline ml-1 text-blue-600 text-xs" />
+      : <FaSortDown className="inline ml-1 text-blue-600 text-xs" />;
+  }, [sortBy, sortDirection]);
 
   // Validate form
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     const errors = {};
 
     if (!formData.modelName || formData.modelName.trim().length === 0) {
@@ -192,20 +259,20 @@ const AllModels = () => {
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [formData]);
 
   // Handle input change
-  const handleInputChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    setFormData(prev => ({ ...prev, [name]: value }));
 
     if (validationErrors[name]) {
-      setValidationErrors({ ...validationErrors, [name]: "" });
+      setValidationErrors(prev => ({ ...prev, [name]: "" }));
     }
-  };
+  }, [validationErrors]);
 
   // Handle image change
-  const handleImageChange = (e) => {
+  const handleImageChange = useCallback((e) => {
     const file = e.target.files[0];
     if (file) {
       const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -220,14 +287,14 @@ const AllModels = () => {
         return;
       }
 
-      setFormData({ ...formData, image: file });
+      setFormData(prev => ({ ...prev, image: file }));
       setImagePreview(URL.createObjectURL(file));
       setError("");
     }
-  };
+  }, []);
 
   // Add Model
-  const handleAddModel = async (e) => {
+  const handleAddModel = useCallback(async (e) => {
     e.preventDefault();
 
     if (!validateForm()) return;
@@ -256,7 +323,8 @@ const AllModels = () => {
       if (response.data && response.data.success) {
         setSuccess(response.data.message || "Model added successfully!");
         resetForm();
-        fetchModels(0, itemsPerPage);
+        setCurrentPage(0);
+        await fetchModels();
       } else {
         setError(response.data?.message || "Failed to add model");
       }
@@ -266,10 +334,10 @@ const AllModels = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [formData, validateForm, fetchModels]);
 
   // Update Model
-  const handleUpdateModel = async (e) => {
+  const handleUpdateModel = useCallback(async (e) => {
     e.preventDefault();
 
     if (!validateForm()) return;
@@ -308,7 +376,7 @@ const AllModels = () => {
       if (response.data && response.data.success) {
         setSuccess(response.data.message || "Model updated successfully!");
         resetForm();
-        fetchModels(currentPage, itemsPerPage);
+        await fetchModels();
       } else {
         setError(response.data?.message || "Failed to update model");
       }
@@ -318,22 +386,25 @@ const AllModels = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [formData, validateForm, editingId, fetchModels]);
 
   // Delete Model
-  const handleDeleteModel = async (id) => {
+  const handleDeleteModel = useCallback(async (id) => {
     setError("");
     setSuccess("");
+    setSubmitting(true);
+    
     try {
       const response = await apiClient.delete(`/api/models/delete/${id}`);
       if (response.data && response.data.success) {
         setSuccess("Model deleted successfully!");
         setConfirmDeleteId(null);
 
+        // If last item on page and not first page, go to previous page
         if (data.length === 1 && currentPage > 0) {
-          fetchModels(currentPage - 1, itemsPerPage);
+          setCurrentPage(prev => prev - 1);
         } else {
-          fetchModels(currentPage, itemsPerPage);
+          await fetchModels();
         }
       } else {
         setError(response.data?.message || "Failed to delete model");
@@ -342,17 +413,26 @@ const AllModels = () => {
     } catch (error) {
       setError(error.response?.data?.message || "Error deleting model");
       setConfirmDeleteId(null);
+    } finally {
+      setSubmitting(false);
     }
-  };
+  }, [data.length, currentPage, fetchModels]);
 
   // Edit Model
-  const handleEditModelClick = (model) => {
+  const handleEditModelClick = useCallback((model) => {
     console.log("📝 Editing Model:", model);
+    console.log("Raw API data:", {
+      id: model.id,
+      modelName: model.modelName,
+      brandId: model.brandId,
+      isActive: model.isActive
+    });
 
     setEditingId(model.id);
+    
     setFormData({
-      brandId: model.brandId ? model.brandId.toString() : "",
-      modelName: model.modelName || "",
+      brandId: String(model.brandId),
+      modelName: model.modelName,
       image: null,
     });
 
@@ -361,11 +441,17 @@ const AllModels = () => {
     setError("");
     setSuccess("");
     setValidationErrors({});
+    
+    console.log("✅ Form data set:", {
+      brandId: String(model.brandId),
+      modelName: model.modelName
+    });
+    
     window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  }, []);
 
   // Reset Form
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setEditingId(null);
     setFormData({
       brandId: "",
@@ -378,39 +464,10 @@ const AllModels = () => {
     setSuccess("");
     setValidationErrors({});
     setSubmitting(false);
-  };
-
-  // Pagination
-  const handleNextPage = () => {
-    if (hasNext) fetchModels(currentPage + 1, itemsPerPage);
-  };
-
-  const handlePrevPage = () => {
-    if (hasPrevious) fetchModels(currentPage - 1, itemsPerPage);
-  };
-
-  const handlePageClick = (pageNumber) => {
-    fetchModels(pageNumber, itemsPerPage);
-  };
-
-  const getPageNumbers = () => {
-    const pages = [];
-    const maxVisible = 5;
-    let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
-    let end = Math.min(totalPages - 1, start + maxVisible - 1);
-
-    if (end - start + 1 < maxVisible) {
-      start = Math.max(0, end - maxVisible + 1);
-    }
-
-    for (let i = start; i <= end; i++) {
-      pages.push(i);
-    }
-    return pages;
-  };
+  }, []);
 
   // Image error handler
-  const handleImageError = (e, modelId) => {
+  const handleImageError = useCallback((e, modelId) => {
     const key = `${modelId}-${e.target.src}`;
     if (imageErrorTrackerRef.current.has(key)) {
       e.target.style.display = "none";
@@ -418,10 +475,10 @@ const AllModels = () => {
     }
     imageErrorTrackerRef.current.add(key);
     e.target.style.display = "none";
-  };
+  }, []);
 
   // Model Image Component
-  const ModelImage = ({ model }) => {
+  const ModelImage = useCallback(({ model }) => {
     if (!model.modelImage) {
       return (
         <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-200 rounded-lg flex items-center justify-center text-gray-500">
@@ -439,10 +496,10 @@ const AllModels = () => {
         loading="lazy"
       />
     );
-  };
+  }, [handleImageError]);
 
   // Model Card Component (Mobile)
-  const ModelCard = ({ model }) => {
+  const ModelCard = useCallback(({ model }) => {
     return (
       <div className="bg-white rounded-xl shadow-md hover:shadow-xl transition-shadow p-4 border border-gray-200">
         <div className="flex items-start justify-between mb-3">
@@ -495,18 +552,18 @@ const AllModels = () => {
         </div>
       </div>
     );
-  };
+  }, [getBrandName, handleEditModelClick, submitting]);
 
   return (
     <div className="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen p-3 sm:p-4 md:p-6">
-      {/* Header - Mobile Responsive */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">
             🚗 Models Management
           </h1>
           <p className="text-gray-600 text-sm sm:text-base mt-1">
-            Manage your vehicle models catalog ({totalElements} models)
+            Server-side Pagination ({totalElements} models)
           </p>
         </div>
         {!formVisible && (
@@ -537,7 +594,7 @@ const AllModels = () => {
         <div className="mb-4 p-3 sm:p-4 bg-red-100 text-red-700 rounded-lg border-l-4 border-red-500 shadow-md">
           <div className="flex items-start">
             <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
             </svg>
             <p className="text-sm sm:text-base">{error}</p>
           </div>
@@ -673,19 +730,49 @@ const AllModels = () => {
         </div>
       )}
 
-      {/* Search and View Toggle */}
+      {/* Search, Filter, and View Toggle */}
       {!formVisible && (
         <div className="bg-white p-4 sm:p-6 shadow-md rounded-xl">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
-            <div className="relative w-full sm:w-auto">
-              <FaSearch className="absolute left-3 top-3 text-gray-400 text-sm" />
-              <input
-                type="text"
-                placeholder="Search models..."
-                className="border border-gray-300 rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+            <div className="flex gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-initial">
+                <FaSearch className="absolute left-3 top-3 text-gray-400 text-sm" />
+                <input
+                  type="text"
+                  placeholder="Search models..."
+                  className="border border-gray-300 rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              {/* <select
+                value={brandFilter}
+                onChange={(e) => {
+                  setBrandFilter(e.target.value);
+                  setCurrentPage(0);
+                }}
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+              >
+                <option value="">All Brands</option>
+                {brands.map((brand) => (
+                  <option key={brand.id || brand.brandId} value={brand.id || brand.brandId}>
+                    {brand.brandName || brand.name}
+                  </option>
+                ))}
+              </select> */}
+
+              <select
+                value={itemsPerPage}
+                onChange={handlePageSizeChange}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={loading}
+              >
+                <option value={5}>5 per page</option>
+                <option value={10}>10 per page</option>
+                <option value={20}>20 per page</option>
+                <option value={50}>50 per page</option>
+              </select>
             </div>
 
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
@@ -725,7 +812,7 @@ const AllModels = () => {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-900 mb-4"></div>
               <span className="text-gray-600 text-sm">Loading models...</span>
             </div>
-          ) : filteredData.length === 0 ? (
+          ) : data.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-gray-500">
               <FaSearch className="text-4xl mb-4" />
               <span className="text-sm">
@@ -745,7 +832,7 @@ const AllModels = () => {
               {/* Mobile: Grid */}
               <div className="block sm:hidden">
                 <div className="grid grid-cols-1 gap-4">
-                  {filteredData.map((model) => (
+                  {data.map((model) => (
                     <ModelCard key={model.id} model={model} />
                   ))}
                 </div>
@@ -755,7 +842,7 @@ const AllModels = () => {
               <div className="hidden sm:block">
                 {viewMode === "grid" ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredData.map((model) => (
+                    {data.map((model) => (
                       <ModelCard key={model.id} model={model} />
                     ))}
                   </div>
@@ -764,21 +851,34 @@ const AllModels = () => {
                     <table className="w-full text-sm text-left text-gray-500">
                       <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                         <tr>
-                          <th className="px-6 py-3">#</th>
+                          <th className="px-6 py-3">
+                            <button onClick={() => handleSortChange('id')} className="flex items-center">
+                              # {getSortIcon('id')}
+                            </button>
+                          </th>
                           <th className="px-6 py-3">Image</th>
-                          <th className="px-6 py-3">Model Name</th>
+                          <th className="px-6 py-3">
+                            <button onClick={() => handleSortChange('modelName')} className="flex items-center">
+                              Model Name {getSortIcon('modelName')}
+                            </button>
+                          </th>
                           <th className="px-6 py-3">Brand</th>
+                          <th className="px-6 py-3">
+                            <button onClick={() => handleSortChange('createdAt')} className="flex items-center">
+                              Created {getSortIcon('createdAt')}
+                            </button>
+                          </th>
                           <th className="px-6 py-3">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredData.map((model, index) => (
+                        {data.map((model) => (
                           <tr
                             key={model.id}
                             className="bg-white border-b hover:bg-gray-50 transition-colors"
                           >
-                            <td className="px-6 py-4 font-medium text-gray-900">
-                              {currentPage * itemsPerPage + index + 1}
+                            <td className="px-6 py-4">
+                              <span className="font-mono text-sm">#{model.id}</span>
                             </td>
                             <td className="px-6 py-4">
                               <ModelImage model={model} />
@@ -791,6 +891,11 @@ const AllModels = () => {
                                 {getBrandName(model.brandId)}
                               </span>
                             </td>
+                            <td className="px-6 py-4 text-gray-600">
+                              {model.createdAt
+                                ? new Date(model.createdAt).toLocaleDateString()
+                                : "N/A"}
+                            </td>
                             <td className="px-6 py-4">
                               <div className="flex items-center space-x-1">
                                 <button
@@ -800,7 +905,7 @@ const AllModels = () => {
                                 >
                                   <FaEdit />
                                 </button>
-                                <button
+                                {/* <button
                                   className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
                                   onClick={() => setConfirmDeleteId(model.id)}
                                   disabled={submitting}
@@ -813,8 +918,8 @@ const AllModels = () => {
                                     onClick={() => window.open(model.modelImage, "_blank")}
                                   >
                                     <FaEye />
-                                  </button>
-                                )}
+                                  </button> */}
+                                {/* )} */}
                               </div>
                             </td>
                           </tr>
@@ -827,46 +932,70 @@ const AllModels = () => {
             </>
           )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
+          {/* Enhanced Pagination */}
+          {totalPages > 0 && (
             <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-6">
               <p className="text-xs sm:text-sm text-gray-500 text-center sm:text-left">
-                Showing {totalElements === 0 ? 0 : currentPage * itemsPerPage + 1} to{" "}
-                {Math.min((currentPage + 1) * itemsPerPage, totalElements)} of {totalElements}
+                Showing <span className="font-semibold text-blue-600">{(currentPage * itemsPerPage) + 1}</span> to{" "}
+                <span className="font-semibold text-blue-600">{Math.min((currentPage + 1) * itemsPerPage, totalElements)}</span> of{" "}
+                <span className="font-semibold text-blue-600">{totalElements}</span>
               </p>
-              <div className="flex flex-wrap justify-center gap-2">
+              <div className="flex items-center space-x-2">
                 <button
-                  className="px-3 py-2 text-xs sm:text-sm text-white bg-indigo-900 rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors"
+                  onClick={() => setCurrentPage(0)}
                   disabled={!hasPrevious || loading}
-                  onClick={handlePrevPage}
+                  className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                  title="First Page"
                 >
-                  Previous
+                  &laquo; First
                 </button>
-                {getPageNumbers().map((page) => (
-                  <button
-                    key={page}
-                    className={`px-3 py-2 rounded-lg transition-colors text-xs sm:text-sm ${
-                      currentPage === page
-                        ? "bg-indigo-900 text-white"
-                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
-                    onClick={() => handlePageClick(page)}
-                    disabled={loading}
-                  >
-                    {page + 1}
-                  </button>
-                ))}
+                
                 <button
-                  disabled={!hasNext || loading}
-                  onClick={handleNextPage}
-                  className={`px-3 py-2 text-xs sm:text-sm rounded-lg transition-colors ${
-                    !hasNext
-                      ? "bg-gray-300 text-gray-500"
-                      : "bg-indigo-900 text-white hover:bg-indigo-700"
-                  }`}
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 0))}
+                  disabled={!hasPrevious || loading}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
                 >
-                  Next
+                  &lsaquo; Prev
                 </button>
+                
+                <span className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-lg">
+                  Page {currentPage + 1} of {totalPages}
+                </span>
+                
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1))}
+                  disabled={!hasNext || loading}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                >
+                  Next &rsaquo;
+                </button>
+                
+                <button
+                  onClick={() => setCurrentPage(totalPages - 1)}
+                  disabled={!hasNext || loading}
+                  className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                  title="Last Page"
+                >
+                  Last &raquo;
+                </button>
+              </div>
+              
+              {/* Page Jump */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Go to:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={totalPages}
+                  value={currentPage + 1}
+                  onChange={(e) => {
+                    const page = parseInt(e.target.value) - 1;
+                    if (page >= 0 && page < totalPages) {
+                      setCurrentPage(page);
+                    }
+                  }}
+                  className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:border-indigo-500"
+                />
               </div>
             </div>
           )}
@@ -874,7 +1003,7 @@ const AllModels = () => {
       )}
 
       {/* Delete Confirmation Modal */}
-      {confirmDeleteId && (
+      {/* {confirmDeleteId && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-4 sm:p-6 rounded-xl max-w-md w-full shadow-xl">
             <h3 className="text-lg font-bold mb-4">Confirm Delete</h3>
@@ -906,10 +1035,9 @@ const AllModels = () => {
             </div>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 };
 
-export default AllModels;
-  
+export default AllModels; 

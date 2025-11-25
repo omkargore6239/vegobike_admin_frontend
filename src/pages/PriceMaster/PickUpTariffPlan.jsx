@@ -28,6 +28,15 @@ const PriceManagement = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const [validationErrors, setValidationErrors] = useState({});
+
+  // Add after existing state declarations
+const [filterCategoryName, setFilterCategoryName] = useState("");
+const [filterMinPrice, setFilterMinPrice] = useState("");
+const [filterMaxPrice, setFilterMaxPrice] = useState("");
+const [filterDays, setFilterDays] = useState("");
+const [sortBy, setSortBy] = useState("id");
+const [sortDir, setSortDir] = useState("desc");
+
   
   // Pricing type state
   const [pricingType, setPricingType] = useState("daily"); // "hourly" or "daily"
@@ -113,45 +122,35 @@ const PriceManagement = () => {
   };
 
   // ✅ VALIDATION
-  const validateForm = () => {
-    const errors = {};
-    const fieldErrors = [];
+  // VALIDATION
+const validateForm = () => {
+  const errors = {};
+  const fieldErrors = [];
 
-    if (!formData.categoryId || formData.categoryId === "") {
-      errors.categoryId = "Category is required";
-      fieldErrors.push("Please select a category");
-    }
-
-    // Price validation - only required for daily pricing
-if (pricingType === "daily") {
-  if (!formData.price || formData.price === "") {
-    errors.price = "Price is required";
-    fieldErrors.push("Please enter a price");
-  } else {
-    const priceValue = parseFloat(formData.price);
-    if (isNaN(priceValue) || priceValue <= 0) {
-      errors.price = "Price must be greater than 0";
-      fieldErrors.push("Price must be greater than 0");
-    }
+  // Category validation
+  if (!formData.categoryId || !formData.categoryId) {
+    errors.categoryId = "Category is required";
+    fieldErrors.push("Please select a category");
   }
-}
-else {
-      // For daily: days must be specified
-      if (formData.days === "" || formData.days === null || formData.days === undefined) {
-        errors.days = "Number of days is required";
-        fieldErrors.push("Please enter number of days");
-      } else {
-        const daysValue = parseInt(formData.days);
-        if (isNaN(daysValue) || daysValue <= 0) {
-          errors.days = "Days must be greater than 0";
-          fieldErrors.push("Days must be greater than 0");
-        } else if (daysValue > 365) {
-          errors.days = "Days cannot exceed 365";
-          fieldErrors.push("Days cannot exceed 365");
-        }
+
+  // For DAILY pricing - validate days and price
+  if (pricingType === "daily") {
+    // Days validation - only for daily
+    if (!formData.days || formData.days === null || formData.days === undefined || formData.days === "") {
+      errors.days = "Number of days is required";
+      fieldErrors.push("Please enter number of days");
+    } else {
+      const daysValue = parseInt(formData.days);
+      if (isNaN(daysValue) || daysValue <= 0) {
+        errors.days = "Days must be greater than 0";
+        fieldErrors.push("Days must be greater than 0");
+      } else if (daysValue > 365) {
+        errors.days = "Days cannot exceed 365";
+        fieldErrors.push("Days cannot exceed 365");
       }
     }
 
+    // Price validation for daily
     if (!formData.price || formData.price === "") {
       errors.price = "Price is required";
       fieldErrors.push("Please enter a price");
@@ -162,34 +161,70 @@ else {
         fieldErrors.push("Price must be greater than 0");
       }
     }
-
-    if (!formData.deposit || formData.deposit === "") {
-      errors.deposit = "Deposit is required";
-      fieldErrors.push("Please enter deposit amount");
+  }
+  
+  // For HOURLY pricing - validate hourly charge
+  if (pricingType === "hourly") {
+    // Hourly charge validation
+    if (!formData.hourlyChargeAmount || formData.hourlyChargeAmount === "") {
+      errors.hourlyChargeAmount = "Hourly charge is required";
+      fieldErrors.push("Please enter hourly charge amount");
     } else {
-      const depositValue = parseFloat(formData.deposit);
-      if (isNaN(depositValue) || depositValue < 0) {
-        errors.deposit = "Deposit cannot be negative";
-        fieldErrors.push("Deposit cannot be negative");
+      const hourlyValue = parseFloat(formData.hourlyChargeAmount);
+      if (isNaN(hourlyValue) || hourlyValue <= 0) {
+        errors.hourlyChargeAmount = "Hourly charge must be greater than 0";
+        fieldErrors.push("Hourly charge must be greater than 0");
       }
     }
 
-    // Check duplicates
-    if (!editingId && formData.categoryId) {
-      const daysToCheck = pricingType === "hourly" ? 0 : parseInt(formData.days);
-      const duplicate = data.find(item =>
+    // Base price validation for hourly (optional, but if provided must be valid)
+    if (formData.price && formData.price !== "") {
+      const priceValue = parseFloat(formData.price);
+      if (isNaN(priceValue) || priceValue < 0) {
+        errors.price = "Base price must be 0 or greater";
+        fieldErrors.push("Base price must be valid");
+      }
+    }
+  }
+
+  // Deposit validation (common for both)
+  if (!formData.deposit || formData.deposit === "") {
+    errors.deposit = "Deposit is required";
+    fieldErrors.push("Please enter deposit amount");
+  } else {
+    const depositValue = parseFloat(formData.deposit);
+    if (isNaN(depositValue) || depositValue < 0) {
+      errors.deposit = "Deposit cannot be negative";
+      fieldErrors.push("Deposit cannot be negative");
+    }
+  }
+
+  // Check duplicates
+  if (!editingId && formData.categoryId) {
+    const daysToCheck = pricingType === "hourly" ? 0 : parseInt(formData.days);
+    const duplicate = data.find(
+      (item) =>
         String(item.categoryId) === String(formData.categoryId) &&
         parseInt(item.days) === daysToCheck
+    );
+    if (duplicate) {
+      errors.duplicate = "This combination already exists";
+      fieldErrors.push(
+        `A price for ${getCategoryName(formData.categoryId)} - ${getDaysDisplay(
+          daysToCheck
+        )} already exists`
       );
-      if (duplicate) {
-        errors.duplicate = "This combination already exists";
-        fieldErrors.push(`A price for ${getCategoryName(formData.categoryId)} - ${getDaysDisplay(daysToCheck)} already exists`);
-      }
     }
+  }
 
-    setValidationErrors(errors);
-    return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
+  setValidationErrors(errors);
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+    fieldErrors,
   };
+};
+
 
   // Clear messages
   useEffect(() => {
@@ -203,60 +238,103 @@ else {
   }, [success, error]);
 
   // Handle search
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredData(data);
-    } else {
-      const filtered = data.filter((item) =>
-        item.categoryName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.days?.toString().includes(searchQuery.toLowerCase()) ||
-        item.price?.toString().includes(searchQuery.toLowerCase())
-      );
-      setFilteredData(filtered);
-    }
-  }, [searchQuery, data]);
+  const handleSearch = () => {
+  fetchPriceLists(
+    0, // Reset to first page on new search
+    itemsPerPage,
+    filterCategoryName,
+    filterMinPrice,
+    filterMaxPrice,
+    filterDays,
+    sortBy,
+    sortDir
+  );
+};
+
+const handleClearFilters = () => {
+  setFilterCategoryName("");
+  setFilterMinPrice("");
+  setFilterMaxPrice("");
+  setFilterDays("");
+  setSearchQuery("");
+  fetchPriceLists(0, itemsPerPage, "", "", "", "", sortBy, sortDir);
+};
+
 
   // Fetch Price Lists
-  const fetchPriceLists = async (page = 0, size = 10, sortBy = "id", sortDir = "desc", retryAttempt = 0) => {
-    setLoading(true);
-    setError("");
+  const fetchPriceLists = async (
+  page = 0,
+  size = 10,
+  categoryName = "",
+  minPrice = "",
+  maxPrice = "",
+  days = "",
+  sortByParam = "id",
+  sortDirParam = "desc",
+  retryAttempt = 0
+) => {
+  setLoading(true);
+  setError("");
 
-    try {
-      const response = await apiClient.get("/api/prices", {
-        params: { page, size, sortBy, sortDir }
-      });
+  try {
+    // Build params object, only include non-empty values
+    const params = {
+      page,
+      size,
+      sortBy: sortByParam,
+      sortDir: sortDirParam
+    };
 
-      if (response.data && response.data.success) {
-        const priceData = response.data.data || [];
-        setData(priceData);
-        setFilteredData(priceData);
-        setRetryCount(0);
+    if (categoryName && categoryName.trim() !== "") {
+      params.categoryName = categoryName.trim();
+    }
+    if (minPrice && minPrice !== "") {
+      params.minPrice = parseFloat(minPrice);
+    }
+    if (maxPrice && maxPrice !== "") {
+      params.maxPrice = parseFloat(maxPrice);
+    }
+    if (days && days !== "") {
+      params.days = parseInt(days);
+    }
 
-        if (response.data.pagination) {
-          setCurrentPage(response.data.pagination.currentPage);
-          setTotalPages(response.data.pagination.totalPages);
-          setTotalElements(response.data.pagination.totalElements);
-          setHasNext(response.data.pagination.hasNext);
-          setHasPrevious(response.data.pagination.hasPrevious);
-        }
-      } else {
-        setError("Failed to fetch price lists");
-        setData([]);
-        setFilteredData([]);
+    const response = await apiClient.get("/api/prices/all", { params });
+
+    if (response.data && response.data.success) {
+      const priceData = response.data.data || [];
+      setData(priceData);
+      setFilteredData(priceData);
+      setRetryCount(0);
+
+      if (response.data.pagination) {
+        setCurrentPage(response.data.pagination.currentPage);
+        setTotalPages(response.data.pagination.totalPages);
+        setTotalElements(response.data.pagination.totalElements);
+        setHasNext(response.data.pagination.hasNext);
+        setHasPrevious(response.data.pagination.hasPrevious);
       }
-    } catch (error) {
-      const errorInfo = showErrorNotification(error, "Failed to fetch price lists");
+    } else {
+      setError("Failed to fetch price lists");
       setData([]);
       setFilteredData([]);
-
-      if (errorInfo.isRetryable && retryAttempt < 2) {
-        setRetryCount(retryAttempt + 1);
-        setTimeout(() => fetchPriceLists(page, size, sortBy, sortDir, retryAttempt + 1), 3000 * (retryAttempt + 1));
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    const errorInfo = showErrorNotification(error, "Failed to fetch price lists");
+    setData([]);
+    setFilteredData([]);
+
+    if (errorInfo.isRetryable && retryAttempt < 2) {
+      setRetryCount(retryAttempt + 1);
+      setTimeout(
+        () => fetchPriceLists(page, size, categoryName, minPrice, maxPrice, days, sortByParam, sortDirParam, retryAttempt + 1),
+        3000 * (retryAttempt + 1)
+      );
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // Fetch Categories
   const fetchCategories = async (retryAttempt = 0) => {
@@ -288,25 +366,43 @@ else {
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      await Promise.all([
-        fetchPriceLists(currentPage, itemsPerPage),
-        fetchCategories()
-      ]);
-    };
-    loadData();
-  }, []);
+  const loadData = async () => {
+    await Promise.all([
+      fetchPriceLists(0, itemsPerPage, "", "", "", "", sortBy, sortDir),
+      fetchCategories()
+    ]);
+  };
+  loadData();
+}, []); // Keep empty dependency array for initial load only
+
 
   // Handle pricing type change
-  const handlePricingTypeChange = (type) => {
-    setPricingType(type);
-    if (type === "hourly") {
-      setFormData(prev => ({ ...prev, days: "0", hourlyChargeAmount: "" }));
-    } else {
-      setFormData(prev => ({ ...prev, days: "", hourlyChargeAmount: "" }));
-    }
-    setValidationErrors({});
-  };
+  // Handle pricing type change
+const handlePricingTypeChange = (type) => {
+  setPricingType(type);
+  
+  if (type === "hourly") {
+    // For hourly: set days to 0, clear price, keep/initialize hourlyChargeAmount
+    setFormData((prev) => ({
+      ...prev,
+      days: "0",  // Set to string "0" for consistency
+      price: "",  // Clear price for hourly
+      hourlyChargeAmount: prev.hourlyChargeAmount || "", // Keep existing or empty
+    }));
+  } else {
+    // For daily: clear days and hourlyChargeAmount
+    setFormData((prev) => ({
+      ...prev,
+      days: "",  // Clear days for user to enter
+      hourlyChargeAmount: "", // Clear hourly charge
+      price: prev.price || "", // Keep existing price
+    }));
+  }
+  
+  // Clear validation errors when switching types
+  setValidationErrors({});
+};
+
 
   // Handle form input changes
   const handleInputChange = (e) => {
@@ -328,92 +424,114 @@ else {
   };
 
   // Add Price List
-  const handleAddPrice = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-    setSubmitting(true);
-    setValidationErrors({});
+  // Add Price List
+const handleAddPrice = async (e) => {
+  e.preventDefault();
+  setError("");
+  setSuccess("");
+  setSubmitting(true);
+  setValidationErrors({});
 
-    const validation = validateForm();
-    if (!validation.isValid) {
-      setError(validation.fieldErrors[0]);
-      setSubmitting(false);
-      return;
+  const validation = validateForm();
+  if (!validation.isValid) {
+    setError(validation.fieldErrors[0]);
+    setSubmitting(false);
+    return;
+  }
+
+  // Build payload based on pricing type
+  const payload = {
+    categoryId: parseInt(formData.categoryId),
+    days: pricingType === "hourly" ? 0 : parseInt(formData.days),
+    deposit: parseFloat(formData.deposit),
+    isActive: parseInt(formData.isActive),
+  };
+
+  // Add price based on pricing type
+  if (pricingType === "hourly") {
+    payload.price = parseFloat(formData.hourlyChargeAmount); // Use hourly charge as price
+    payload.hourlyChargeAmount = parseFloat(formData.hourlyChargeAmount);
+  } else {
+    payload.price = parseFloat(formData.price);
+    payload.hourlyChargeAmount = null;
+  }
+
+  console.log("📤 Sending payload:", payload); // Debug log
+
+  try {
+    const response = await apiClient.post("/api/prices/add", payload);
+
+    if (response.data && response.data.success) {
+      toast.success("Price list added successfully!");
+      resetForm();
+      await fetchPriceLists(currentPage, itemsPerPage);
+    } else {
+      const errorMsg = response.data?.message || "Failed to add price list";
+      setError(errorMsg);
+      toast.error(errorMsg);
     }
-
-    const payload = {
-  categoryId: parseInt(formData.categoryId),
-  days: pricingType === "hourly" ? 0 : parseInt(formData.days),
-  price: pricingType === "hourly" ? parseFloat(formData.hourlyChargeAmount) : parseFloat(formData.price),
-  deposit: parseFloat(formData.deposit),
-  hourlyChargeAmount: pricingType === "hourly" ? parseFloat(formData.hourlyChargeAmount) : null,
-  isActive: parseInt(formData.isActive),
+  } catch (error) {
+    showErrorNotification(error, "Failed to add price list");
+  } finally {
+    setSubmitting(false);
+  }
 };
 
-
-    try {
-      const response = await apiClient.post("/api/prices/add", payload);
-
-      if (response.data && response.data.success) {
-        toast.success("✅ Price list added successfully!");
-        resetForm();
-        await fetchPriceLists(currentPage, itemsPerPage);
-      } else {
-        const errorMsg = response.data?.message || "Failed to add price list";
-        setError(errorMsg);
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      showErrorNotification(error, "Failed to add price list");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   // Edit Price List
-  const handleEditPrice = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-    setSubmitting(true);
-    setValidationErrors({});
+  // Edit Price List
+const handleEditPrice = async (e) => {
+  e.preventDefault();
+  setError("");
+  setSuccess("");
+  setSubmitting(true);
+  setValidationErrors({});
 
-    const validation = validateForm();
-    if (!validation.isValid) {
-      setError(validation.fieldErrors[0]);
-      setSubmitting(false);
-      return;
+  const validation = validateForm();
+  if (!validation.isValid) {
+    setError(validation.fieldErrors[0]);
+    setSubmitting(false);
+    return;
+  }
+
+  // Build payload based on pricing type
+  const payload = {
+    categoryId: parseInt(formData.categoryId),
+    days: pricingType === "hourly" ? 0 : parseInt(formData.days),
+    deposit: parseFloat(formData.deposit),
+    isActive: parseInt(formData.isActive),
+  };
+
+  // Add price based on pricing type
+  if (pricingType === "hourly") {
+    payload.price = parseFloat(formData.hourlyChargeAmount);
+    payload.hourlyChargeAmount = parseFloat(formData.hourlyChargeAmount);
+  } else {
+    payload.price = parseFloat(formData.price);
+    payload.hourlyChargeAmount = null;
+  }
+
+  console.log("📤 Updating payload:", payload); // Debug log
+
+  try {
+    const response = await apiClient.put(`/api/prices/${editingId}`, payload);
+
+    if (response.data && response.data.success) {
+      toast.success("Price list updated successfully!");
+      resetForm();
+      await fetchPriceLists(currentPage, itemsPerPage);
+    } else {
+      const errorMsg = response.data?.message || "Failed to update price list";
+      setError(errorMsg);
+      toast.error(errorMsg);
     }
-
-    const payload = {
-  categoryId: parseInt(formData.categoryId),
-  days: pricingType === "hourly" ? 0 : parseInt(formData.days),
-  price: pricingType === "hourly" ? parseFloat(formData.hourlyChargeAmount) : parseFloat(formData.price),
-  deposit: parseFloat(formData.deposit),
-  hourlyChargeAmount: pricingType === "hourly" ? parseFloat(formData.hourlyChargeAmount) : null,
-  isActive: parseInt(formData.isActive),
+  } catch (error) {
+    showErrorNotification(error, "Failed to update price list");
+  } finally {
+    setSubmitting(false);
+  }
 };
 
-
-    try {
-      const response = await apiClient.put(`/api/prices/${editingId}`, payload);
-
-      if (response.data && response.data.success) {
-        toast.success("✅ Price list updated successfully!");
-        resetForm();
-        await fetchPriceLists(currentPage, itemsPerPage);
-      } else {
-        const errorMsg = response.data?.message || "Failed to update price list";
-        setError(errorMsg);
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      showErrorNotification(error, "Failed to update price list");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   // Delete Price List
   const handleDeletePrice = async (id) => {
@@ -509,18 +627,49 @@ else {
     setValidationErrors({});
   };
 
-  // Pagination handlers
   const handleNextPage = () => {
-    if (hasNext) fetchPriceLists(currentPage + 1, itemsPerPage);
-  };
+  if (hasNext) {
+    fetchPriceLists(
+      currentPage + 1,
+      itemsPerPage,
+      filterCategoryName,
+      filterMinPrice,
+      filterMaxPrice,
+      filterDays,
+      sortBy,
+      sortDir
+    );
+  }
+};
 
-  const handlePrevPage = () => {
-    if (hasPrevious) fetchPriceLists(currentPage - 1, itemsPerPage);
-  };
+const handlePrevPage = () => {
+  if (hasPrevious) {
+    fetchPriceLists(
+      currentPage - 1,
+      itemsPerPage,
+      filterCategoryName,
+      filterMinPrice,
+      filterMaxPrice,
+      filterDays,
+      sortBy,
+      sortDir
+    );
+  }
+};
 
-  const handlePageClick = (pageNumber) => {
-    fetchPriceLists(pageNumber, itemsPerPage);
-  };
+const handlePageClick = (pageNumber) => {
+  fetchPriceLists(
+    pageNumber,
+    itemsPerPage,
+    filterCategoryName,
+    filterMinPrice,
+    filterMaxPrice,
+    filterDays,
+    sortBy,
+    sortDir
+  );
+};
+
 
   const getPageNumbers = () => {
     const pages = [];
@@ -734,30 +883,57 @@ else {
                 )}
 
                 {/* Hourly Charge (Only for hourly pricing) */}
-                {pricingType === "hourly" && (
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">
-                      Hourly Charge (₹/hour) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      name="hourlyChargeAmount"
-                      placeholder="Enter charge per hour"
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
-                        validationErrors.hourlyChargeAmount ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                      }`}
-                      value={formData.hourlyChargeAmount}
-                      onChange={handleInputChange}
-                      required
-                      min="0.01"
-                      step="0.01"
-                      disabled={submitting}
-                    />
-                    {validationErrors.hourlyChargeAmount && (
-                      <p className="text-xs text-red-600">{validationErrors.hourlyChargeAmount}</p>
-                    )}
-                  </div>
-                )}
+                {/* Hourly Charge - Only for hourly pricing */}
+{pricingType === "hourly" && (
+  <div className="space-y-2">
+    <label className="block text-sm font-semibold text-gray-700">
+      Hourly Charge (₹/hour) <span className="text-red-500">*</span>
+    </label>
+    <input
+      type="number"
+      name="hourlyChargeAmount"
+      placeholder="Enter charge per hour"
+      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+        validationErrors.hourlyChargeAmount ? "border-red-300 bg-red-50" : "border-gray-300"
+      }`}
+      value={formData.hourlyChargeAmount}
+      onChange={handleInputChange}
+      min="0.01"
+      step="0.01"
+      disabled={submitting}
+    />
+    {validationErrors.hourlyChargeAmount && (
+      <p className="text-xs text-red-600">{validationErrors.hourlyChargeAmount}</p>
+    )}
+  </div>
+)}
+
+{/* Days Input - Only for daily pricing */}
+{pricingType === "daily" && (
+  <div className="space-y-2">
+    <label className="block text-sm font-semibold text-gray-700">
+      Number of Days <span className="text-red-500">*</span>
+    </label>
+    <input
+      type="number"
+      name="days"
+      placeholder="e.g., 1, 7, 30, 365"
+      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ${
+        validationErrors.days ? "border-red-300 bg-red-50" : "border-gray-300"
+      }`}
+      value={formData.days}
+      onChange={handleInputChange}
+      min="1"
+      max="365"
+      disabled={submitting}
+    />
+    {validationErrors.days && (
+      <p className="text-xs text-red-600">{validationErrors.days}</p>
+    )}
+    <p className="text-xs text-gray-500">Common: 1 (Daily), 7 (Weekly), 30 (Monthly), 365 (Yearly)</p>
+  </div>
+)}
+
 
                 {/* Price */}
                 {/* <div className="space-y-2">
@@ -881,23 +1057,98 @@ else {
         ) : (
           <div className="bg-white rounded-xl shadow-lg overflow-hidden">
             {/* Search Bar */}
-            <div className="px-6 py-4 border-b bg-gray-50">
-              <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
-                <div className="text-sm text-gray-600">
-                  Showing <span className="font-semibold text-gray-900">{totalElements}</span> price lists
-                </div>
-                <div className="relative w-full sm:w-80">
-                  <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search by category, days, price..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-            </div>
+           {/* Enhanced Search and Filter Bar */}
+<div className="px-6 py-4 border-b bg-gray-50">
+  <div className="space-y-4">
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+      <div className="text-sm text-gray-600">
+        Showing <span className="font-semibold text-gray-900">{totalElements}</span> price lists
+      </div>
+    </div>
+
+   
+      {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Category Name
+          </label>
+          <input
+            type="text"
+            placeholder="Search category..."
+            value={filterCategoryName}
+            onChange={(e) => setFilterCategoryName(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+          />
+        </div>
+
+        
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Min Price (₹)
+          </label>
+          <input
+            type="number"
+            placeholder="Min price"
+            value={filterMinPrice}
+            onChange={(e) => setFilterMinPrice(e.target.value)}
+            min="0"
+            step="0.01"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+          />
+        </div>
+
+        
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Max Price (₹)
+          </label>
+          <input
+            type="number"
+            placeholder="Max price"
+            value={filterMaxPrice}
+            onChange={(e) => setFilterMaxPrice(e.target.value)}
+            min="0"
+            step="0.01"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+          />
+        </div>
+
+        
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Days
+          </label>
+          <input
+            type="number"
+            placeholder="Number of days"
+            value={filterDays}
+            onChange={(e) => setFilterDays(e.target.value)}
+            min="0"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+          />
+        </div>
+
+        
+        <div className="flex items-end space-x-2">
+          <button
+            onClick={handleSearch}
+            className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition duration-200 flex items-center justify-center text-sm font-medium"
+          >
+            <FaSearch className="mr-2" />
+            Search
+          </button>
+          <button
+            onClick={handleClearFilters}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition duration-200 text-sm font-medium"
+          >
+            Clear
+          </button>
+        </div>
+      </div> */}
+  </div>
+</div>
+
 
             {/* Table */}
             <div className="overflow-x-auto">
@@ -909,7 +1160,7 @@ else {
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Duration</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Price</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Deposit</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Hourly Rate</th>
+ <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Hourly Rate</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Actions</th>
                   </tr>

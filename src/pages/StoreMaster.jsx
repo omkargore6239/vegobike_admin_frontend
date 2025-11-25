@@ -17,6 +17,22 @@ import {
 import { toast } from 'react-toastify';
 import { apiClient, BASE_URL, storeAPI, cityAPI } from '../api/apiConfig';
 
+const useDebounce = (value, delay) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 const StoreManagement = () => {
   // State management
   const [stores, setStores] = useState([]);
@@ -26,6 +42,20 @@ const StoreManagement = () => {
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  // Add after existing state declarations (around line 30)
+const [filterStoreName, setFilterStoreName] = useState("");
+const [filterContactNumber, setFilterContactNumber] = useState("");
+const [filterCityName, setFilterCityName] = useState("");
+const [sortBy, setSortBy] = useState("createdAt");
+const [sortDir, setSortDir] = useState("desc");
+
+// Add after filter state variables
+const debouncedStoreName = useDebounce(filterStoreName, 500);
+const debouncedContactNumber = useDebounce(filterContactNumber, 500);
+const debouncedCityName = useDebounce(filterCityName, 500);
+
+
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(0);
@@ -46,6 +76,8 @@ const StoreManagement = () => {
   const [cities, setCities] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [citiesError, setCitiesError] = useState('');
+
+
 
   // ✅ Form data - UPDATED with cityId
   const [formData, setFormData] = useState({
@@ -146,20 +178,17 @@ const StoreManagement = () => {
     }
   }, [success, error]);
 
-  // Handle search
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      const filtered = stores.filter(
-        (store) =>
-          store.storeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          store.storeAddress?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          store.city?.cityName?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredStores(filtered);
-    } else {
-      setFilteredStores(stores);
-    }
-  }, [searchQuery, stores]);
+const handleClearFilters = () => {
+  setFilterStoreName("");
+  setFilterContactNumber("");
+  setFilterCityName("");
+  setSearchQuery("");
+  // fetchStores(0, itemsPerPage, "", "", "", sortBy, sortDir);
+};
+
+
+
+
 
   // ✅ Fetch cities on component mount
   useEffect(() => {
@@ -202,63 +231,122 @@ const StoreManagement = () => {
   };
 
   // Fetch stores
-  const fetchStores = async (page = 0, size = 10, retryAttempt = 0) => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await storeAPI.getAll({ page, size, sort: 'createdAt,desc' });
+  // Replace the existing fetchStores function
+const fetchStores = async (
+  page = 0,
+  size = 10,
+  storeName = "",
+  contactNumber = "",
+  cityName = "",
+  sortByParam = "createdAt",
+  sortDirParam = "desc",
+  retryAttempt = 0
+) => {
+  setLoading(true);
+  setError('');
+  
+  try {
+    // Build params object, only include non-empty values
+    const params = {
+      page,
+      size,
+      sort: `${sortByParam},${sortDirParam}`
+    };
+
+    // Add search filters only if they have values
+    if (storeName && storeName.trim() !== "") {
+      params.storeName = storeName.trim();
+    }
+    if (contactNumber && contactNumber.trim() !== "") {
+      params.contactNumber = contactNumber.trim();
+    }
+    if (cityName && cityName.trim() !== "") {
+      params.cityName = cityName.trim();
+    }
+
+    console.log('📡 Fetching stores with params:', params);
+    
+    const response = await storeAPI.getAll({ ...params });
+    
+    if (response.data && response.data.success) {
+      const storesData = response.data.data;
       
-      if (response.data && response.data.success) {
-        const storesData = response.data.data;
-        
-        // Process each store
-        const processedStores = storesData.map((store) => ({
-          ...store,
-          storeImage: store.storeImage ? getImageUrl(store.storeImage) : null
-        }));
-        
-        setStores(processedStores);
-        setFilteredStores(processedStores);
-        setRetryCount(0);
-        
-        if (response.data.pagination) {
-          setCurrentPage(response.data.pagination.currentPage);
-          setTotalPages(response.data.pagination.totalPages);
-          setTotalElements(response.data.pagination.totalElements);
-          setHasNext(response.data.pagination.hasNext);
-          setHasPrevious(response.data.pagination.hasPrevious);
-        }
-        
-        if (processedStores.length > 0) {
-          setSuccess(`Successfully loaded ${processedStores.length} stores`);
-          setTimeout(() => setSuccess(''), 3000);
-        }
-      } else {
-        setError('Failed to fetch stores data');
-        setStores([]);
-        setFilteredStores([]);
+      // Process each store
+      const processedStores = storesData.map((store) => ({
+        ...store,
+        storeImage: store.storeImage ? getImageUrl(store.storeImage) : null
+      }));
+      
+      setStores(processedStores);
+      setFilteredStores(processedStores);
+      setRetryCount(0);
+      
+      // Update pagination
+      if (response.data.pagination) {
+        setCurrentPage(response.data.pagination.currentPage);
+        setTotalPages(response.data.pagination.totalPages);
+        setTotalElements(response.data.pagination.totalElements);
+        setHasNext(response.data.pagination.hasNext);
+        setHasPrevious(response.data.pagination.hasPrevious);
       }
-    } catch (error) {
-      console.error('Error fetching stores:', error);
-      setError('Failed to fetch stores. Please check your connection and try again.');
+      
+      if (processedStores.length > 0) {
+        setSuccess(`Successfully loaded ${processedStores.length} stores`);
+        setTimeout(() => setSuccess(''), 3000);
+      }
+    } else {
+      setError('Failed to fetch stores data');
       setStores([]);
       setFilteredStores([]);
-      
-      // Retry logic
-      if (retryAttempt < 2) {
-        console.log(`Retrying stores fetch (attempt ${retryAttempt + 1}/3)...`);
-        setRetryCount(retryAttempt + 1);
-        setTimeout(() => fetchStores(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error('❌ Error fetching stores:', error);
+    setError('Failed to fetch stores. Please check your connection and try again.');
+    setStores([]);
+    setFilteredStores([]);
+    
+    // Retry logic
+    if (retryAttempt < 2) {
+      console.log(`Retrying stores fetch (attempt ${retryAttempt + 1}/3)...`);
+      setRetryCount(retryAttempt + 1);
+      setTimeout(
+        () => fetchStores(page, size, storeName, contactNumber, cityName, sortByParam, sortDirParam, retryAttempt + 1),
+        3000 * (retryAttempt + 1)
+      );
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
-  useEffect(() => {
-    fetchStores(currentPage, itemsPerPage);
-    window.scrollTo(0, 0);
-  }, []);
+
+  // Replace existing useEffect at line ~210
+useEffect(() => {
+  fetchStores(0, itemsPerPage, "", "", "", sortBy, sortDir);
+  fetchCities();
+  window.scrollTo(0, 0);
+}, []); // Empty dependency array - load only once
+
+// Add after the initial data load useEffect
+useEffect(() => {
+  // Skip the initial render (when all values are empty on mount)
+  if (debouncedStoreName === "" && debouncedContactNumber === "" && debouncedCityName === "") {
+    return;
+  }
+
+  // Trigger search when any debounced value changes
+  fetchStores(
+    0, // Reset to first page on new search
+    itemsPerPage,
+    debouncedStoreName,
+    debouncedContactNumber,
+    debouncedCityName,
+    sortBy,
+    sortDir
+  );
+}, [debouncedStoreName, debouncedContactNumber, debouncedCityName]);
+
+
 
   // Handle form input changes
   const handleInputChange = (e) => {
@@ -524,24 +612,47 @@ const StoreManagement = () => {
     fetchStores(currentPage, itemsPerPage);
   };
 
-  // Pagination handlers
-  const handleNextPage = () => {
-    if (hasNext) {
-      const nextPage = currentPage + 1;
-      fetchStores(nextPage, itemsPerPage);
-    }
-  };
+  // Replace existing pagination handlers (around line 528)
+const handleNextPage = () => {
+  if (hasNext) {
+    fetchStores(
+      currentPage + 1,
+      itemsPerPage,
+      filterStoreName,
+      filterContactNumber,
+      filterCityName,
+      sortBy,
+      sortDir
+    );
+  }
+};
 
-  const handlePrevPage = () => {
-    if (hasPrevious) {
-      const prevPage = currentPage - 1;
-      fetchStores(prevPage, itemsPerPage);
-    }
-  };
+const handlePrevPage = () => {
+  if (hasPrevious) {
+    fetchStores(
+      currentPage - 1,
+      itemsPerPage,
+      filterStoreName,
+      filterContactNumber,
+      filterCityName,
+      sortBy,
+      sortDir
+    );
+  }
+};
 
-  const handlePageClick = (pageNumber) => {
-    fetchStores(pageNumber, itemsPerPage);
-  };
+const handlePageClick = (pageNumber) => {
+  fetchStores(
+    pageNumber,
+    itemsPerPage,
+    filterStoreName,
+    filterContactNumber,
+    filterCityName,
+    sortBy,
+    sortDir
+  );
+};
+
 
   // Generate page numbers
   const getPageNumbers = () => {
@@ -562,9 +673,11 @@ const StoreManagement = () => {
   };
 
   // Get current page data
-  const getCurrentPageData = () => {
-    return searchQuery.trim() !== '' ? filteredStores : filteredStores;
-  };
+  // Replace existing getCurrentPageData function (around line 545)
+const getCurrentPageData = () => {
+  return filteredStores; // Return server-filtered data directly
+};
+
 
   // Image error handlers
   const handleImageError = (e, storeName) => {
@@ -985,25 +1098,112 @@ const StoreManagement = () => {
       ) : (
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           {/* Search and Filters */}
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
-              <h3 className="text-lg font-semibold text-gray-900">
-                All Stores ({totalElements} total)
-              </h3>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaSearch className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search stores..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-80"
-                />
-              </div>
-            </div>
-          </div>
+          {/* Enhanced Search and Filter Bar */}
+{/* Enhanced Search and Filter Bar */}
+<div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+  <div className="space-y-4">
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+      <h3 className="text-lg font-semibold text-gray-900">
+        All Stores ({totalElements} total)
+      </h3>
+      {loading && (
+        <span className="text-sm text-indigo-600 flex items-center">
+          <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Searching...
+        </span>
+      )}
+    </div>
+
+    {/* Filter Section */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Store Name Filter */}
+      <div className="relative">
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Store Name
+        </label>
+        <input
+          type="text"
+          placeholder="Type to search store name..."
+          value={filterStoreName}
+          onChange={(e) => setFilterStoreName(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+        />
+        {filterStoreName && (
+          <button
+            onClick={() => setFilterStoreName("")}
+            className="absolute right-3 top-8 text-gray-400 hover:text-gray-600"
+          >
+            <FaTimes size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Contact Number Filter */}
+      <div className="relative">
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Contact Number
+        </label>
+        <input
+          type="text"
+          placeholder="Type to search contact..."
+          value={filterContactNumber}
+          onChange={(e) => setFilterContactNumber(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+        />
+        {filterContactNumber && (
+          <button
+            onClick={() => setFilterContactNumber("")}
+            className="absolute right-3 top-8 text-gray-400 hover:text-gray-600"
+          >
+            <FaTimes size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* City Name Filter */}
+      <div className="relative">
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          City Name
+        </label>
+        <input
+          type="text"
+          placeholder="Type to search city..."
+          value={filterCityName}
+          onChange={(e) => setFilterCityName(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+        />
+        {filterCityName && (
+          <button
+            onClick={() => setFilterCityName("")}
+            className="absolute right-3 top-8 text-gray-400 hover:text-gray-600"
+          >
+            <FaTimes size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Clear All Button */}
+      <div className="flex items-end">
+        <button
+          onClick={handleClearFilters}
+          disabled={!filterStoreName && !filterContactNumber && !filterCityName}
+          className={`w-full px-4 py-2 rounded-lg transition duration-200 text-sm font-medium ${
+            filterStoreName || filterContactNumber || filterCityName
+              ? 'bg-red-100 text-red-700 hover:bg-red-200'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+          }`}
+        >
+          Clear All Filters
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 
           {/* Table */}
           <div className="overflow-x-auto">
@@ -1136,11 +1336,11 @@ const StoreManagement = () => {
                       </td>
                       {/* ✅ City Column */}
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 flex items-center">
-                          <FaCity className="mr-2 text-indigo-500" />
-                          {store.city?.cityName || store.city?.name || 'N/A'}
-                        </div>
-                      </td>
+  <div className="text-sm text-gray-900 flex items-center">
+    <FaCity className="mr-2 text-indigo-500" />
+    {store.cityName || store.city?.cityName || store.city?.name || "N/A"}
+  </div>
+</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {store.storeContactNumber}
@@ -1198,7 +1398,7 @@ const StoreManagement = () => {
           </div>
 
           {/* Pagination */}
-          {!loading && !searchQuery && stores.length > 0 && totalPages > 1 && (
+          {!loading && stores.length > 0 && totalPages > 1 && (
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
               <div className="flex items-center justify-between">
                 {/* Mobile pagination */}

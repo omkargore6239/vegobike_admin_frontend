@@ -109,145 +109,180 @@ const AllRegisterCustomers = () => {
   }, [searchQuery]);
 
   const handleSearch = async (query) => {
-    if (!query || query.trim() === "") {
-      fetchUsers(currentPage, itemsPerPage);
-      return;
-    }
+  if (!query || query.trim() === "") {
+    fetchUsers(currentPage, itemsPerPage);
+    return;
+  }
 
-    setIsSearching(true);
-    setError("");
+  setIsSearching(true);
+  setError("");
 
-    try {
-      console.log(`🔍 Searching users with query: "${query}"`);
+  try {
+    console.log(`🔍 Searching users with query: "${query}"`);
+    
+    const response = await apiClient.get("/api/auth/search", {
+      params: { searchText: query.trim() }
+    });
+    
+    if (response.data && Array.isArray(response.data)) {
+      const users = response.data;
       
-      const response = await apiClient.get("/api/auth/search", {
-        params: { searchText: query.trim() }
-      });
+      const processedUsers = users.map(user => ({
+        id: user.id,
+        name: user.name || 'N/A',
+        email: user.email || user.username || '',
+        phoneNumber: user.phoneNumber || '',
+        alternateNumber: user.alternateNumber || '',
+        address: user.address || '',
+        isActive: user.isActive,
+        isDocumentVerified: user.isDocumentVerified || 0, // ✅ Keep as number
+        roleId: user.roleId,
+        storeId: user.storeId,
+        accountNumber: user.accountNumber || '',
+        ifsc: user.ifsc || '',
+        upiId: user.upiId || '',
+        firebaseToken: user.firebaseToken || '',
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        profileImage: user.profileImage ? getImageUrl(user.profileImage, 'profile') : null,
+        aadharFrontSide: user.aadharFrontSide || null,
+        aadharBackSide: user.aadharBackSide || null,
+        drivingLicense: user.drivingLicense || null,
+        adhaarFrontStatus: user.isAdhaarFrontVerified !== undefined 
+          ? convertStatusToString(user.isAdhaarFrontVerified) 
+          : 'PENDING',
+        adhaarBackStatus: user.isAdhaarBackVerified !== undefined 
+          ? convertStatusToString(user.isAdhaarBackVerified) 
+          : 'PENDING',
+        licenseStatus: user.licenseStatus || 'PENDING'
+      }));
+      console.log('📊 Verification Status Breakdown:', {
+  verified: processedUsers.filter(u => u.isDocumentVerified === 1).length,
+  pending: processedUsers.filter(u => u.isDocumentVerified === 0).length,
+  rejected: processedUsers.filter(u => u.isDocumentVerified === 2).length,
+  total: processedUsers.length
+});
       
-      if (response.data && Array.isArray(response.data)) {
-        const users = response.data;
-        
-        const processedUsers = users.map(user => ({
-          id: user.id,
-          name: user.name || 'N/A',
-          email: user.email || user.username || '',
-          phoneNumber: user.phoneNumber || '',
-          alternateNumber: user.alternateNumber || '',
-          address: user.address || '',
-          isActive: user.isActive,
-          isDocumentVerified: user.isDocumentVerified || 0,
-          roleId: user.roleId,
-          storeId: user.storeId,
-          accountNumber: user.accountNumber || '',
-          ifsc: user.ifsc || '',
-          upiId: user.upiId || '',
-          firebaseToken: user.firebaseToken || '',
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-          profileImage: user.profileImage ? getImageUrl(user.profileImage, 'profile') : null,
-          aadharFrontSide: user.aadharFrontSide || null,
-          aadharBackSide: user.aadharBackSide || null,
-          drivingLicense: user.drivingLicense || null,
-          adhaarFrontStatus: user.isAdhaarFrontVerified || 'PENDING',
-          adhaarBackStatus: user.isAdhaarBackVerified || 'PENDING',
-          licenseStatus: user.licenseStatus || 'PENDING'
-        }));
-        
-        setData(processedUsers);
-        setFilteredData(processedUsers);
-        setTotalElements(processedUsers.length);
-        setTotalPages(1);
-        setCurrentPage(0);
-        
-        if (processedUsers.length > 0) {
-          toast.success(`🔍 Found ${processedUsers.length} customer(s)`, { autoClose: 2000 });
-        } else {
-          toast.info(`ℹ️ No customers found`, { autoClose: 2000 });
-        }
+      setData(processedUsers);
+      setFilteredData(processedUsers);
+      setTotalElements(processedUsers.length);
+      setTotalPages(1);
+      setCurrentPage(0);
+      
+      if (processedUsers.length > 0) {
+        toast.success(`🔍 Found ${processedUsers.length} customer(s)`, { autoClose: 2000 });
+      } else {
+        toast.info(`ℹ️ No customers found`, { autoClose: 2000 });
       }
-    } catch (error) {
-      console.error("❌ Error searching users:", error);
-      showErrorNotification(error, "Search failed");
-      setData([]);
-      setFilteredData([]);
-    } finally {
-      setIsSearching(false);
     }
-  };
+  } catch (error) {
+    console.error("❌ Error searching users:", error);
+    showErrorNotification(error, "Search failed");
+    setData([]);
+    setFilteredData([]);
+  } finally {
+    setIsSearching(false);
+  }
+};
+
+const convertStatusToString = (numericStatus) => {
+  if (numericStatus === 1) return 'VERIFIED';
+  if (numericStatus === 2) return 'REJECTED';
+  return 'PENDING';
+};
+
+// ✅ FIXED: Convert frontend string status to backend numeric status
+const convertStatusToNumber = (stringStatus) => {
+  if (stringStatus === 'VERIFIED') return 1;
+  if (stringStatus === 'REJECTED') return 2;
+  return 0;
+};
 
   const fetchUsers = async (page = 0, size = 10, retryAttempt = 0) => {
-    setLoading(true);
-    setError("");
+  setLoading(true);
+  setError("");
+  
+  try {
+    console.log(`🔄 Fetching users: page=${page}, size=${size}`);
     
-    try {
-      console.log(`🔄 Fetching users: page=${page}, size=${size}`);
+    const response = await apiClient.get("/api/auth/users", {
+      params: { page, size }
+    });
+    
+    console.log("✅ Users API Response:", response.data);
+    
+    if (response.data && response.data.users && Array.isArray(response.data.users)) {
+      const users = response.data.users;
       
-      const response = await apiClient.get("/api/auth/users", {
-        params: { page, size }
-      });
+      const processedUsers = users.map(user => ({
+        id: user.id,
+        name: user.name || 'N/A',
+        email: user.email || user.username || '',
+        phoneNumber: user.phoneNumber || '',
+        alternateNumber: user.alternateNumber || '',
+        address: user.address || '',
+        isActive: user.isActive,
+        isDocumentVerified: user.isDocumentVerified || 0, // ✅ Keep as number
+        roleId: user.roleId,
+        storeId: user.storeId,
+        accountNumber: user.accountNumber || '',
+        ifsc: user.ifsc || '',
+        upiId: user.upiId || '',
+        firebaseToken: user.firebaseToken || '',
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        profileImage: user.profileImage ? getImageUrl(user.profileImage, 'profile') : null,
+        aadharFrontSide: user.aadharFrontSide || null,
+        aadharBackSide: user.aadharBackSide || null,
+        drivingLicense: user.drivingLicense || null,
+        // ✅ FIXED: Convert individual document statuses properly
+        adhaarFrontStatus: user.isAdhaarFrontVerified !== undefined 
+          ? convertStatusToString(user.isAdhaarFrontVerified) 
+          : 'PENDING',
+        adhaarBackStatus: user.isAdhaarBackVerified !== undefined 
+          ? convertStatusToString(user.isAdhaarBackVerified) 
+          : 'PENDING',
+        licenseStatus: user.licenseStatus || 'PENDING'
+      }));
+
+      console.log('📊 Verification Status Breakdown:', {
+  verified: processedUsers.filter(u => u.isDocumentVerified === 1).length,
+  pending: processedUsers.filter(u => u.isDocumentVerified === 0).length,
+  rejected: processedUsers.filter(u => u.isDocumentVerified === 2).length,
+  total: processedUsers.length
+});
       
-      console.log("✅ Users API Response:", response.data);
+      setData(processedUsers);
+      setFilteredData(processedUsers);
+      setTotalPages(response.data.totalPages || Math.ceil(users.length / size));
+      setTotalElements(response.data.count || users.length);
+      setCurrentPage(response.data.currentPage || page);
+      setRetryCount(0);
       
-      if (response.data && response.data.users && Array.isArray(response.data.users)) {
-        const users = response.data.users;
-        
-        const processedUsers = users.map(user => ({
-          id: user.id,
-          name: user.name || 'N/A',
-          email: user.email || user.username || '',
-          phoneNumber: user.phoneNumber || '',
-          alternateNumber: user.alternateNumber || '',
-          address: user.address || '',
-          isActive: user.isActive,
-          isDocumentVerified: user.isDocumentVerified || 0,
-          roleId: user.roleId,
-          storeId: user.storeId,
-          accountNumber: user.accountNumber || '',
-          ifsc: user.ifsc || '',
-          upiId: user.upiId || '',
-          firebaseToken: user.firebaseToken || '',
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-          profileImage: user.profileImage ? getImageUrl(user.profileImage, 'profile') : null,
-          aadharFrontSide: user.aadharFrontSide || null,
-          aadharBackSide: user.aadharBackSide || null,
-          drivingLicense: user.drivingLicense || null,
-          adhaarFrontStatus: user.isAdhaarFrontVerified || 'PENDING',
-          adhaarBackStatus: user.isAdhaarBackVerified || 'PENDING',
-          licenseStatus: user.licenseStatus || 'PENDING'
-        }));
-        
-        setData(processedUsers);
-        setFilteredData(processedUsers);
-        setTotalPages(response.data.totalPages || Math.ceil(users.length / size));
-        setTotalElements(response.data.count || users.length);
-        setCurrentPage(response.data.currentPage || page);
-        setRetryCount(0);
-        
-        if (processedUsers.length > 0) {
-          setSuccess(`Successfully loaded ${processedUsers.length} users`);
-          setTimeout(() => setSuccess(""), 3000);
-        }
-      } else {
-        console.error("❌ Invalid response structure:", response.data);
-        setError("No users found or invalid response");
-        setData([]);
-        setFilteredData([]);
+      if (processedUsers.length > 0) {
+        setSuccess(`Successfully loaded ${processedUsers.length} users`);
+        setTimeout(() => setSuccess(""), 3000);
       }
-    } catch (error) {
-      console.error("❌ Error fetching users:", error);
-      showErrorNotification(error, "Failed to fetch users");
+    } else {
+      console.error("❌ Invalid response structure:", response.data);
+      setError("No users found or invalid response");
       setData([]);
       setFilteredData([]);
-      
-      if (retryAttempt < 2) {
-        setRetryCount(retryAttempt + 1);
-        setTimeout(() => fetchUsers(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error("❌ Error fetching users:", error);
+    showErrorNotification(error, "Failed to fetch users");
+    setData([]);
+    setFilteredData([]);
+    
+    if (retryAttempt < 2) {
+      setRetryCount(retryAttempt + 1);
+      setTimeout(() => fetchUsers(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchUsers(currentPage, itemsPerPage);
@@ -255,20 +290,34 @@ const AllRegisterCustomers = () => {
   }, []);
 
   const getUserVerificationStatus = (user) => {
-    const statuses = [
-      user.isAdhaarFrontVerified || 'PENDING',
-      user.isAdhaarBackVerified || 'PENDING', 
-      user.licenseStatus || 'PENDING'
-    ];
-    
-    if (statuses.every(status => status === 'VERIFIED')) {
-      return { status: "Verified", color: "green", icon: <FaCheckCircle />, gradient: "from-green-500 to-emerald-600" };
-    } else if (statuses.some(status => status === 'REJECTED')) {
-      return { status: "Rejected", color: "red", icon: <FaTimesCircle />, gradient: "from-red-500 to-rose-600" };
-    } else {
-      return { status: "Pending", color: "yellow", icon: <FaExclamationTriangle />, gradient: "from-yellow-500 to-amber-600" };
-    }
-  };
+  // Check isDocumentVerified field: 0 = PENDING, 1 = VERIFIED, 2 = REJECTED
+  const status = user.isDocumentVerified;
+  
+  console.log(`User ${user.id} - isDocumentVerified:`, status, typeof status); // Debug log
+  
+  if (status === 1) {
+    return { 
+      status: "Verified", 
+      color: "green", 
+      icon: <FaCheckCircle />, 
+      gradient: "from-green-500 to-emerald-600" 
+    };
+  } else if (status === 2) {
+    return { 
+      status: "Rejected", 
+      color: "red", 
+      icon: <FaTimesCircle />, 
+      gradient: "from-red-500 to-rose-600" 
+    };
+  } else { // status === 0 or undefined
+    return { 
+      status: "Pending", 
+      color: "yellow", 
+      icon: <FaExclamationTriangle />, 
+      gradient: "from-yellow-500 to-amber-600" 
+    };
+  }
+};
 
   // ✅ UPDATED: Fetch documents from API when viewing user
   // ✅ FIXED: handleView function with correct field names
@@ -789,52 +838,56 @@ const handleView = async (user) => {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-blue-600 uppercase">Total Customers</p>
-                    <p className="text-2xl font-bold text-blue-900 mt-1">{totalElements}</p>
-                  </div>
-                  <FaUser className="text-3xl text-blue-400" />
-                </div>
-              </div>
+  {/* Total Customers */}
+  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-xs font-medium text-blue-600 uppercase">Total Customers</p>
+        <p className="text-2xl font-bold text-blue-900 mt-1">{totalElements}</p>
+      </div>
+      <FaUser className="text-3xl text-blue-400" />
+    </div>
+  </div>
 
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-green-600 uppercase">Verified</p>
-                    <p className="text-2xl font-bold text-green-900 mt-1">
-                      {data.filter(u => getUserVerificationStatus(u).status === 'Verified').length}
-                    </p>
-                  </div>
-                  <FaCheckCircle className="text-3xl text-green-400" />
-                </div>
-              </div>
+  {/* Verified - Count where isDocumentVerified === 1 */}
+  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-xs font-medium text-green-600 uppercase">Verified</p>
+        <p className="text-2xl font-bold text-green-900 mt-1">
+          {data.filter(u => u.isDocumentVerified === 1).length}
+        </p>
+      </div>
+      <FaCheckCircle className="text-3xl text-green-400" />
+    </div>
+  </div>
 
-              <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-yellow-600 uppercase">Pending</p>
-                    <p className="text-2xl font-bold text-yellow-900 mt-1">
-                      {data.filter(u => getUserVerificationStatus(u).status === 'Pending').length}
-                    </p>
-                  </div>
-                  <FaExclamationTriangle className="text-3xl text-yellow-400" />
-                </div>
-              </div>
+  {/* Pending - Count where isDocumentVerified === 0 */}
+  <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-100">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-xs font-medium text-yellow-600 uppercase">Pending</p>
+        <p className="text-2xl font-bold text-yellow-900 mt-1">
+          {data.filter(u => u.isDocumentVerified === 0 || u.isDocumentVerified === undefined).length}
+        </p>
+      </div>
+      <FaExclamationTriangle className="text-3xl text-yellow-400" />
+    </div>
+  </div>
 
-              <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-4 border border-red-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-red-600 uppercase">Rejected</p>
-                    <p className="text-2xl font-bold text-red-900 mt-1">
-                      {data.filter(u => getUserVerificationStatus(u).status === 'Rejected').length}
-                    </p>
-                  </div>
-                  <FaTimesCircle className="text-3xl text-red-400" />
-                </div>
-              </div>
-            </div>
+  {/* Rejected - Count where isDocumentVerified === 2 */}
+  <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-4 border border-red-100">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-xs font-medium text-red-600 uppercase">Rejected</p>
+        <p className="text-2xl font-bold text-red-900 mt-1">
+          {data.filter(u => u.isDocumentVerified === 2).length}
+        </p>
+      </div>
+      <FaTimesCircle className="text-3xl text-red-400" />
+    </div>
+  </div>
+</div>
 
             {error && (
               <div className="mb-6 bg-red-50 border-l-4 border-red-500 rounded-xl p-4 flex items-start space-x-3">
@@ -967,11 +1020,11 @@ const handleView = async (user) => {
                               </span>
                             </td>
                             <td className="px-6 py-4">
-                              <div className={`flex items-center space-x-2 px-3 py-1 rounded-full bg-gradient-to-r ${verificationStatus.gradient} text-white w-fit`}>
-                                {verificationStatus.icon}
-                                <span className="text-xs font-semibold">{verificationStatus.status}</span>
-                              </div>
-                            </td>
+  <div className={`flex items-center space-x-2 px-3 py-1 rounded-full bg-gradient-to-r ${verificationStatus.gradient} text-white w-fit`}>
+    {verificationStatus.icon}
+    <span className="text-xs font-semibold">{verificationStatus.status}</span>
+  </div>
+</td>
                             <td className="px-6 py-4">
                               <p className="text-sm text-gray-900">{formatDate(user.createdAt)}</p>
                             </td>

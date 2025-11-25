@@ -1,18 +1,30 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { FaEdit, FaEye } from 'react-icons/fa';
+import { FaEdit, FaEye, FaSort, FaSortUp, FaSortDown } from 'react-icons/fa';
 
 const AllCity = () => {
   // State management
   const [cities, setCities] = useState([]);
   const [activeCities, setActiveCities] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [togglingIds, setTogglingIds] = useState(new Set()); // Track which cities are being toggled
+  const [togglingIds, setTogglingIds] = useState(new Set());
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingCity, setEditingCity] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [citiesPerPage] = useState(10);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  
+  // Backend pagination states
+  const [currentPage, setCurrentPage] = useState(0);
+  const [citiesPerPage, setCitiesPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  
+  // Sorting states
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState('DESC');
+  
   const [showActiveOnly, setShowActiveOnly] = useState(false);
 
   // Form state
@@ -30,13 +42,23 @@ const AllCity = () => {
   const API_BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:8081';
   
   const API_ENDPOINTS = useMemo(() => ({
-    getAllCities: `${API_BASE_URL}/api/cities`,
+    getAllCities: `${API_BASE_URL}/api/cities/all`,
     getCityById: (id) => `${API_BASE_URL}/api/cities/${id}`,
     createCity: `${API_BASE_URL}/api/cities/add`,
     updateCity: (id) => `${API_BASE_URL}/api/cities/${id}`,
     getActiveCities: `${API_BASE_URL}/api/cities/active`,
     toggleCityStatus: (id) => `${API_BASE_URL}/api/cities/${id}/toggle-status`
   }), [API_BASE_URL]);
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(0);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Image URL helper function
   const fixImageUrl = useCallback((imagePath) => {
@@ -59,7 +81,7 @@ const AllCity = () => {
     return `${API_BASE_URL}/uploads/${path}`;
   }, [API_BASE_URL]);
 
-  // ✅ **NEW**: Simple Toggle Switch Component
+  // Toggle Switch Component
   const ToggleSwitch = React.memo(({ cityId, isActive, onToggle, disabled }) => {
     const isToggling = togglingIds.has(cityId);
     
@@ -212,28 +234,56 @@ const AllCity = () => {
     }
   }, []);
 
-  // Fetch all cities
+  // Fetch all cities with backend pagination
   const fetchAllCities = useCallback(async () => {
-    if (loading) return; // Prevent multiple simultaneous calls
+    if (loading) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      console.log('🔄 Fetching all cities from:', API_ENDPOINTS.getAllCities);
-      const data = await makeApiCall(API_ENDPOINTS.getAllCities);
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        size: citiesPerPage.toString(),
+        sortBy: sortBy,
+        direction: sortDirection
+      });
+
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        params.append('cityName', debouncedSearchTerm.trim());
+      }
+
+      const url = `${API_ENDPOINTS.getAllCities}?${params.toString()}`;
+      console.log('🔄 Fetching cities from:', url);
       
-      const citiesData = Array.isArray(data) ? data : [];
-      setCities(citiesData);
-      console.log('✅ Cities data updated:', citiesData.length, 'cities');
+      const response = await makeApiCall(url);
+      
+      if (response.success && response.data) {
+        setCities(response.data);
+        
+        if (response.pagination) {
+          setCurrentPage(response.pagination.currentPage);
+          setTotalPages(response.pagination.totalPages);
+          setTotalElements(response.pagination.totalElements);
+          setHasNext(response.pagination.hasNext);
+          setHasPrevious(response.pagination.hasPrevious);
+        }
+        
+        console.log('✅ Cities data updated:', response.data.length, 'cities on page', currentPage + 1);
+      } else {
+        setCities([]);
+        setTotalPages(0);
+        setTotalElements(0);
+      }
       
     } catch (err) {
       setError('Failed to fetch cities: ' + err.message);
       console.error('❌ Error fetching cities:', err);
+      setCities([]);
     } finally {
       setLoading(false);
     }
-  }, [API_ENDPOINTS.getAllCities, makeApiCall, loading]);
+  }, [API_ENDPOINTS.getAllCities, makeApiCall, currentPage, citiesPerPage, sortBy, sortDirection, debouncedSearchTerm, loading]);
 
   // Fetch active cities
   const fetchActiveCities = useCallback(async () => {
@@ -250,35 +300,70 @@ const AllCity = () => {
     }
   }, [API_ENDPOINTS.getActiveCities, makeApiCall]);
 
-  // Load cities on component mount
+  // Fetch cities when pagination/sort/search changes
   useEffect(() => {
-    console.log('🚀 Component mounted, API Base URL:', API_BASE_URL);
-    fetchAllCities();
+    console.log('🚀 Component mounted or dependencies changed');
+    if (!showActiveOnly) {
+      fetchAllCities();
+    }
     fetchActiveCities();
-  }, []);
+  }, [currentPage, citiesPerPage, sortBy, sortDirection, debouncedSearchTerm, showActiveOnly]);
 
-  // ✅ **FIXED**: Simple toggle status function without confirmation
-  const toggleCityStatus = useCallback(async (cityId) => {
-    // Add city to toggling set
-    setTogglingIds(prev => new Set([...prev, cityId]));
-    setError(null);
+  // ✅ TEMPORARY WORKAROUND - Replace your toggleCityStatus function
+const toggleCityStatus = useCallback(async (cityId) => {
+  setTogglingIds(prev => new Set([...prev, cityId]));
+  setError(null);
 
-    try {
-      const toggleUrl = API_ENDPOINTS.toggleCityStatus(cityId);
-      console.log('🔄 Toggling status for city:', cityId, 'URL:', toggleUrl);
+  try {
+    const toggleUrl = API_ENDPOINTS.toggleCityStatus(cityId);
+    console.log('🔄 Toggling status for city:', cityId, 'URL:', toggleUrl);
+    
+    const result = await makeApiCall(toggleUrl, {
+      method: 'PATCH'
+    });
+    
+    console.log('✅ Toggle result:', result);
+    console.log('✅ New isActive value:', result.isActive);
+    
+    // ✅ WORKAROUND: If isActive is undefined, fetch the current city and toggle it
+    if (result.isActive === undefined || result.isActive === null) {
+      console.warn('⚠️ Backend not returning isActive, calculating locally');
       
-      const result = await makeApiCall(toggleUrl, {
-        method: 'PATCH'
+      setCities(prevCities => {
+        const updatedCities = prevCities.map(city => {
+          if (city.id === cityId) {
+            // Toggle the current status
+            const newIsActive = city.isActive === 1 ? 0 : 1;
+            console.log(`🔄 Toggling city ${cityId} from ${city.isActive} to ${newIsActive}`);
+            return { ...result, isActive: newIsActive };
+          }
+          return city;
+        });
+        console.log('✅ Updated cities array:', updatedCities);
+        return updatedCities;
       });
       
-      console.log('✅ Toggle result:', result);
-      
-      // ✅ **FIXED**: Update local state immediately for better UX
-      setCities(prevCities => 
-        prevCities.map(city => 
-          city.id === cityId ? { ...city, isActive: result.isActive } : city
-        )
-      );
+      // Update active cities list
+      setActiveCities(prev => {
+        const currentCity = cities.find(c => c.id === cityId);
+        if (!currentCity) return prev;
+        
+        const newIsActive = currentCity.isActive === 1 ? 0 : 1;
+        if (newIsActive === 1) {
+          return [...prev.filter(c => c.id !== cityId), { ...result, isActive: newIsActive }];
+        } else {
+          return prev.filter(c => c.id !== cityId);
+        }
+      });
+    } else {
+      // Normal flow when backend returns isActive correctly
+      setCities(prevCities => {
+        const updatedCities = prevCities.map(city => 
+          city.id === cityId ? { ...result } : city
+        );
+        console.log('✅ Updated cities array:', updatedCities);
+        return updatedCities;
+      });
 
       // Update active cities list
       if (result.isActive === 1) {
@@ -289,26 +374,27 @@ const AllCity = () => {
       } else {
         setActiveCities(prev => prev.filter(c => c.id !== cityId));
       }
-
-      console.log(`✅ City ${cityId} status changed to:`, result.isActive === 1 ? 'Active' : 'Inactive');
-
-    } catch (err) {
-      setError(`Failed to toggle city status: ${err.message}`);
-      console.error('❌ Toggle status error:', err);
-      
-      // Refresh data on error to ensure consistency
-      await Promise.all([fetchAllCities(), fetchActiveCities()]);
-    } finally {
-      // Remove city from toggling set
-      setTogglingIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(cityId);
-        return newSet;
-      });
     }
-  }, [API_ENDPOINTS, makeApiCall, fetchAllCities, fetchActiveCities]);
 
-  // Form validation
+    console.log(`✅ City ${cityId} status toggled successfully`);
+
+  } catch (err) {
+    setError(`Failed to toggle city status: ${err.message}`);
+    console.error('❌ Toggle status error:', err);
+    
+    // Refresh data on error
+    await Promise.all([fetchAllCities(), fetchActiveCities()]);
+  } finally {
+    setTogglingIds(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(cityId);
+      return newSet;
+    });
+  }
+}, [API_ENDPOINTS, makeApiCall, fetchAllCities, fetchActiveCities, cities]);
+
+
+
   const validateForm = useCallback(() => {
     const errors = {};
     if (!formData.cityName.trim()) {
@@ -400,11 +486,11 @@ const AllCity = () => {
       isActive: city.isActive !== undefined ? city.isActive : 1
     });
     setSelectedImage(null);
-    setImagePreview(city.cityImage || null);
+    setImagePreview(city.cityImage ? fixImageUrl(city.cityImage) : null);
     setFormErrors({});
     setError(null);
     setShowModal(true);
-  }, []);
+  }, [fixImageUrl]);
 
   // Submit form
   const handleSubmit = useCallback(async (e) => {
@@ -442,6 +528,8 @@ const AllCity = () => {
         body: formDataObj
       });
 
+      console.log('✅ City saved successfully:', result);
+
       setShowModal(false);
       resetForm();
       
@@ -467,31 +555,56 @@ const AllCity = () => {
   // Handle show active cities toggle
   const handleShowActiveToggle = useCallback(() => {
     setShowActiveOnly(prev => !prev);
-    setCurrentPage(1);
+    setCurrentPage(0);
   }, []);
 
-  // Filtered cities
-  const filteredCities = useMemo(() => {
-    const displayCities = showActiveOnly ? activeCities : cities;
-    return displayCities.filter(city =>
-      (city.cityName || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [cities, activeCities, showActiveOnly, searchTerm]);
+  // Handle page size change
+  const handlePageSizeChange = useCallback((e) => {
+    setCitiesPerPage(Number(e.target.value));
+    setCurrentPage(0);
+  }, []);
 
-  // Pagination data
-  const paginationData = useMemo(() => {
-    const indexOfLastCity = currentPage * citiesPerPage;
-    const indexOfFirstCity = indexOfLastCity - citiesPerPage;
-    const currentCities = filteredCities.slice(indexOfFirstCity, indexOfLastCity);
-    const totalPages = Math.ceil(filteredCities.length / citiesPerPage);
+  // Handle sort change
+  const handleSortChange = useCallback((field) => {
+    if (sortBy === field) {
+      setSortDirection(prev => prev === 'ASC' ? 'DESC' : 'ASC');
+    } else {
+      setSortBy(field);
+      setSortDirection('DESC');
+    }
+    setCurrentPage(0);
+  }, [sortBy]);
 
-    return { currentCities, totalPages };
-  }, [filteredCities, currentPage, citiesPerPage]);
+  // Get sort icon
+  const getSortIcon = useCallback((field) => {
+    if (sortBy !== field) {
+      return <FaSort className="inline ml-1 text-gray-400" />;
+    }
+    return sortDirection === 'ASC' 
+      ? <FaSortUp className="inline ml-1 text-blue-600" />
+      : <FaSortDown className="inline ml-1 text-blue-600" />;
+  }, [sortBy, sortDirection]);
 
-  // Reset pagination when search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, showActiveOnly]);
+  // Display cities based on showActiveOnly
+  const displayCities = useMemo(() => {
+    return showActiveOnly ? activeCities : cities;
+  }, [showActiveOnly, cities, activeCities]);
+
+  // Format date helper
+  const formatDate = useCallback((timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
+  }, []);
 
   return (
     <div className="p-6 max-w-7xl mx-auto bg-gray-50 min-h-screen">
@@ -499,6 +612,9 @@ const AllCity = () => {
       <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-lg">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">City Management</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {showActiveOnly ? 'Active Cities' : 'All Cities'} - Server-side Pagination
+          </p>
         </div>
         <div className="flex gap-3">
           <button 
@@ -522,26 +638,41 @@ const AllCity = () => {
         </div>
       </div>
 
-      {/* Search and Stats */}
+      {/* Search, Filter, and Stats */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm">
-        <div className="flex-1">
+        <div className="flex-1 flex gap-3 items-center flex-wrap">
           <input
             type="text"
             placeholder="Search cities by name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full max-w-md px-4 py-2 border-2 border-gray-200 rounded-full text-sm focus:outline-none focus:border-blue-500 transition duration-300"
+            className="flex-1 min-w-[250px] max-w-md px-4 py-2 border-2 border-gray-200 rounded-full text-sm focus:outline-none focus:border-blue-500 transition duration-300"
           />
+          
+          {!showActiveOnly && (
+            <select
+              value={citiesPerPage}
+              onChange={handlePageSizeChange}
+              className="px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition duration-300"
+              disabled={loading}
+            >
+              <option value={5}>5 per page</option>
+              <option value={10}>10 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+            </select>
+          )}
         </div>
+        
         <div className="flex flex-wrap gap-4">
           <span className="px-4 py-2 bg-gray-100 rounded-full text-sm font-medium">
-            Total Cities: {cities.length}
+            Total: {showActiveOnly ? activeCities.length : totalElements}
           </span>
           <span className="px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-medium">
             Active: {activeCities.length}
           </span>
           <span className="px-4 py-2 bg-red-100 text-red-700 rounded-full text-sm font-medium">
-            Inactive: {cities.length - activeCities.length}
+            Inactive: {showActiveOnly ? 0 : (totalElements - activeCities.length)}
           </span>
         </div>
       </div>
@@ -565,9 +696,9 @@ const AllCity = () => {
       {/* Loading Overlay */}
       {loading && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Processing...</p>
+          <div className="bg-white p-6 rounded-lg shadow-xl">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600 font-medium">Processing...</p>
           </div>
         </div>
       )}
@@ -576,20 +707,66 @@ const AllCity = () => {
       <div className="bg-white rounded-xl shadow-lg overflow-hidden mb-6">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b-2 border-gray-200">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">ID</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => !showActiveOnly && handleSortChange('id')}
+                    disabled={showActiveOnly}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    ID
+                    {!showActiveOnly && getSortIcon('id')}
+                  </button>
+                </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Image</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">City Name</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Created At</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => !showActiveOnly && handleSortChange('cityName')}
+                    disabled={showActiveOnly}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    City Name
+                    {!showActiveOnly && getSortIcon('cityName')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => !showActiveOnly && handleSortChange('isActive')}
+                    disabled={showActiveOnly}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    Status
+                    {!showActiveOnly && getSortIcon('isActive')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => !showActiveOnly && handleSortChange('createdAt')}
+                    disabled={showActiveOnly}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    Created At
+                    {!showActiveOnly && getSortIcon('createdAt')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                  <button
+                    onClick={() => !showActiveOnly && handleSortChange('updatedAt')}
+                    disabled={showActiveOnly}
+                    className="flex items-center hover:text-blue-600 transition"
+                  >
+                    Updated At
+                    {!showActiveOnly && getSortIcon('updatedAt')}
+                  </button>
+                </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {paginationData.currentCities.length === 0 ? (
+              {displayCities.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500 italic">
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500 italic">
                     {loading 
                       ? 'Loading cities...' 
                       : searchTerm 
@@ -601,15 +778,14 @@ const AllCity = () => {
                   </td>
                 </tr>
               ) : (
-                paginationData.currentCities.map((city) => (
-                  <tr key={city.id} className="hover:bg-gray-50 transition duration-200">
+                displayCities.map((city) => (
+                  <tr key={city.id} className="hover:bg-blue-50 transition duration-200">
                     <td className="px-6 py-4 text-sm text-gray-600 font-medium">{city.id}</td>
                     <td className="px-6 py-4">
                       <CityImage city={city} />
                     </td>
                     <td className="px-6 py-4 font-semibold text-blue-600">{city.cityName || 'N/A'}</td>
                     <td className="px-6 py-4">
-                      {/* ✅ **NEW**: Simple Small Toggle Switch */}
                       <ToggleSwitch 
                         cityId={city.id}
                         isActive={city.isActive}
@@ -618,11 +794,10 @@ const AllCity = () => {
                       />
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {city.createdAt ? new Date(city.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      }) : 'N/A'}
+                      {formatDate(city.createdAt)}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {formatDate(city.updatedAt)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex space-x-2">
@@ -655,28 +830,74 @@ const AllCity = () => {
         </div>
       </div>
 
-      {/* Pagination */}
-      {paginationData.totalPages > 1 && (
-        <div className="flex justify-center items-center space-x-4 bg-white p-4 rounded-xl shadow-sm">
-          <button 
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1 || loading}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-          >
-            Previous
-          </button>
+      {/* Enhanced Pagination */}
+      {!showActiveOnly && totalPages > 0 && (
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm">
+          <div className="text-sm text-gray-600">
+            Showing <span className="font-semibold text-blue-600">{(currentPage * citiesPerPage) + 1}</span> to{' '}
+            <span className="font-semibold text-blue-600">
+              {Math.min((currentPage + 1) * citiesPerPage, totalElements)}
+            </span>{' '}
+            of <span className="font-semibold text-blue-600">{totalElements}</span> cities
+          </div>
           
-          <span className="px-4 py-2 text-sm font-medium text-gray-700">
-            Page {currentPage} of {paginationData.totalPages} ({filteredCities.length} cities)
-          </span>
+          <div className="flex items-center space-x-2">
+            <button 
+              onClick={() => setCurrentPage(0)}
+              disabled={!hasPrevious || loading}
+              className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+              title="First Page"
+            >
+              &laquo; First
+            </button>
+            
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 0))}
+              disabled={!hasPrevious || loading}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+            >
+              &lsaquo; Prev
+            </button>
+            
+            <span className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg">
+              Page {currentPage + 1} of {totalPages}
+            </span>
+            
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1))}
+              disabled={!hasNext || loading}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+            >
+              Next &rsaquo;
+            </button>
+            
+            <button 
+              onClick={() => setCurrentPage(totalPages - 1)}
+              disabled={!hasNext || loading}
+              className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+              title="Last Page"
+            >
+              Last &raquo;
+            </button>
+          </div>
           
-          <button 
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, paginationData.totalPages))}
-            disabled={currentPage === paginationData.totalPages || loading}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-          >
-            Next
-          </button>
+          {/* Page Jump */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Go to:</span>
+            <input
+              type="number"
+              min="1"
+              max={totalPages}
+              value={currentPage + 1}
+              onChange={(e) => {
+                const page = parseInt(e.target.value) - 1;
+                if (page >= 0 && page < totalPages) {
+                  setCurrentPage(page);
+                }
+              }}
+              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:border-blue-500"
+            />
+          </div>
         </div>
       )}
 
@@ -694,12 +915,12 @@ const AllCity = () => {
             className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-800">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-blue-600">
+              <h2 className="text-xl font-bold text-white">
                 {editingCity ? `Edit City (ID: ${editingCity.id})` : 'Add New City'}
               </h2>
               <button 
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold w-8 h-8 flex items-center justify-center"
+                className="text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center"
                 onClick={() => setShowModal(false)}
               >
                 ×
@@ -717,18 +938,18 @@ const AllCity = () => {
                   name="image"
                   accept="image/*"
                   onChange={handleImageChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 transition"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Supported: JPG, PNG, GIF. Max size: 5MB
                 </p>
                 
                 {imagePreview && (
-                  <div className="mt-3 relative">
+                  <div className="mt-3 relative inline-block">
                     <img 
                       src={imagePreview} 
                       alt="Preview" 
-                      className="w-24 h-24 rounded-lg object-cover border border-gray-200"
+                      className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200 shadow-md"
                       onError={(e) => {
                         console.warn("Preview image error:", e);
                         e.currentTarget.style.display = "none";
@@ -737,7 +958,7 @@ const AllCity = () => {
                     <button
                       type="button"
                       onClick={clearImage}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold hover:bg-red-600 shadow-lg transition"
                     >
                       ×
                     </button>
@@ -747,7 +968,7 @@ const AllCity = () => {
 
               <div>
                 <label htmlFor="cityName" className="block text-sm font-semibold text-gray-700 mb-2">
-                  City Name *
+                  City Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -764,35 +985,35 @@ const AllCity = () => {
                   maxLength={100}
                 />
                 {formErrors.cityName && (
-                  <p className="mt-1 text-xs text-red-600">{formErrors.cityName}</p>
+                  <p className="mt-1 text-xs text-red-600 font-medium">{formErrors.cityName}</p>
                 )}
               </div>
 
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-lg">
                 <input
                   type="checkbox"
                   id="isActive"
                   name="isActive"
                   checked={formData.isActive === 1}
                   onChange={handleInputChange}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                 />
                 <label htmlFor="isActive" className="text-sm font-medium text-gray-700 cursor-pointer">
-                  Active City
+                  Set as Active City
                 </label>
               </div>
 
               <div className="flex space-x-3 pt-4 border-t border-gray-200">
                 <button 
                   type="button" 
-                  className="flex-1 px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition duration-200"
+                  className="flex-1 px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition duration-200 shadow"
                   onClick={() => setShowModal(false)}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition duration-200 disabled:opacity-60"
+                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition duration-200 disabled:opacity-60 shadow"
                   disabled={loading}
                 >
                   {loading ? 'Saving...' : (editingCity ? 'Update City' : 'Add City')}

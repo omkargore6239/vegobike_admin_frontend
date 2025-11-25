@@ -27,11 +27,17 @@ import BikeServices from "./pages/BikeServices";
 import SpareParts from "./pages/SpareParts";
 import ServiceOrders from "./pages/ServiceOrders";
 import TrackVehicle from "./pages/TrackVehicle";
+
 import StoreManagers from "./pages/StoreManagers";
 import AddBikeForm from "./pages/Addbikeform";
 import AdminInvoice from './components/AdminInvoice';
 import Unauthorized from "./pages/storemanager/Unauthorized";
 import CreateBooking from "./pages/AdminBooking/CreateBooking";
+
+//All battery page
+import AllBattery from './pages/allbattery/AllBattery';
+import AddBattery from './pages/allbattery/AddBattery';
+
 
 // ✅ UPDATED: Store Manager now has more permissions
 const ROLE_PERMISSIONS = {
@@ -59,7 +65,8 @@ const ROLE_PERMISSIONS = {
       'storeManger',
       'verifiedUsers',
       'unverifiedUsers',
-      'allReport'
+      'allReport',
+      'allBattery'
     ]
   },
   2: { // Store Manager - EXPANDED permissions
@@ -71,7 +78,8 @@ const ROLE_PERMISSIONS = {
       'allBikes',        // ✅ View all bikes
       'addBike',         // ✅ NEW: Can add bikes
       'createBooking',   // ✅ NEW: Can create bookings
-      'invoice'          // ✅ NEW: Can view invoices
+      'invoice',
+      'allBattery'           // ✅ NEW: Can view invoices
     ]
   }
 };
@@ -360,6 +368,31 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+
+              <Route 
+    path="allBattery" 
+    element={
+      <ProtectedRoute routeName="allBattery">
+        <AllBattery />
+      </ProtectedRoute>
+    } 
+  />
+  <Route 
+    path="battery/add" 
+    element={
+      <ProtectedRoute routeName="allBattery">
+        <AddBattery />
+      </ProtectedRoute>
+    } 
+  />
+  <Route 
+    path="battery/edit/:id" 
+    element={
+      <ProtectedRoute routeName="allBattery">
+        <AddBattery />
+      </ProtectedRoute>
+    } 
+  />
             
             <Route
               path="allRegisterCustomers"
@@ -418,6 +451,8 @@ function App() {
               } 
             />
           </Route>
+          {/* ✅ ALL BATTERY - Admin & Store Manager */}
+          
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

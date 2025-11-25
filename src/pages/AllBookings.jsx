@@ -255,13 +255,22 @@ const [extendLoading, setExtendLoading] = useState(false);
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return '';
-    try {
-      return new Date(dateString).toISOString().slice(0, 16);
-    } catch {
-      return '';
-    }
-  };
+  if (!dateString) return '';
+  
+  try {
+    const date = new Date(dateString);
+    
+    // DD/MM/YYYY format
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date);
+  } catch {
+    return '';
+  }
+};
+
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
@@ -579,11 +588,13 @@ const BookingListView = ({
                         {booking.status || 'Unknown'}
                       </span>
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="text-xs text-gray-900">
-                        {new Date(booking.createdAt || booking.startDate || Date.now()).toLocaleDateString()}
-                      </div>
-                    </td>
+                      <td className="px-3 py-2">
+    <div className="text-xs text-gray-900 font-medium">
+      {formatDate(booking.createdAt)}
+    </div>
+  
+  </td>
+
                     <td className="px-3 py-2 text-center">
                       <button
                         onClick={() => handleView(booking)}
@@ -715,33 +726,50 @@ const BookingDetailView = ({
   };
 
   useEffect(() => {
-    if (booking) {
-      setFormData({
-        bookingId: booking.bookingId || '',
-        startDate: formatDate(booking.startDate),
-        endDate: formatDate(booking.endDate),
-        vehicleNumber: booking.bikeDetails?.registrationNumber || booking.vehicleNumber || '',
-        customerName: booking.customerName || '',
-        customerContact: booking.customerNumber || '',
-        address: booking.address || '',
-        addressType: booking.addressType || 'Self Pickup',
-        rideFee: booking.charges || booking.rideFee || 0,
-        lateFeeCharges: booking.lateFeeCharges || 0,
-        gstFee: booking.gst || booking.gstFee || 0,
-        refundableDeposit: booking.advanceAmount || booking.refundableDeposit || 0,
-        totalRideFair: booking.finalAmount || booking.totalRideFair || 0,
-        paymentMode: booking.paymentType === 2 ? 'ONLINE' : 'CASH',
-        currentBookingStatus: booking.status || 'Confirmed',
-        bookingStatus: booking.status || 'Accepted',
-        startTripKm: booking.startTripKm || null,
-        endTripKm: booking.endTripKm || null
-      });
-
-      if (booking.customerId) {
-        fetchUserDocuments(booking.customerId);
+  if (booking) {
+    // Helper function to convert to datetime-local format (YYYY-MM-DDTHH:MM)
+    const toDateTimeLocal = (dateString) => {
+      if (!dateString) return '';
+      try {
+        const date = new Date(dateString);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      } catch {
+        return '';
       }
+    };
+
+    setFormData({
+      bookingId: booking.bookingId || '',
+      startDate: toDateTimeLocal(booking.startDate),  // ✅ FIXED
+      endDate: toDateTimeLocal(booking.endDate),      // ✅ FIXED
+      vehicleNumber: booking.bikeDetails?.registrationNumber || booking.vehicleNumber || '',
+      customerName: booking.customerName || '',
+      customerContact: booking.customerNumber || '',
+      address: booking.address || '',
+      addressType: booking.addressType || 'Self Pickup',
+      rideFee: booking.charges || booking.rideFee || 0,
+      lateFeeCharges: booking.lateFeeCharges || 0,
+      gstFee: booking.gst || booking.gstFee || 0,
+      refundableDeposit: booking.advanceAmount || booking.refundableDeposit || 0,
+      totalRideFair: booking.finalAmount || booking.totalRideFair || 0,
+      paymentMode: booking.paymentType === 2 ? 'ONLINE' : 'CASH',
+      currentBookingStatus: booking.status || 'Confirmed',
+      bookingStatus: booking.status || 'Accepted',
+      startTripKm: booking.startTripKm || null,
+      endTripKm: booking.endTripKm || null,
+    });
+
+    if (booking.customerId) {
+      fetchUserDocuments(booking.customerId);
     }
-  }, [booking]);
+  }
+}, [booking]);
+
 
   const fetchUserDocuments = async (userId) => {
   if (!userId) return;
@@ -855,110 +883,65 @@ const handleDocumentAction = async (docType, action) => {
   }
 };
 
-
-// ✅ IMAGE MODAL HANDLERS
-// const openImageModal = (imageUrl, documentName) => {
-//   setSelectedImage({ url: imageUrl, name: documentName });
-// };
-
-// const closeImageModal = () => {
-//   setSelectedImage(null);
-// };
-
-// const getImageUrl = (imagePath) => {
-//   if (!imagePath) return null;
-//   if (imagePath.startsWith('http') || imagePath.startsWith('data:image')) return imagePath;
-//   return `${BASE_URL}/${imagePath.replace(/^\/+/, '')}`;
-// };
-
-
 // ✅ COMPLETE - Proper validation and API call
 const handleExtendTrip = async () => {
-  // Step 1: Validate booking ID
   if (!booking?.id) {
-    toast.error('❌ Booking ID not found');
+    toast.error('Booking ID not found');
     return;
   }
-  
-  // Step 2: Validate input is not empty
+
   if (!newEndDateTime || newEndDateTime.trim() === '') {
-    toast.error('❌ Please select a new end date and time');
+    toast.error('Please select a new end date and time');
     return;
   }
-  
-  // Step 3: Validate date format
+
   const newDate = new Date(newEndDateTime);
   if (isNaN(newDate.getTime())) {
-    toast.error('❌ Invalid date format');
+    toast.error('Invalid date format');
     return;
   }
-  
-  // Step 4: Validate new date is after current end date
-  const currentEndDate = new Date(formData.endDate);
+
+  const currentEndDate = new Date(booking.endDate);
   if (newDate <= currentEndDate) {
-    toast.error('❌ New end time must be later than current end time');
+    toast.error('New end time must be later than current end time');
     return;
   }
-  
+
   setExtendLoading(true);
+
   try {
-    console.log('⏱️ [Extend Trip] Starting extension process');
-    console.log({
-      bookingId: booking.id,
-      currentEndDate: formData.endDate,
-      newEndDateTime: newEndDateTime,
-      epochMillis: newDate.getTime()
-    });
-    
-    // ✅ Convert to epoch milliseconds (required by backend)
+    console.log('Extend Trip: Starting extension process');
     const epochMillis = newDate.getTime();
-    
-    // ✅ Call API
+
     const response = await bookingAPI.extendTrip(booking.id, epochMillis);
-    
-    console.log('✅ [Extend Trip] API response:', response.data);
-    
-    // Update UI with new end date
-    setFormData(prev => ({ 
-      ...prev, 
-      endDate: newEndDateTime 
+    console.log('Extend Trip: API response', response.data);
+
+    // ✅ Update formData with new end date
+    setFormData(prev => ({
+      ...prev,
+      endDate: newEndDateTime  // Keep in YYYY-MM-DDTHH:MM format
     }));
-    
-    // Close modal and clear input
+
+    // ✅ Update the booking object
+    booking.endDate = newDate.toISOString();
+
     setShowExtendTripModal(false);
     setNewEndDateTime('');
-    
-    // Show success message
-    toast.success('✅ Trip extended successfully!');
-    
-    // Refresh bookings list after delay
+    toast.success('Trip extended successfully!');
+
     if (refreshBookings) {
-      console.log('🔄 Refreshing bookings list...');
-      setTimeout(() => {
-        refreshBookings();
-      }, 1000);
+      setTimeout(() => refreshBookings(), 1000);
     }
-    
+
   } catch (error) {
-    console.error('❌ [Extend Trip] Error:', error);
-    
-    // Handle specific error responses
-    if (error.response?.status === 409) { // CONFLICT
-      const message = error.response?.data?.message || 'Trip cannot be extended at this time';
-      toast.error(`⚠️ ${message}`);
-    } else if (error.response?.status === 400) { // BAD REQUEST
-      const message = error.response?.data?.message || 'Invalid request. Please try again.';
-      toast.error(`❌ ${message}`);
-    } else {
-      const message = error.response?.data?.message 
-        || error.message 
-        || 'Failed to extend trip. Please try again.';
-      toast.error(`❌ ${message}`);
-    }
+    console.error('Extend Trip: Error', error);
+    const message = error.response?.data?.message || error.message || 'Failed to extend trip';
+    toast.error(message);
   } finally {
     setExtendLoading(false);
   }
 };
+
 
 
 
@@ -1471,16 +1454,56 @@ console.log('🚀 [ENV] URL:', url);
         </div>
 
         <div className="p-2">
+          
           {/* Vehicle Image */}
-          <div className="mb-2">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Vehicle Image</label>
-            <div className="w-full h-16 bg-gray-50 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
-              <div className="text-center">
-                <FaMotorcycle className="mx-auto text-gray-400 text-sm mb-0.5" />
-                <p className="text-gray-500 text-xs">📷</p>
-              </div>
-            </div>
+{/* Vehicle Image */}
+<div className="mb-2">
+  <label className="block text-xs font-medium text-gray-700 mb-1">Vehicle Image</label>
+  <div className="w-full bg-gray-50 border-2 border-indigo-200 rounded-lg overflow-hidden">
+    {(() => {
+      // Try multiple possible image sources
+      const imageUrl = booking.bikeDetails?.imageUrl || 
+                      booking.bikeDetails?.image || 
+                      booking.vehicleImage || 
+                      booking.bikeImage;
+      
+      if (imageUrl) {
+        return (
+          <img
+            src={imageUrl}
+            alt="Vehicle"
+            className="w-full h-48 object-contain bg-white cursor-pointer hover:scale-105 transition-transform p-2"
+            onClick={() => openImageModal(imageUrl, 'Vehicle Image')}
+            onError={(e) => {
+              console.error('Failed to load vehicle image:', imageUrl);
+              e.target.style.display = 'none';
+              e.target.parentNode.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-48 bg-gray-50">
+                  <svg class="w-16 h-16 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                  </svg>
+                  <p class="text-gray-500 text-xs">Failed to load image</p>
+                </div>
+              `;
+            }}
+          />
+        );
+      } else {
+        return (
+          <div className="flex flex-col items-center justify-center h-48 bg-gray-50">
+            <svg className="w-16 h-16 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+            </svg>
+            <p className="text-gray-500 text-xs">No Image Available</p>
           </div>
+        );
+      }
+    })()}
+  </div>
+</div>
+
+
 
           {/* Form Grid */}
           <div className="grid grid-cols-4 gap-2 mb-2">
@@ -1666,65 +1689,6 @@ console.log('🚀 [ENV] URL:', url);
               </select>
             </div>
           </div>
-          {/* EXTEND TRIP BUTTON - ADMIN ONLY */}
-          {/* <div className="mb-3">
-            {booking.status === 'On Going' || booking.status === 'Start Trip' ? (
-              <button
-                onClick={() => setShowExtendTripModal(true)}
-                className="w-1/4 py-2 px-4 rounded-md text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center"
-              >
-                <FaClock className="mr-2" />
-                Extend Trip
-              </button>
-            ) : (
-              <div className="p-3 bg-gray-100 rounded-md border border-gray-300">
-                <p className="text-xs text-gray-600 flex items-center">
-                  <FaInfoCircle className="mr-1" />
-                  Trip extension only available for ongoing or started trips
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="mb-3">
-            <button
-              onClick={handleUpdateBookingDetails}
-              disabled={isUpdating || formData.bookingStatus === formData.currentBookingStatus}
-              className={`w-1/4 py-2 px-4 rounded-md text-sm font-semibold transition-colors flex items-center justify-center ${
-                formData.bookingStatus === formData.currentBookingStatus
-                  ? 'bg-gray-400 cursor-not-allowed text-white'
-                  : isUpdating
-                  ? 'bg-blue-400 cursor-not-allowed text-white'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
-              }`}
-            >
-              {isUpdating ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Updating Status...
-                </>
-              ) : formData.bookingStatus === formData.currentBookingStatus ? (
-                <>
-                  <FaCheckCircle className="mr-2" />
-                  Status Up to Date
-                </>
-              ) : (
-                <>
-                  <FaEdit className="mr-2" />
-                  Update Booking Status
-                </>
-              )}
-            </button>
-            
-            {formData.bookingStatus !== formData.currentBookingStatus && !isUpdating && (
-              <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-md">
-                <p className="text-xs text-orange-600 font-medium flex items-center">
-                  <FaEdit className="mr-1" />
-                  Status will change from "{formData.currentBookingStatus}" to "{formData.bookingStatus}"
-                </p>
-              </div>
-            )}
-          </div> */}
 
           {/* EXTEND TRIP & UPDATE STATUS - REDUCED WIDTH */}
 <div className="mb-3 flex gap-3 items-stretch w-1/2">
@@ -2214,7 +2178,6 @@ console.log('🚀 [ENV] URL:', url);
   </div>
 )}
 
-{/* ✅ EXTEND TRIP MODAL */}
 {showExtendTripModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
@@ -2225,22 +2188,12 @@ console.log('🚀 [ENV] URL:', url);
             <FaClock className="mr-2 text-2xl" />
             <h3 className="text-lg font-bold">Extend Trip</h3>
           </div>
-          {/*<button 
-            onClick={() => {
-              setShowExtendTripModal(false);
-              setNewEndDateTime('');
-            }}
+          <button 
+            onClick={handleCloseExtendModal}
             className="text-white hover:text-gray-200 transition-colors"
           >
             <FaTimes className="text-xl" />
-          </button>*/}
-          <button 
-  onClick={handleCloseExtendModal}
-  className="text-white hover:text-gray-200 transition-colors"
->
-  <FaTimes className="text-xl" />
-</button>
-
+          </button>
         </div>
       </div>
 
@@ -2258,8 +2211,16 @@ console.log('🚀 [ENV] URL:', url);
             Current End Time
           </label>
           <input
-            type="datetime-local"
-            value={formData.endDate}
+            type="text"
+            value={booking?.endDate ? (() => {
+              const date = new Date(booking.endDate);
+              const day = String(date.getDate()).padStart(2, '0');
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const year = date.getFullYear();
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              return `${day}/${month}/${year} ${hours}:${minutes}`;
+            })() : ''}
             disabled
             className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed text-sm"
           />
@@ -2273,8 +2234,12 @@ console.log('🚀 [ENV] URL:', url);
             type="datetime-local"
             value={newEndDateTime}
             onChange={(e) => setNewEndDateTime(e.target.value)}
-            min={formData.endDate}
+            min={booking?.endDate ? new Date(booking.endDate).toISOString().slice(0, 16) : ''}
+            placeholder="dd/mm/yyyy --:-- --"
             className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+            style={{ 
+              colorScheme: 'light',
+            }}
             autoFocus
           />
           <p className="text-xs text-gray-500 mt-1">
@@ -2282,10 +2247,13 @@ console.log('🚀 [ENV] URL:', url);
           </p>
         </div>
 
-        {newEndDateTime && formData.endDate && (() => {
-          const currentEnd = new Date(formData.endDate);
+        {newEndDateTime && booking?.endDate && (() => {
+          const currentEnd = new Date(booking.endDate);
           const newEnd = new Date(newEndDateTime);
           const diffMinutes = Math.round((newEnd - currentEnd) / 60000);
+          
+          if (diffMinutes <= 0) return null;
+          
           const hours = Math.floor(diffMinutes / 60);
           const mins = diffMinutes % 60;
           
@@ -2302,7 +2270,7 @@ console.log('🚀 [ENV] URL:', url);
         })()}
       </div>
 
-    {/* Footer */}{/* Extend Trip Modal Footer */}
+      {/* Footer */}
       <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end space-x-3">
         <button
           onClick={handleCloseExtendModal}
@@ -2327,10 +2295,15 @@ console.log('🚀 [ENV] URL:', url);
             </>
           )}
         </button>
-           </div>
+      </div>
     </div>
   </div>
 )}
+
+
+
+
+
 
       </div>  
     </div>   

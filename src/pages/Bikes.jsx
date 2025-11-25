@@ -42,20 +42,16 @@ const Bikes = () => {
   const [sortBy] = useState("createdAt");
   const [sortDirection] = useState("desc");
 
-  // Frontend filters
+  // ✅ SIMPLIFIED: Only search filter (removed brand/category/model)
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedBrand, setSelectedBrand] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [selectedModel, setSelectedModel] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
   // Refs
   const isFetchingRef = useRef(false);
   const abortControllerRef = useRef(null);
 
-  // ✅ Helper function to check if bike is active - FIXED for "active" field
+  // ✅ Helper function to check if bike is active
   const isBikeActive = (bike) => {
-    // Backend returns "active" (not "isActive")
     return bike.active === true;
   };
 
@@ -86,7 +82,16 @@ const Bikes = () => {
     }
   }, [success, error]);
 
-  // ✅ DIRECT Toggle - No confirmation modal
+  // ✅ Debounce effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // ✅ Direct Toggle - No confirmation modal
   const handleToggleActive = async (bike) => {
     const currentActive = isBikeActive(bike);
     const statusText = currentActive ? 'Inactive' : 'Active';
@@ -99,7 +104,7 @@ const Bikes = () => {
       toast.success(`✅ Bike marked as ${statusText} successfully!`);
       
       // Refetch to get updated data
-      await fetchBikesRef.current(currentPage, pageSize);
+      await fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm);
       
     } catch (error) {
       console.error('❌ Error toggling bike status:', error);
@@ -204,8 +209,8 @@ const Bikes = () => {
     };
   };
 
-  // Fetch bikes with pagination
-  const fetchBikes = async (page = 0, size = 10) => {
+  // ✅ Fetch bikes with pagination and search
+  const fetchBikes = async (page = 0, size = 10, searchQuery = "") => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -221,7 +226,7 @@ const Bikes = () => {
     try {
       setLoading(true);
       console.log(
-        `🚲 Fetching bikes: page=${page}, size=${size}, sortBy=${sortBy}, sortDirection=${sortDirection}`
+        `🚲 Fetching bikes: page=${page}, size=${size}, sortBy=${sortBy}, sortDirection=${sortDirection}, search=${searchQuery}`
       );
 
       const params = {
@@ -230,6 +235,11 @@ const Bikes = () => {
         sortBy,
         sortDirection,
       };
+
+      // ✅ Add search parameter if exists
+      if (searchQuery && searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
 
       const response = await bikeAPI.getAll(params);
 
@@ -291,71 +301,23 @@ const Bikes = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  // Fetch bikes when page or size changes
+  // ✅ Fetch bikes when page, size, or search changes
   useEffect(() => {
     if (!referencesLoaded) {
       return;
     }
 
-    fetchBikesRef.current(currentPage, pageSize);
+    fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm);
 
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [referencesLoaded, currentPage, pageSize]);
+  }, [referencesLoaded, currentPage, pageSize, debouncedSearchTerm]);
 
-  // Frontend filtering
-  const filteredBikes = useMemo(() => {
-    let filtered = [...rawBikes];
-
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (bike) =>
-          bike.displayName.toLowerCase().includes(term) ||
-          bike.registrationNumber.toLowerCase().includes(term) ||
-          bike.brandName.toLowerCase().includes(term) ||
-          bike.modelName.toLowerCase().includes(term)
-      );
-    }
-
-    if (selectedBrand) {
-      filtered = filtered.filter(
-        (bike) => String(bike.brandId) === String(selectedBrand)
-      );
-    }
-
-    if (selectedCategory) {
-      filtered = filtered.filter(
-        (bike) => String(bike.categoryId) === String(selectedCategory)
-      );
-    }
-
-    if (selectedModel) {
-      filtered = filtered.filter(
-        (bike) => String(bike.modelId) === String(selectedModel)
-      );
-    }
-
-    if (selectedStatus) {
-      if (selectedStatus === "ACTIVE") {
-        filtered = filtered.filter((bike) => bike.active === true);
-      } else if (selectedStatus === "INACTIVE") {
-        filtered = filtered.filter((bike) => bike.active === false);
-      }
-    }
-
-    return filtered;
-  }, [
-    rawBikes,
-    searchTerm,
-    selectedBrand,
-    selectedCategory,
-    selectedModel,
-    selectedStatus,
-  ]);
+  // ✅ REMOVED: Frontend filtering - backend handles everything
+  const filteredBikes = rawBikes;
 
   // Handle page size change
   const handlePageSizeChange = (newSize) => {
@@ -367,60 +329,81 @@ const Bikes = () => {
   // Retry function
   const handleRetry = () => {
     setError("");
-    fetchBikesRef.current(currentPage, pageSize);
+    fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm);
   };
 
-  // Clear all filters
+  // ✅ SIMPLIFIED: Clear only search filter
   const handleClearFilters = () => {
-    console.log("🧹 Clearing all filters");
+    console.log("🧹 Clearing search filter");
     setSearchTerm("");
-    setSelectedBrand("");
-    setSelectedCategory("");
-    setSelectedModel("");
-    setSelectedStatus("");
   };
 
   // Navigation handlers
   const handleAddBike = () => navigate("/dashboard/addBike");
 
   // Edit handler
-  const handleEditBike = (bike) => {
-    console.log("📝 Editing bike - Raw data:", bike);
+  // In your Bikes.jsx - Replace the handleEditBike function
+
+const handleEditBike = (bike) => {
+  console.log("📝 Editing bike - Full data:", bike);
+  
+  // Prepare comprehensive bike data for edit
+  const bikeDataForEdit = {
+    id: bike.id,
+    name: bike.name || bike.displayName || `${bike.brandName} ${bike.modelName}`.trim(),
+    vehicleTypeId: bike.vehicleTypeId || null,
+    categoryId: bike.categoryId || null,
+    brandId: bike.brandId || null,
+    modelId: bike.modelId || null,
+    fuelType: bike.fuelType || 'PETROL',
+    registrationNumber: bike.registrationNumber || '',
+    registrationYear: bike.registrationYear || bike.registrationYearId || new Date().getFullYear(),
+    chassisNumber: bike.chassisNumber || '',
+    engineNumber: bike.engineNumber || '',
+    storeId: bike.storeId || null,
+    storeName: bike.storeName || '',
+    imeiNumber: bike.imeiNumber || '',
+    batteryId: bike.batteryId || '',
+    latitude: bike.latitude || '',
+    longitude: bike.longitude || '',
     
-    const bikeDataForEdit = {
-      id: bike.id,
-      name: bike.name || bike.displayName,
-      vehicleTypeId: bike.vehicleTypeId,
-      categoryId: bike.categoryId,
-      brandId: bike.brandId,
-      modelId: bike.modelId,
-      fuelType: bike.fuelType,
-      registrationNumber: bike.registrationNumber,
-      registrationYear: bike.registrationYear,
-      chassisNumber: bike.chassisNumber || '',
-      engineNumber: bike.engineNumber || '',
-      storeId: bike.storeId,
-      imeiNumber: bike.imeiNumber || '',
-      batteryId: bike.batteryId || '',
-      latitude: bike.latitude || '',
-      longitude: bike.longitude || '',
-      isPuc: bike.puc || false,
-      isInsurance: bike.insurance || false,
-      isDocuments: bike.documents || false,
-      status: bike.vehicleStatus || bike.status || 'AVAILABLE',
-      existingBikeImages: bike.bikeImages || [],
-      pucImageUrl: bike.pucImageUrl || null,
-      insuranceImageUrl: bike.insuranceImageUrl || null,
-      documentImageUrl: bike.documentImageUrl || null,
-    };
+    // Boolean fields
+    isPuc: bike.puc === true || bike.isPuc === true,
+    isInsurance: bike.insurance === true || bike.isInsurance === true,
+    isDocuments: bike.documents === true || bike.isDocuments === true,
+    active: bike.active === true,
     
-    navigate(`/dashboard/addBike/${bike.id}`, {
-      state: {
-        bike: bikeDataForEdit,
-        isEditMode: true,
-      },
-    });
+    // Image URLs
+    bikeImages: Array.isArray(bike.bikeImages) ? bike.bikeImages : [],
+    pucImageUrl: bike.pucImageUrl || null,
+    insuranceImageUrl: bike.insuranceImageUrl || null,
+    documentImageUrl: bike.documentImageUrl || null,
+    
+    // Additional metadata
+    brandName: bike.brandName || '',
+    modelName: bike.modelName || '',
+    categoryName: bike.categoryName || '',
+    
+    // For edit mode reference
+    existingBikeImages: Array.isArray(bike.bikeImages) ? bike.bikeImages : [],
+    existingPucImage: bike.pucImageUrl || null,
+    existingInsuranceImage: bike.insuranceImageUrl || null,
+    existingDocumentImage: bike.documentImageUrl || null,
   };
+  
+  console.log("📤 Navigating to edit form with data:", bikeDataForEdit);
+  
+  // Navigate with state
+  navigate(`/dashboard/addBike/${bike.id}`, {
+    state: {
+      bike: bikeDataForEdit,
+      isEditMode: true,
+    },
+    replace: false,
+  });
+};
+
+
 
   // Status Display
   const getStatusDisplay = (bike) => {
@@ -450,13 +433,8 @@ const Bikes = () => {
     if (fallbackDiv) fallbackDiv.style.display = "none";
   };
 
-  // Check if any filters are active
-  const hasActiveFilters =
-    searchTerm ||
-    selectedBrand ||
-    selectedCategory ||
-    selectedModel ||
-    selectedStatus;
+  // ✅ SIMPLIFIED: Check if search filter is active
+  const hasActiveFilters = searchTerm.trim() !== "";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-50 to-slate-100 py-8 px-4">
@@ -496,12 +474,12 @@ const Bikes = () => {
           </div>
         </div>
 
-        {/* Filters Section */}
+        {/* ✅ SIMPLIFIED: Search Section (removed brand/category/model filters) */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">
               <FaSearch className="inline mr-2" />
-              Filters & Search
+              Search Bikes
             </h2>
             {hasActiveFilters && (
               <button
@@ -509,106 +487,28 @@ const Bikes = () => {
                 className="inline-flex items-center px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium"
               >
                 <FaTimes className="mr-2" />
-                Clear Filters
+                Clear Search
               </button>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Search Input */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search
-              </label>
-              <input
-                type="text"
-                placeholder="Search bikes..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent transition"
-              />
-            </div>
-
-            {/* Brand Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Brand
-              </label>
-              <select
-                value={selectedBrand}
-                onChange={(e) => setSelectedBrand(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent transition"
-              >
-                <option value="">All Brands</option>
-                {brands.map((brand) => (
-                  <option key={brand.id} value={brand.id}>
-                    {brand.brandName}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Category Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Category
-              </label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent transition"
-              >
-                <option value="">All Categories</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.categoryName}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Model Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Model
-              </label>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent transition"
-              >
-                <option value="">All Models</option>
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.modelName}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Status Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Status
-              </label>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent transition"
-              >
-                <option value="">All Status</option>
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
-            </div>
+          {/* ✅ Single Search Input */}
+          <div className="max-w-2xl">
+            <input
+              type="text"
+              placeholder="Search by registration, brand, model, or category..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent transition text-base"
+            />
+         
           </div>
 
-          {/* Filter Info */}
+          {/* Search Info */}
           {hasActiveFilters && (
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-700">
-                <strong>Showing {filteredBikes.length}</strong> of{" "}
-                <strong>{rawBikes.length}</strong> bikes on this page
+                <strong>Showing {filteredBikes.length}</strong> result(s) for "<strong>{searchTerm}</strong>"
               </p>
             </div>
           )}
@@ -677,7 +577,7 @@ const Bikes = () => {
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">No bikes found</h3>
                         <p className="text-gray-500">
-                          {hasActiveFilters ? "Try adjusting your filters" : "Add your first bike"}
+                          {hasActiveFilters ? "Try a different search term" : "Add your first bike"}
                         </p>
                       </div>
                     </td>
@@ -749,7 +649,7 @@ const Bikes = () => {
                               <FaEdit size={18} />
                             </button>
                             
-                            {/* ✅ Direct Toggle Button - No Modal */}
+                            {/* Toggle Button */}
                             <button
                               onClick={() => handleToggleActive(bike)}
                               className={`group relative p-2.5 rounded-lg transition-all duration-200 font-semibold border-2 ${
@@ -823,7 +723,7 @@ const Bikes = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }

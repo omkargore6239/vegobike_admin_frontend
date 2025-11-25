@@ -6,7 +6,7 @@ import { RiMotorbikeLine, RiServiceLine } from "react-icons/ri";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MdOutlineLocalGroceryStore, MdSell } from "react-icons/md";
 import { TbBrandBooking } from "react-icons/tb";
-import { FaWrench, FaCogs, FaMoneyBillWave, FaSignOutAlt, FaPlus } from "react-icons/fa";
+import { FaWrench, FaCogs, FaMoneyBillWave, FaSignOutAlt, FaPlus, FaBatteryFull  } from "react-icons/fa";
 import Header from "./Header";
 import fonts from "../styles/fonts";
 import colors from "../styles/colors";
@@ -112,50 +112,51 @@ const Sidebar = () => {
 
   // ✅ ALL ADMIN LINKS
   const ALL_SIDEBAR_LINKS = [
-    { id: 1, path: "/dashboard", name: "Dashboard", icon: LuBox },
-    { id: 7, path: "/dashboard/allBookings", name: "All Bookings", icon: TbBrandBooking },
-    { id: 2, path: "/dashboard/storeMaster", name: "Store Master", icon: MdOutlineLocalGroceryStore },
-    { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
-    // { id: 3.5, path: "/dashboard/addBike", name: "Add Bike", icon: FaPlus },
-    {
-      id: 4,
-      name: "Price Master",
-      icon: IoLayersOutline,
-      submenu: [
-        { id: 41, path: "/dashboard/priceMaster/deliveryAtLocationPrices", name: "Delivery" },
-        { id: 42, path: "/dashboard/priceMaster/pickUpTariffPlan", name: "Pick Up" },
-        { id: 43, path: "/dashboard/priceMaster/lateCharges", name: "Late Charges" },
-      ],
-    },
-    {
-      id: 5,
-      name: "Master Records",
-      icon: IoLayersOutline,
-      submenu: [
-        { id: 55, path: "/dashboard/masterRecords/allVehicleTypes", name: "All Vehicle Types" },
-        { id: 51, path: "/dashboard/masterRecords/allCategories", name: "All Categories" },
-        { id: 52, path: "/dashboard/masterRecords/allBrands", name: "All Brands" },
-        { id: 53, path: "/dashboard/masterRecords/allModels", name: "All Models" },
-        { id: 54, path: "/dashboard/masterRecords/allCity", name: "All Cities" },
-      ],
-    },
-    { id: 6, path: "/dashboard/allOffers", name: "All Offers", icon: IoPricetagsOutline },
-    { id: 9, path: "/dashboard/allRegisterCustomers", name: "All Registered Customers", icon: LuUsers },
-    { id: 10, path: "/dashboard/storeManger", name: "All Store Managers", icon: LuUsers },
-    { id: 11, path: "/dashboard/timeSlot", name: "Time Slot", icon: LuCalendarClock },
-    {
-      id: 12,
-      name: "Sell Bikes",
-      icon: MdSell,
-      submenu: [
-        { id: 121, path: "/dashboard/sellBikes", name: "Sell Bikes" },
-        { id: 122, path: "/dashboard/bikeEnquiries", name: "Bike Enquiries" },
-      ],
-    },
-    { id: 13, path: "/dashboard/bikeServices", name: "Bike Services", icon: RiServiceLine },
-    { id: 14, path: "/dashboard/spareParts", name: "Spare Parts", icon: FaCogs },
-    { id: 15, path: "/dashboard/serviceOrders", name: "Service Orders", icon: FaWrench },
-  ];
+  { id: 1, path: "/dashboard", name: "Dashboard", icon: LuBox },
+  { id: 7, path: "/dashboard/allBookings", name: "All Bookings", icon: TbBrandBooking },
+  { id: 2, path: "/dashboard/storeMaster", name: "Store Master", icon: MdOutlineLocalGroceryStore },
+  { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
+  // { id: 3.1, path: "/dashboard/allBattery", name: "All Battery", icon: FaBatteryFull },
+  {
+    id: 4,
+    name: "Price Master",
+    icon: IoLayersOutline,
+    submenu: [
+      { id: 41, path: "/dashboard/priceMaster/deliveryAtLocationPrices", name: "Delivery" },
+      { id: 42, path: "/dashboard/priceMaster/pickUpTariffPlan", name: "Pick Up" },
+      { id: 43, path: "/dashboard/priceMaster/lateCharges", name: "Late Charges" },
+    ],
+  },
+  {
+    id: 5,
+    name: "Master Records",
+    icon: IoLayersOutline,
+    submenu: [
+      { id: 55, path: "/dashboard/masterRecords/allVehicleTypes", name: "All Vehicle Types" },
+      { id: 51, path: "/dashboard/masterRecords/allCategories", name: "All Categories" },
+      { id: 52, path: "/dashboard/masterRecords/allBrands", name: "All Brands" },
+      { id: 53, path: "/dashboard/masterRecords/allModels", name: "All Models" },
+      { id: 54, path: "/dashboard/masterRecords/allCity", name: "All Cities" },
+    ],
+  },
+  { id: 6, path: "/dashboard/allOffers", name: "All Offers", icon: IoPricetagsOutline },
+  { id: 9, path: "/dashboard/allRegisterCustomers", name: "All Registered Customers", icon: LuUsers },
+  { id: 10, path: "/dashboard/storeManger", name: "All Store Managers", icon: LuUsers },
+  { id: 11, path: "/dashboard/timeSlot", name: "Time Slot", icon: LuCalendarClock },
+  {
+    id: 12,
+    name: "Sell Bikes",
+    icon: MdSell,
+    submenu: [
+      { id: 121, path: "/dashboard/sellBikes", name: "Sell Bikes" },
+      { id: 122, path: "/dashboard/bikeEnquiries", name: "Bike Enquiries" },
+    ],
+  },
+  { id: 13, path: "/dashboard/bikeServices", name: "Bike Services", icon: RiServiceLine },
+  { id: 14, path: "/dashboard/spareParts", name: "Spare Parts", icon: FaCogs },
+  { id: 15, path: "/dashboard/serviceOrders", name: "Service Orders", icon: FaWrench },
+];
+
 
   // ✅ UPDATED STORE MANAGER LINKS - With Add Bike & Create Booking
   const STORE_MANAGER_LINKS = [
@@ -164,6 +165,7 @@ const Sidebar = () => {
     { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
      // { id: 3.5, path: "/dashboard/addBike", name: "➕ Add Bike", icon: FaPlus },
       // { id: 3.7, path: "/dashboard/createBooking", name: "📅 Create Booking", icon: FaPlus }, 
+      // { id: 3.1, path: "/dashboard/allBattery", name: "All Battery", icon: FaBatteryFull },
   ];
 
   // ✅ SELECT LINKS BASED ON ROLE

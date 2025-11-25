@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 // ✅ Named exports
-export const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:8080';
+export const BASE_URL = import.meta.env.VITE_BASE_URL;
 console.log('🔗 API Configuration Loaded');
 console.log('📍 Base URL:', BASE_URL);
 console.log('🌍 Environment:', import.meta.env.MODE);
@@ -245,6 +245,21 @@ export const yearAPI = {
   toggleStatus: (id) => apiClient.patch(`/api/years/${id}/status`),
   delete: (id) => apiClient.delete(`/api/years/delete/${id}`),
 };
+
+// Add this to your apiConfig.js exports
+
+// ✅ ADMIN BOOKING API
+// ✅ ADMIN BOOKING API
+export const adminBookingAPI = {
+  // Existing customer
+  createForExisting: (bookingData) => 
+    apiClient.post('/api/booking-bikes/admin/create', bookingData),
+  
+  // New customer (register + book)
+  registerAndBook: (customerAndBooking) => 
+    apiClient.post('/api/booking-bikes/admin/bookings/register-and-book', customerAndBooking),
+};
+
 
 
 // ✅ STORE API

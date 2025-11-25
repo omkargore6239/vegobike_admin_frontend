@@ -7,58 +7,68 @@
   import { FaSpinner, FaCheck, FaTimes, FaArrowLeft, FaTrash, FaMotorcycle } from "react-icons/fa";
 
   const AddBikeForm = () => {
-    const navigate = useNavigate();
-    const { id } = useParams();
-    const location = useLocation();
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const location = useLocation();
+  const isEditMode = !!id;
+  const initialBikeData = location.state?.bike;
 
-    const isEditMode = !!id;
-    const initialBikeData = location.state?.bike;
+  // ✅ CONSOLIDATED LOADING STATES
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(isEditMode);
 
-    const [bikeData, setBikeData] = useState({
-      name: "",
-      vehicleTypeId: null,
-      categoryId: null,
-      brandId: null,
-      modelId: null,
-      fuelType: "",
-      registrationNumber: "",
-      registrationYear: null,
-      chassisNumber: "",
-      engineNumber: "",
-      storeId: null,
-      imeiNumber: "",
-      batteryId: "",
-      latitude: "",
-      longitude: "",
-      isPuc: false,
-      isInsurance: false,
-      isDocuments: false,
-      pucImage: null,
-      insuranceImage: null,
-      documentImage: null,
-      vehicleImages: null,
-    });
+  const [bikeData, setBikeData] = useState({
+    name: "",
+    vehicleTypeId: null,
+    categoryId: null,
+    brandId: null,
+    modelId: null,
+    fuelType: "",
+    registrationNumber: "",
+    registrationYear: null,
+    chassisNumber: "",
+    engineNumber: "",
+    storeId: null,
+    imeiNumber: "",
+    batteryId: "",
+    latitude: "",
+    longitude: "",
+    isPuc: false,
+    isInsurance: false,
+    isDocuments: false,
+    pucImage: null,
+    insuranceImage: null,
+    documentImage: null,
+    vehicleImages: null,
+  });
 
-    // Dropdown data states
-    const [vehicleTypes, setVehicleTypes] = useState([]);
-    const [allCategories, setAllCategories] = useState([]);
-    const [filteredCategories, setFilteredCategories] = useState([]);
-    const [allBrands, setAllBrands] = useState([]);
-    const [filteredBrands, setFilteredBrands] = useState([]);
-    const [allModels, setAllModels] = useState([]);
-    const [filteredModels, setFilteredModels] = useState([]);
-    const [stores, setStores] = useState([]);
+    const getFullImageUrl = (path) => {
+  if (!path) return null;
+  // If already full URL, return as is
+  if (path.startsWith('http')) return path;
+  // Prepend BASE_URL and uploads folder
+  return `${BASE_URL}/uploads/${path.replace(/^\/+/, '')}`;
+};
 
-    const [isLoading, setIsLoading] = useState(false);
-    const [errors, setErrors] = useState({});
-    const [pageLoading, setPageLoading] = useState(isEditMode);
+     const [vehicleTypes, setVehicleTypes] = useState([]);
+  const [allCategories, setAllCategories] = useState([]);
+  const [filteredCategories, setFilteredCategories] = useState([]);
+  const [allBrands, setAllBrands] = useState([]);
+  const [filteredBrands, setFilteredBrands] = useState([]);
+  const [allModels, setAllModels] = useState([]);
+  const [filteredModels, setFilteredModels] = useState([]);
+  const [stores, setStores] = useState([]);
+  const [generalError, setGeneralError] = useState("");
 
-    const [previewImages, setPreviewImages] = useState({
-      pucImage: null,
-      insuranceImage: null,
-      documentImage: null,
-      vehicleImages: [],
-    });
+
+  const [errors, setErrors] = useState({});
+
+  const [previewImages, setPreviewImages] = useState({
+    pucImage: null,
+    insuranceImage: null,
+    documentImage: null,
+    vehicleImages: [],
+  });
 
     const fuelTypeOptions = [
       { value: "PETROL", label: "⛽ Petrol" },
@@ -167,200 +177,237 @@
 
 
     // ✅ 2. Filter Categories when VehicleType changes
-    useEffect(() => {
-      console.log("🔍 VehicleType changed:", bikeData.vehicleTypeId);
-      
-      if (!bikeData.vehicleTypeId) {
-        setFilteredCategories([]);
-        if (bikeData.categoryId) {
-          setBikeData(prev => ({ ...prev, categoryId: null, brandId: null, modelId: null }));
-        }
-        return;
-      }
+    // 2. Filter Categories when VehicleType changes
+useEffect(() => {
+  console.log("🔄 VehicleType changed:", bikeData.vehicleTypeId);
+  
+  if (!bikeData.vehicleTypeId) {
+    setFilteredCategories([]);
+    // ✅ ONLY clear if not in edit mode or if category doesn't match
+    if (!isEditMode && bikeData.categoryId) {
+      setBikeData(prev => ({ ...prev, categoryId: null, brandId: null, modelId: null }));
+    }
+    return;
+  }
 
-      const filtered = allCategories.filter(cat => cat.vehicleTypeId == bikeData.vehicleTypeId);
-      console.log(`  ✅ Found ${filtered.length} categories for vehicle type ${bikeData.vehicleTypeId}`);
-      setFilteredCategories(filtered);
+  const filtered = allCategories.filter(cat => cat.vehicleTypeId === bikeData.vehicleTypeId);
+  console.log(`✅ Found ${filtered.length} categories for vehicle type ${bikeData.vehicleTypeId}`);
+  setFilteredCategories(filtered);
 
-      if (bikeData.categoryId) {
-        const stillValid = filtered.some(c => c.id == bikeData.categoryId);
-        if (!stillValid) {
-          setBikeData(prev => ({ ...prev, categoryId: null, brandId: null, modelId: null }));
-        }
-      }
-    }, [bikeData.vehicleTypeId, allCategories]);
+  // ✅ Only validate if category exists AND not in filtered list
+  if (bikeData.categoryId) {
+    const stillValid = filtered.some(c => c.id === bikeData.categoryId);
+    if (!stillValid && !isEditMode) {
+      console.warn("⚠️ Category not valid for this vehicle type, clearing");
+      setBikeData(prev => ({ ...prev, categoryId: null, brandId: null, modelId: null }));
+    }
+  }
+}, [bikeData.vehicleTypeId, allCategories]); // ✅ Don't add isEditMode as dependency
+
 
     // ✅ 3. Filter Brands when Category changes
-    useEffect(() => {
-      console.log("🔍 Category changed:", bikeData.categoryId);
-      
-      if (!bikeData.categoryId) {
-        setFilteredBrands([]);
-        if (bikeData.brandId) {
-          setBikeData(prev => ({ ...prev, brandId: null, modelId: null }));
-        }
-        return;
-      }
+   // 3. Filter Brands when Category changes
+useEffect(() => {
+  console.log("🔄 Category changed:", bikeData.categoryId);
+  
+  if (!bikeData.categoryId) {
+    setFilteredBrands([]);
+    // ✅ ONLY clear if not in edit mode
+    if (!isEditMode && bikeData.brandId) {
+      setBikeData(prev => ({ ...prev, brandId: null, modelId: null }));
+    }
+    return;
+  }
 
-      const filtered = allBrands.filter(brand => brand.categoryId == bikeData.categoryId);
-      console.log(`  ✅ Found ${filtered.length} brands for category ${bikeData.categoryId}`);
-      setFilteredBrands(filtered);
+  const filtered = allBrands.filter(brand => brand.categoryId === bikeData.categoryId);
+  console.log(`✅ Found ${filtered.length} brands for category ${bikeData.categoryId}`);
+  setFilteredBrands(filtered);
 
-      if (bikeData.brandId) {
-        const stillValid = filtered.some(b => b.id == bikeData.brandId);
-        if (!stillValid) {
-          setBikeData(prev => ({ ...prev, brandId: null, modelId: null }));
-        }
-      }
-    }, [bikeData.categoryId, allBrands]);
+  // ✅ Only validate if brand exists AND not in filtered list
+  if (bikeData.brandId) {
+    const stillValid = filtered.some(b => b.id === bikeData.brandId);
+    if (!stillValid && !isEditMode) {
+      console.warn("⚠️ Brand not valid for this category, clearing");
+      setBikeData(prev => ({ ...prev, brandId: null, modelId: null }));
+    }
+  }
+}, [bikeData.categoryId, allBrands]); // ✅ Don't add isEditMode as dependency
+
 
     // ✅ 4. Filter Models when Brand changes - WITH COMPREHENSIVE DEBUG
-    useEffect(() => {
-      console.log("%c" + "=".repeat(80), "color: blue; font-weight: bold");
-      console.log("%c🔍 BRAND CHANGED - FILTERING MODELS", "color: blue; font-weight: bold; font-size: 14px");
-      console.log("Selected brandId:", bikeData.brandId, "(type:", typeof bikeData.brandId, ")");
-      console.log("Total models available:", allModels.length);
-      
-      if (!bikeData.brandId) {
-        console.log("⚠️ No brand selected, clearing models");
-        setFilteredModels([]);
-        if (bikeData.modelId) {
-          setBikeData(prev => ({ ...prev, modelId: null }));
-        }
-        return;
-      }
+    // 4. Filter Models when Brand changes
+useEffect(() => {
+  console.log("═".repeat(80));
+  console.log("🔄 BRAND CHANGED - FILTERING MODELS");
+  console.log("Selected brandId:", bikeData.brandId);
+  console.log("Total models available:", allModels.length);
+  console.log("Is Edit Mode:", isEditMode);
+  
+  if (!bikeData.brandId) {
+    console.log("⚠️ No brand selected, clearing models");
+    setFilteredModels([]);
+    // ✅ ONLY clear if not in edit mode
+    if (!isEditMode && bikeData.modelId) {
+      setBikeData(prev => ({ ...prev, modelId: null }));
+    }
+    return;
+  }
 
-      // ✅ CHECK EACH MODEL IN DETAIL
-      console.log("%c🔎 CHECKING EACH MODEL:", "color: purple; font-weight: bold");
-      allModels.forEach((model, index) => {
-        const modelBrandId = model.brandId || model.brand?.id || model.brand_id;
-        const matches = modelBrandId == bikeData.brandId;
-        
-        console.log(`[${index}] "${model.modelName || model.name}"`);
-        console.log(`    brandId in model: ${modelBrandId} (type: ${typeof modelBrandId})`);
-        console.log(`    selected brandId: ${bikeData.brandId} (type: ${typeof bikeData.brandId})`);
-        console.log(`    ✓ Matches: ${matches ? "YES ✅" : "NO ❌"}`);
-        
-        if (index === 0) {
-          console.log("    Full model object:", model);
-          console.log("    Model keys:", Object.keys(model));
-        }
+  // Try multiple field names for compatibility
+  const filtered = allModels.filter(model => {
+    const modelBrandId = 
+      model.brandId ||        // Standard field
+      model.brandid ||
+      model.brand_id ||         // Snake case
+      model.brand?.id ||      // Nested object
+      model.brand?.brandId || // Nested with different name
+      null;
+    
+    return Number(modelBrandId) === Number(bikeData.brandId);
+  });
+
+  console.log(`✅ FILTER RESULT: Found ${filtered.length} models for brand ${bikeData.brandId}`);
+  console.log("Filtered models:", filtered);
+  console.log("═".repeat(80));
+  
+  setFilteredModels(filtered);
+
+  // ✅ Only validate if model exists AND not in filtered list
+  if (bikeData.modelId) {
+    const stillValid = filtered.some(m => m.id === bikeData.modelId);
+    if (!stillValid && !isEditMode) {
+      console.warn("⚠️ Model not valid for this brand, clearing");
+      setBikeData(prev => ({ ...prev, modelId: null }));
+    }
+  }
+}, [bikeData.brandId, allModels]); // ✅ Don't add isEditMode as dependency
+
+
+// ✅ IMPROVED: Edit mode - Load data and trigger cascading filters
+useEffect(() => {
+  if (isEditMode && (id || initialBikeData)) {
+    console.log("═".repeat(80));
+    console.log("🔄 EDIT MODE DETECTED");
+    console.log("Bike ID from URL:", id);
+    console.log("Initial bike data from state:", initialBikeData);
+    
+    // Priority 1: Use data from navigation state (from Bikes.jsx)
+    if (initialBikeData) {
+      console.log("✅ Using bike data from navigation state");
+      loadBikeDataToForm(initialBikeData);
+    } 
+    // Priority 2: Fetch from API if only ID is available
+    else if (id && !initialBikeData) {
+      console.log("⚠️ No state data, fetching from API...");
+      fetchBikeData();
+    }
+  }
+}, [isEditMode, id, initialBikeData, allCategories, allBrands, allModels]);
+
+  const loadBikeDataToForm = (bike) => {
+    console.log("📝 Loading bike data to form:", bike);
+    
+    // Set all form fields
+    setBikeData({
+      name: bike.name || `${bike.brandName || ''} ${bike.modelName || ''}`.trim(),
+      vehicleTypeId: bike.vehicleTypeId || null,
+      categoryId: bike.categoryId || null,
+      brandId: bike.brandId || null,
+      modelId: bike.modelId || null,
+      fuelType: bike.fuelType || '',
+      registrationNumber: bike.registrationNumber || '',
+      registrationYear: bike.registrationYear || bike.registrationYearId || null,
+      chassisNumber: bike.chassisNumber || '',
+      engineNumber: bike.engineNumber || '',
+      storeId: bike.storeId || null,
+      imeiNumber: bike.imeiNumber || '',
+      batteryId: bike.batteryId || '',
+      latitude: bike.latitude || '',
+      longitude: bike.longitude || '',
+      isPuc: bike.isPuc === true || bike.puc === true,
+      isInsurance: bike.isInsurance === true || bike.insurance === true,
+      isDocuments: bike.isDocuments === true || bike.documents === true,
+      pucImage: null,
+      insuranceImage: null,
+      documentImage: null,
+      vehicleImages: null,
+    });
+
+      // ✅ Manually trigger filtering for edit mode
+    if (bike.vehicleTypeId && allCategories.length > 0) {
+      const cats = allCategories.filter(cat => cat.vehicleTypeId === bike.vehicleTypeId);
+      setFilteredCategories(cats);
+      console.log("✅ Filtered categories for edit:", cats.length);
+    }
+
+    if (bike.categoryId && allBrands.length > 0) {
+      const brands = allBrands.filter(brand => brand.categoryId === bike.categoryId);
+      setFilteredBrands(brands);
+      console.log("✅ Filtered brands for edit:", brands.length);
+    }
+
+    if (bike.brandId && allModels.length > 0) {
+      const models = allModels.filter(model => {
+        const modelBrandId = model.brandId || model.brandid || model.brand?.id || null;
+        return Number(modelBrandId) === Number(bike.brandId);
       });
+      setFilteredModels(models);
+      console.log("✅ Filtered models for edit:", models.length);
+    }
 
-      // Try multiple field names for compatibility
-      const filtered = allModels.filter(model => {
-        const modelBrandId = 
-          model.brandId ||           // Standard field
-          model.brand_id ||          // Snake case
-          model.brand?.id ||         // Nested object
-          model.brand?.brandId ||    // Nested with different name
-          null;
-        
-        return Number(modelBrandId) === Number(bikeData.brandId);
-      });
+    // ✅ Set preview images
+    const fixUrl = (url) => {
+      if (!url) return null;
+      if (url.startsWith('http')) return url;
+      return `${BASE_URL}/uploads/${url.replace(/^\/+/, '')}`;
+    };
 
-      console.log("%c✅ FILTER RESULT: Found " + filtered.length + " models for brand " + bikeData.brandId, 
-                  filtered.length > 0 ? "color: green; font-weight: bold; font-size: 16px" : "color: red; font-weight: bold; font-size: 16px");
-      console.log("📋 Filtered models:", filtered);
-      console.log("%c" + "=".repeat(80), "color: blue; font-weight: bold");
-      
-      setFilteredModels(filtered);
+    setPreviewImages({
+      pucImage: fixUrl(bike.pucImageUrl || bike.existingPucImage),
+      insuranceImage: fixUrl(bike.insuranceImageUrl || bike.existingInsuranceImage),
+      documentImage: fixUrl(bike.documentImageUrl || bike.existingDocumentImage),
+      vehicleImages: (bike.bikeImages || bike.existingBikeImages || []).map(fixUrl).filter(Boolean),
+    });
 
-      if (bikeData.modelId) {
-        const stillValid = filtered.some(m => m.id == bikeData.modelId);
-        if (!stillValid) {
-          setBikeData(prev => ({ ...prev, modelId: null }));
-        }
-      }
-    }, [bikeData.brandId, allModels]);
+    setPageLoading(false);
+    console.log("✅ Edit data loaded successfully");
+  };
 
-    // Edit mode
-    useEffect(() => {
-      if (isEditMode) {
-        if (initialBikeData) {
-          setBikeData({
-            name: initialBikeData.name || "",
-            vehicleTypeId: initialBikeData.vehicleTypeId || null,
-            categoryId: initialBikeData.categoryId || null,
-            brandId: initialBikeData.brandId || null,
-            modelId: initialBikeData.modelId || null,
-            fuelType: initialBikeData.fuelType || "",
-            registrationNumber: initialBikeData.registrationNumber || "",
-            registrationYear: initialBikeData.registrationYear || null,
-            chassisNumber: initialBikeData.chassisNumber || "",
-            engineNumber: initialBikeData.engineNumber || "",
-            storeId: initialBikeData.storeId || null,
-            imeiNumber: initialBikeData.imeiNumber || "",
-            batteryId: initialBikeData.batteryId || "",
-            latitude: initialBikeData.latitude || "",
-            longitude: initialBikeData.longitude || "",
-            isPuc: initialBikeData.isPuc || false,
-            isInsurance: initialBikeData.isInsurance || false,
-            isDocuments: initialBikeData.isDocuments || false,
-            pucImage: null,
-            insuranceImage: null,
-            documentImage: null,
-            vehicleImages: null,
-          });
 
-          setPreviewImages({
-            pucImage: initialBikeData.pucImageUrl ? `${BASE_URL}${initialBikeData.pucImageUrl}` : null,
-            insuranceImage: initialBikeData.insuranceImageUrl ? `${BASE_URL}${initialBikeData.insuranceImageUrl}` : null,
-            documentImage: initialBikeData.documentImageUrl ? `${BASE_URL}${initialBikeData.documentImageUrl}` : null,
-            vehicleImages: initialBikeData.bikeImages?.map((img) => `${BASE_URL}${img}`) || [],
-          });
-          setPageLoading(false);
-        } else {
-          fetchBikeData();
-        }
-      }
-    }, [isEditMode, initialBikeData]);
+
 
     const fetchBikeData = async () => {
-      try {
-        const response = await bikeAPI.getById(id);
-        const bike = response.data?.data || response.data;
+    if (!id) {
+      console.error("❌ No bike ID provided");
+      setPageLoading(false);
+      return;
+    }
 
-        if (bike) {
-          setBikeData({
-            name: bike.name || "",
-            vehicleTypeId: bike.vehicleTypeId || null,
-            categoryId: bike.categoryId || null,
-            brandId: bike.brandId || null,
-            modelId: bike.modelId || null,
-            fuelType: bike.fuelType || "",
-            registrationNumber: bike.registrationNumber || "",
-            registrationYear: bike.registrationYear || null,
-            chassisNumber: bike.chassisNumber || "",
-            engineNumber: bike.engineNumber || "",
-            storeId: bike.storeId || null,
-            imeiNumber: bike.imeiNumber || "",
-            batteryId: bike.batteryId || "",
-            latitude: bike.latitude || "",
-            longitude: bike.longitude || "",
-            isPuc: bike.isPuc || false,
-            isInsurance: bike.isInsurance || false,
-            isDocuments: bike.isDocuments || false,
-            pucImage: null,
-            insuranceImage: null,
-            documentImage: null,
-            vehicleImages: null,
-          });
+    try {
+      setPageLoading(true);
+      console.log("🔄 Fetching bike data for ID:", id);
+      
+      const response = await bikeAPI.getById(id);
+      const bike = response.data?.data || response.data;
 
-          setPreviewImages({
-            pucImage: bike.pucImageUrl ? `${BASE_URL}${bike.pucImageUrl}` : null,
-            insuranceImage: bike.insuranceImageUrl ? `${BASE_URL}${bike.insuranceImageUrl}` : null,
-            documentImage: bike.documentImageUrl ? `${BASE_URL}${bike.documentImageUrl}` : null,
-            vehicleImages: bike.bikeImages?.map((img) => `${BASE_URL}${img}`) || [],
-          });
-        }
-      } catch (error) {
-        console.error("❌ Error fetching bike:", error);
-        toast.error("Failed to load bike data");
-      } finally {
-        setPageLoading(false);
+      console.log("✅ Fetched bike data:", bike);
+
+      if (bike) {
+        loadBikeDataToForm(bike); // ✅ Uses the function defined above
+      } else {
+        console.error("❌ No bike data received");
+        toast.error("Bike not found");
+        navigate("/dashboard/allBikes");
       }
-    };
+    } catch (error) {
+      console.error("❌ Error fetching bike:", error);
+      toast.error(error.response?.data?.message || "Failed to load bike data");
+      navigate("/dashboard/allBikes");
+    } finally {
+      setPageLoading(false);
+    }
+  };
+
 
     const handleChange = (e) => {
       const { name, value, type, checked, files } = e.target;
@@ -414,99 +461,104 @@
     };
 
     const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
+
+  // ✅ Check if already submitting
+  if (submitLoading) {
+    console.log('⏳ Already submitting...');
+    return;
+  }
+
+  // ✅ Validate form
+  if (!validateForm()) {
+    toast.error('Please fill all required fields correctly');
+    return;
+  }
+
+  setSubmitLoading(true);
+
+  try {
+    const formDataToSend = new FormData();
     
-    if (isLoading) return;
-    if (!validateForm()) {
-      toast.error('Please fill all required fields');
-      return;
+    // Append all form fields
+    Object.keys(bikeData).forEach((key) => {
+      if (bikeData[key] !== null && bikeData[key] !== undefined && bikeData[key] !== '') {
+        if (key === 'isPuc' || key === 'isInsurance' || key === 'isDocuments') {
+          formDataToSend.append(key, bikeData[key]);
+        } else if (key !== 'pucImage' && key !== 'insuranceImage' && key !== 'documentImage' && key !== 'vehicleImages') {
+          formDataToSend.append(key, bikeData[key]);
+        }
+      }
+    });
+
+    // Append images
+    if (bikeData.pucImage instanceof File) {
+      formDataToSend.append('pucImage', bikeData.pucImage);
     }
-    
-    setIsLoading(true);
-    
-    try {
-      const formData = new FormData();
-      
-      // ✅ Basic bike information (matching BikeRequestDTO)
-      formData.append('name', bikeData.name?.trim());
-      formData.append('vehicleTypeId', bikeData.vehicleTypeId);
-      formData.append('categoryId', bikeData.categoryId);
-      formData.append('brandId', bikeData.brandId);
-      formData.append('modelId', bikeData.modelId);
-      formData.append('fuelType', bikeData.fuelType); // Send as string: "ELECTRIC" or "PETROL"
-      formData.append('registrationNumber', bikeData.registrationNumber?.trim());
-      formData.append('registrationYear', bikeData.registrationYear);
-      formData.append('storeId', bikeData.storeId);
-      
-      // ✅ Optional fields
-      formData.append('chassisNumber', bikeData.chassisNumber?.trim() || '');
-      formData.append('engineNumber', bikeData.engineNumber?.trim() || '');
-      formData.append('imeiNumber', bikeData.imeiNumber?.trim() || '');
-      formData.append('batteryId', bikeData.batteryId?.trim() || '');
-      formData.append('latitude', bikeData.latitude?.trim() || '');
-      formData.append('longitude', bikeData.longitude?.trim() || '');
-      
-      // ✅ Boolean flags (send as "true" or "false" strings)
-      formData.append('isPuc', String(bikeData.isPuc === true));
-      formData.append('isInsurance', String(bikeData.isInsurance === true));
-      formData.append('isDocuments', String(bikeData.isDocuments === true));
-      
-      // ✅ Document images (single files)
-      if (bikeData.pucImage instanceof File) {
-        formData.append('pucImage', bikeData.pucImage);
-      }
-      if (bikeData.insuranceImage instanceof File) {
-        formData.append('insuranceImage', bikeData.insuranceImage);
-      }
-      if (bikeData.documentImage instanceof File) {
-        formData.append('documentImage', bikeData.documentImage);
-      }
-      
-      // ✅ CRITICAL: Vehicle images array (matching backend's "images" field)
-      if (Array.isArray(bikeData.vehicleImages) && bikeData.vehicleImages.length > 0) {
-        bikeData.vehicleImages.forEach((file) => {
-          if (file instanceof File) {
-            formData.append('images', file); // Backend expects "images" not "vehicleImages"
-          }
-        });
-      }
-      
-      // Debug log
-      console.log('📤 Submitting form data:');
-      for (let pair of formData.entries()) {
-        console.log(pair[0] + ':', pair[1]);
-      }
-      
-      let response;
-      if (isEditMode) {
-        response = await bikeAPI.update(id, formData);
-        toast.success('✅ Bike updated successfully!');
-      } else {
-        response = await bikeAPI.create(formData);
-        toast.success('✅ Bike added successfully!');
-      }
-      
-      console.log('✅ Response:', response.data);
-      
-      // Navigate to bikes list after success
-      setTimeout(() => navigate('/dashboard/allBikes'), 1000);
-      
-    } catch (error) {
-      console.error('❌ Error:', error.response?.data || error);
-      
-      // Handle validation errors
-      if (error.response?.data?.errors) {
-        const errors = error.response.data.errors;
-        Object.keys(errors).forEach(key => {
-          toast.error(`${key}: ${errors[key]}`);
-        });
-      } else {
-        toast.error(error.response?.data?.message || 'Failed to submit bike data');
-      }
-    } finally {
-      setIsLoading(false);
+    if (bikeData.insuranceImage instanceof File) {
+      formDataToSend.append('insuranceImage', bikeData.insuranceImage);
     }
-  };
+    if (bikeData.documentImage instanceof File) {
+      formDataToSend.append('documentImage', bikeData.documentImage);
+    }
+    if (bikeData.vehicleImages && bikeData.vehicleImages.length > 0) {
+      Array.from(bikeData.vehicleImages).forEach((file) => {
+        formDataToSend.append('vehicleImages', file);
+      });
+    }
+
+    const url = isEditMode 
+      ? `${BASE_URL}/api/bikes/update/${id}`
+      : `${BASE_URL}/api/bikes/add`;
+
+    const response = await fetch(url, {
+      method: isEditMode ? 'PUT' : 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: formDataToSend
+    });
+
+    // ✅ IMPROVED ERROR HANDLING
+    if (!response.ok) {
+  let errorMessage = 'Failed to save bike';
+  try {
+    const errorData = await response.json();
+    if (errorData.message) errorMessage = errorData.message;
+    else if (errorData.error) errorMessage = errorData.error;
+    else if (errorData.errors) errorMessage = Object.values(errorData.errors)[0];
+  } catch {
+    errorMessage = `Error ${response.status}: ${response.statusText}`;
+  }
+  setGeneralError(errorMessage); // Show inside the form
+  toast.error(errorMessage);     // Show in toast as well (optional)
+  throw new Error(errorMessage);
+}
+
+
+    // ✅ SUCCESS
+    const result = await response.json();
+    console.log('✅ Success Response:', result);
+    
+    toast.success(`🎉 Bike ${isEditMode ? 'updated' : 'added'} successfully!`);
+    
+    setTimeout(() => {
+      navigate('/dashboard/allBikes');
+    }, 1500);
+
+  } catch (err) {
+    console.error('❌ Error saving bike:', err);
+    
+    if (!err.message || err.message === 'Failed to fetch') {
+      toast.error('❌ Network error. Please check your connection.');
+    }
+  } finally {
+    setSubmitLoading(false);
+  }
+};
+
+
+
 
 
     const removeVehicleImagePreview = (index) => {
@@ -562,6 +614,26 @@
             </div>
           </div>
 
+          {generalError && (
+  <div className="mb-6">
+    <div className="flex items-center bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded" role="alert">
+      <FaTimes className="mr-2 text-lg" />
+      <div>
+        <span className="font-semibold">Error:</span> {generalError}
+      </div>
+      <button
+        onClick={() => setGeneralError("")}
+        className="ml-auto text-red-600 hover:text-red-800 font-bold px-2 py-1 focus:outline-none"
+        title="Dismiss"
+        tabIndex={0}
+      >
+        ×
+      </button>
+    </div>
+  </div>
+)}
+
+
           <form onSubmit={handleSubmit} noValidate className="space-y-6 sm:space-y-8">
             
             {/* Section 1: Basic Information */}
@@ -585,7 +657,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B2B80] transition ${
                       errors.name ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   {errors.name && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><FaTimes /> {errors.name}</p>}
                 </div>
@@ -602,7 +674,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B2B80] transition ${
                       errors.vehicleTypeId ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   >
                     <option value="">-- Select Type --</option>
                     {vehicleTypes.map((type) => (
@@ -626,7 +698,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B2B80] transition ${
                       errors.categoryId ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading || !bikeData.vehicleTypeId}
+                    disabled={submitLoading || !bikeData.vehicleTypeId}
                   >
                     <option value="">
                       {!bikeData.vehicleTypeId ? "Select Type First" : filteredCategories.length === 0 ? "No Categories" : "-- Select Category --"}
@@ -652,7 +724,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B2B80] transition ${
                       errors.brandId ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading || !bikeData.categoryId}
+                    disabled={submitLoading || !bikeData.categoryId}
                   >
                     <option value="">
                       {!bikeData.categoryId ? "Select Category First" : filteredBrands.length === 0 ? "No Brands" : "-- Select Brand --"}
@@ -678,7 +750,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B2B80] transition ${
                       errors.modelId ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading || !bikeData.brandId}
+                    disabled={submitLoading || !bikeData.brandId}
                   >
                     <option value="">
                       {!bikeData.brandId ? "Select Brand First" : filteredModels.length === 0 ? "No Models" : "-- Select Model --"}
@@ -704,7 +776,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B2B80] transition ${
                       errors.fuelType ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   >
                     <option value="">-- Select Fuel Type --</option>
                     {fuelTypeOptions.map((option) => (
@@ -739,7 +811,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition uppercase ${
                       errors.registrationNumber ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   {errors.registrationNumber && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><FaTimes /> {errors.registrationNumber}</p>}
                 </div>
@@ -756,7 +828,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition ${
                       errors.registrationYear ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   >
                     <option value="">-- Select Year --</option>
                     {years.map((year) => (
@@ -780,7 +852,7 @@
                     onChange={handleChange}
                     placeholder="Enter chassis number"
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition uppercase"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                 </div>
 
@@ -796,7 +868,7 @@
                     onChange={handleChange}
                     placeholder="Enter engine number"
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition uppercase"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                 </div>
 
@@ -812,7 +884,7 @@
                     className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition ${
                       errors.storeId ? "border-red-500 bg-red-50" : "border-gray-300"
                     }`}
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   >
                     <option value="">-- Select Store --</option>
                     {stores.map((store) => (
@@ -845,7 +917,7 @@
                     onChange={handleChange}
                     placeholder="Enter IMEI number"
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600 transition"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                 </div>
 
@@ -861,7 +933,7 @@
                     onChange={handleChange}
                     placeholder="Enter battery ID"
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600 transition"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                 </div>
 
@@ -877,7 +949,7 @@
                     onChange={handleChange}
                     placeholder="e.g., 19.0760"
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600 transition"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                 </div>
 
@@ -893,7 +965,7 @@
                     onChange={handleChange}
                     placeholder="e.g., 72.8777"
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600 transition"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                 </div>
               </div>
@@ -914,7 +986,7 @@
                     checked={bikeData.isPuc}
                     onChange={handleChange}
                     className="w-5 h-5 text-orange-600 rounded focus:ring-2 focus:ring-orange-500"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   <span className="text-sm font-semibold text-gray-700">PUC Available</span>
                 </label>
@@ -926,7 +998,7 @@
                     checked={bikeData.isInsurance}
                     onChange={handleChange}
                     className="w-5 h-5 text-orange-600 rounded focus:ring-2 focus:ring-orange-500"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   <span className="text-sm font-semibold text-gray-700">Insurance Available</span>
                 </label>
@@ -938,7 +1010,7 @@
                     checked={bikeData.isDocuments}
                     onChange={handleChange}
                     className="w-5 h-5 text-orange-600 rounded focus:ring-2 focus:ring-orange-500"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   <span className="text-sm font-semibold text-gray-700">All Documents Available</span>
                 </label>
@@ -958,7 +1030,7 @@
                     onChange={handleChange}
                     accept="image/*"
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   {previewImages.pucImage && (
                     <div className="mt-3 relative">
@@ -985,7 +1057,7 @@
                     onChange={handleChange}
                     accept="image/*"
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   {previewImages.insuranceImage && (
                     <div className="mt-3 relative">
@@ -1012,7 +1084,7 @@
                     onChange={handleChange}
                     accept="image/*"
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    disabled={isLoading}
+                    disabled={submitLoading}
                   />
                   {previewImages.documentImage && (
                     <div className="mt-3 relative">
@@ -1045,7 +1117,7 @@
                 className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100 ${
                   errors.vehicleImages ? "border-red-500 bg-red-50" : "border-gray-300"
                 }`}
-                disabled={isLoading}
+                disabled={submitLoading}
               />
               {errors.vehicleImages && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><FaTimes /> {errors.vehicleImages}</p>}
               
@@ -1080,28 +1152,29 @@
                 type="button"
                 onClick={() => navigate("/dashboard/allBikes")}
                 className="w-full sm:w-auto px-6 py-3 bg-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-400 transition shadow-md"
-                disabled={isLoading}
+                disabled={submitLoading}
               >
                 <FaTimes className="inline mr-2" />
                 Cancel
               </button>
               <button
-                type="submit"
-                className="w-full sm:flex-1 px-6 py-3 bg-gradient-to-r from-[#2B2B80] to-indigo-700 text-white font-bold rounded-lg hover:from-[#1f1f5c] hover:to-indigo-800 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <FaSpinner className="animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <FaCheck />
-                    {isEditMode ? "Update Bike" : "Add Bike"}
-                  </>
-                )}
-              </button>
+  type="submit"
+  className="w-full sm:flex-1 px-6 py-3 bg-gradient-to-r from-[#2B2B80] to-indigo-700 text-white font-bold rounded-lg hover:from-[#1f1f5c] hover:to-indigo-800 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+  disabled={submitLoading}
+>
+  {submitLoading ? (
+    <>
+      <FaSpinner className="animate-spin" />
+      Processing...
+    </>
+  ) : (
+    <>
+      <FaCheck />
+      {isEditMode ? "Update Bike" : "Add Bike"}
+    </>
+  )}
+</button>
+
             </div>
           </form>
         </div>

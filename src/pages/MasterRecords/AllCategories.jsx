@@ -1,6 +1,4 @@
-// AllCategories.jsx - Updated to work with CategoryDTO (no nested vehicleType)
-
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import {
   FaEdit,
   FaTrash,
@@ -9,10 +7,12 @@ import {
   FaPlus,
   FaSearch,
   FaImage,
-  FaEye,
   FaTimes,
   FaList,
   FaTh,
+  FaSort,
+  FaSortUp,
+  FaSortDown,
 } from "react-icons/fa";
 
 const AllCategories = () => {
@@ -20,10 +20,21 @@ const AllCategories = () => {
   const [data, setData] = useState([]);
   const [vehicleTypes, setVehicleTypes] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [vehicleTypeFilter, setVehicleTypeFilter] = useState("");
+  
+  // ✅ Backend pagination states (0-based indexing)
   const [currentPage, setCurrentPage] = useState(0);
-  const [itemsPerPage] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  
+  // ✅ Sorting states
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState('DESC');
+  
   const [formVisible, setFormVisible] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -36,6 +47,7 @@ const AllCategories = () => {
   });
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
+  const [togglingIds, setTogglingIds] = useState(new Set());
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -61,18 +73,28 @@ const AllCategories = () => {
     [API_BASE_URL]
   );
 
+  // ✅ Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setCurrentPage(0); // Reset to first page on search
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // Image URL helper
-  const fixImageUrl = (imagePath) => {
+  const fixImageUrl = useCallback((imagePath) => {
     if (!imagePath || imagePath.trim() === "") return null;
     const path = imagePath.trim();
     if (path.startsWith("http://") || path.startsWith("https://")) return path;
     if (path.startsWith("/")) return API_BASE_URL + path;
     return API_BASE_URL + "/" + path;
-  };
+  }, [API_BASE_URL]);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("adminToken") : null;
 
-  const makeApiCall = async (url, options = {}) => {
+  const makeApiCall = useCallback(async (url, options = {}) => {
     const headers = new Headers(options.headers || {});
     if (token) headers.set("Authorization", `Bearer ${token}`);
     if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -100,15 +122,14 @@ const AllCategories = () => {
     }
 
     return responseData;
-  };
+  }, [token]);
 
   // ✅ Fetch vehicle types FIRST
-  const fetchVehicleTypes = async () => {
+  const fetchVehicleTypes = useCallback(async () => {
     try {
       console.log("📡 Fetching vehicle types...");
       const resp = await makeApiCall(API.vehicleTypes.active);
       
-      // Handle different response structures
       let vehicleTypesData = [];
       if (Array.isArray(resp)) {
         vehicleTypesData = resp;
@@ -124,98 +145,113 @@ const AllCategories = () => {
       console.error("❌ Vehicle types fetch failed:", err.message);
       setVehicleTypes([]);
     }
-  };
+  }, [API.vehicleTypes.active, makeApiCall]);
 
   // ✅ Helper to get vehicle type name by ID
-  // ✅ Helper to get vehicle type name by ID with DEBUGGING
-const getVehicleTypeName = (vehicleTypeId) => {
-  console.log("🔎 getVehicleTypeName called with:", vehicleTypeId, "Type:", typeof vehicleTypeId);
-  console.log("🔎 Available vehicle types:", vehicleTypes);
-  
-  if (!vehicleTypeId) {
-    console.warn("⚠️ vehicleTypeId is null/undefined");
-    return "N/A";
-  }
-  
-  const vt = vehicleTypes.find((v) => {
-    console.log(`  Comparing: ${v.id} (${typeof v.id}) === ${vehicleTypeId} (${typeof vehicleTypeId})`);
-    return v.id == vehicleTypeId; // Use == for type coercion
-  });
-  
-  if (!vt) {
-    console.warn(`⚠️ Vehicle type NOT FOUND for ID: ${vehicleTypeId}`);
-    console.log("Available IDs:", vehicleTypes.map(v => v.id));
-    return "N/A";
-  }
-  
-  console.log("✅ Found vehicle type:", vt);
-  return vt.name || vt.typeName || "N/A";
-};
-
-
-  // ✅ Fetch categories
-  // ✅ Fetch categories with DETAILED DEBUGGING
-const fetchCategories = async () => {
-  setPageLoading(true);
-  try {
-    const url = `${API.categories.list}?page=${currentPage}&size=${itemsPerPage}`;
-    console.log("📡 Fetching categories:", url);
+  const getVehicleTypeName = useCallback((vehicleTypeId) => {
+    if (!vehicleTypeId) return "N/A";
     
-    const resp = await makeApiCall(url);
-
-    if (resp?.success) {
-      const categoriesData = Array.isArray(resp.data) ? resp.data : [];
-
-      console.log("✅ Categories loaded:", categoriesData.length);
-      
-      // ✅ DETAILED DEBUGGING - Check first category
-      if (categoriesData.length > 0) {
-        const sampleCategory = categoriesData[0];
-        console.log("📋 Sample category FULL OBJECT:", sampleCategory);
-        console.log("🔍 Category keys:", Object.keys(sampleCategory));
-        console.log("🔍 vehicleTypeId value:", sampleCategory.vehicleTypeId);
-        console.log("🔍 vehicleTypeId type:", typeof sampleCategory.vehicleTypeId);
-        
-        // Check all possible field names
-        console.log("🔍 Checking all possible vehicle type fields:");
-        console.log("  - vehicleTypeId:", sampleCategory.vehicleTypeId);
-        console.log("  - vehicleType:", sampleCategory.vehicleType);
-        console.log("  - vehicle_type_id:", sampleCategory.vehicle_type_id);
-        console.log("  - type_id:", sampleCategory.type_id);
-      }
-
-      // ✅ Fix image URLs
-      const categoriesWithFixedImages = categoriesData.map((category) => ({
-        ...category,
-        image: fixImageUrl(category.image),
-      }));
-
-      setData(categoriesWithFixedImages);
-
-      // Clear image trackers
-      imageErrorTrackerRef.current.clear();
-      imageLoadTrackerRef.current.clear();
-
-      if (resp.pagination) {
-        setTotalPages(resp.pagination.totalPages);
-        setTotalElements(resp.pagination.totalElements);
-      }
-    } else {
-      setData([]);
-      setError(resp?.message || "Failed to load categories");
+    const vt = vehicleTypes.find((v) => v.id == vehicleTypeId); // Use == for type coercion
+    
+    if (!vt) {
+      console.warn(`⚠️ Vehicle type NOT FOUND for ID: ${vehicleTypeId}`);
+      return "Unknown";
     }
-  } catch (err) {
-    console.error("❌ Fetch categories error:", err);
-    setError(`Failed to load categories: ${err.message}`);
-    setData([]);
-  } finally {
-    setPageLoading(false);
-  }
-};
+    
+    return vt.name || vt.typeName || "N/A";
+  }, [vehicleTypes]);
 
+  // ✅ Fetch categories with backend pagination
+  const fetchCategories = useCallback(async () => {
+    if (pageLoading && currentPage !== 0) return; // Prevent multiple calls
+    
+    setPageLoading(true);
+    try {
+      // Build query parameters
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        size: itemsPerPage.toString(),
+        sortBy: sortBy,
+        direction: sortDirection
+      });
+
+      // Add search parameter only if it exists
+      if (debouncedSearchQuery && debouncedSearchQuery.trim()) {
+        params.append('name', debouncedSearchQuery.trim());
+      }
+
+      // Add vehicle type filter if selected
+      if (vehicleTypeFilter && vehicleTypeFilter !== "") {
+        const selectedVehicleType = vehicleTypes.find(vt => vt.id == vehicleTypeFilter);
+        if (selectedVehicleType) {
+          params.append('vehicleTypeName', selectedVehicleType.name || selectedVehicleType.typeName);
+        }
+      }
+
+      const url = `${API.categories.list}?${params.toString()}`;
+      console.log("📡 Fetching categories:", url);
+      
+      const resp = await makeApiCall(url);
+
+      if (resp?.success) {
+        const categoriesData = Array.isArray(resp.data) ? resp.data : [];
+
+        console.log("✅ Categories loaded:", categoriesData.length);
+        
+        // Debug first category
+        if (categoriesData.length > 0) {
+          const sampleCategory = categoriesData[0];
+          console.log("📋 Sample category:", sampleCategory);
+          console.log("🔍 vehicleTypeId:", sampleCategory.vehicleTypeId, "Type:", typeof sampleCategory.vehicleTypeId);
+        }
+
+        // Fix image URLs
+        const categoriesWithFixedImages = categoriesData.map((category) => ({
+          ...category,
+          image: fixImageUrl(category.image),
+        }));
+
+        setData(categoriesWithFixedImages);
+
+        // Clear image trackers
+        imageErrorTrackerRef.current.clear();
+        imageLoadTrackerRef.current.clear();
+
+        // ✅ Update pagination metadata
+        if (resp.pagination) {
+          setCurrentPage(resp.pagination.currentPage);
+          setTotalPages(resp.pagination.totalPages);
+          setTotalElements(resp.pagination.totalElements);
+          setHasNext(resp.pagination.hasNext);
+          setHasPrevious(resp.pagination.hasPrevious);
+        }
+      } else {
+        setData([]);
+        setError(resp?.message || "Failed to load categories");
+      }
+    } catch (err) {
+      console.error("❌ Fetch categories error:", err);
+      setError(`Failed to load categories: ${err.message}`);
+      setData([]);
+    } finally {
+      setPageLoading(false);
+    }
+  }, [
+    API.categories.list,
+    makeApiCall,
+    currentPage,
+    itemsPerPage,
+    sortBy,
+    sortDirection,
+    debouncedSearchQuery,
+    vehicleTypeFilter,
+    vehicleTypes,
+    fixImageUrl,
+    pageLoading
+  ]);
 
   // Image handling
-  const handleImageError = (categoryId, imageUrl, e) => {
+  const handleImageError = useCallback((categoryId, imageUrl, e) => {
     const key = `${categoryId}-${imageUrl}`;
     if (imageErrorTrackerRef.current.has(key)) {
       e.target.style.display = "none";
@@ -224,24 +260,30 @@ const fetchCategories = async () => {
     imageErrorTrackerRef.current.add(key);
     console.error(`❌ Image failed: category ${categoryId}`);
     e.target.style.display = "none";
-  };
+  }, []);
 
-  const handleImageLoad = (categoryId, imageUrl) => {
+  const handleImageLoad = useCallback((categoryId, imageUrl) => {
     const key = `${categoryId}-${imageUrl}`;
     if (!imageLoadTrackerRef.current.has(key)) {
       console.log(`✅ Image loaded: category ${categoryId}`);
       imageLoadTrackerRef.current.add(key);
     }
-  };
+  }, []);
 
-  // ✅ Initial load - IMPORTANT: Fetch vehicle types FIRST, then categories
+  // ✅ Initial load - Fetch vehicle types FIRST, then categories
   useEffect(() => {
     const loadData = async () => {
-      await fetchVehicleTypes(); // Wait for vehicle types
-      await fetchCategories();   // Then load categories
+      await fetchVehicleTypes();
     };
     loadData();
-  }, [currentPage, itemsPerPage]);
+  }, [fetchVehicleTypes]);
+
+  // ✅ Fetch categories when dependencies change
+  useEffect(() => {
+    if (vehicleTypes.length > 0) {
+      fetchCategories();
+    }
+  }, [currentPage, itemsPerPage, sortBy, sortDirection, debouncedSearchQuery, vehicleTypeFilter, vehicleTypes.length]);
 
   // Auto clear messages
   useEffect(() => {
@@ -253,8 +295,35 @@ const fetchCategories = async () => {
     return () => clearTimeout(timer);
   }, [error, success]);
 
+  // Handle page size change
+  const handlePageSizeChange = useCallback((e) => {
+    setItemsPerPage(Number(e.target.value));
+    setCurrentPage(0);
+  }, []);
+
+  // Handle sort change
+  const handleSortChange = useCallback((field) => {
+    if (sortBy === field) {
+      setSortDirection(prev => prev === 'ASC' ? 'DESC' : 'ASC');
+    } else {
+      setSortBy(field);
+      setSortDirection('DESC');
+    }
+    setCurrentPage(0);
+  }, [sortBy]);
+
+  // Get sort icon
+  const getSortIcon = useCallback((field) => {
+    if (sortBy !== field) {
+      return <FaSort className="inline ml-1 text-gray-400 text-xs" />;
+    }
+    return sortDirection === 'ASC' 
+      ? <FaSortUp className="inline ml-1 text-blue-600 text-xs" />
+      : <FaSortDown className="inline ml-1 text-blue-600 text-xs" />;
+  }, [sortBy, sortDirection]);
+
   // Form handlers
-  const handleImageChange = (e) => {
+  const handleImageChange = useCallback((e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -277,9 +346,9 @@ const fetchCategories = async () => {
     reader.onload = (ev) => setImagePreview(ev.target.result);
     reader.readAsDataURL(file);
     setError("");
-  };
+  }, []);
 
-  const handleAddCategory = async (e) => {
+  const handleAddCategory = useCallback(async (e) => {
     e.preventDefault();
     if (!formData.categoryName?.trim()) {
       setError("Category name is required");
@@ -318,15 +387,15 @@ const fetchCategories = async () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, API.categories.add, makeApiCall, fetchCategories]);
 
-  const handleEditCategory = (category) => {
+  const handleEditCategory = useCallback((category) => {
     console.log("✏️ Editing category:", category);
     
     setEditingId(category.id);
     setFormData({
       categoryName: category.categoryName || "",
-      vehicleTypeId: (category.vehicleTypeId || "").toString(), // ✅ Use vehicleTypeId directly
+      vehicleTypeId: (category.vehicleTypeId || "").toString(),
       image: null,
     });
 
@@ -334,9 +403,9 @@ const fetchCategories = async () => {
     setFormVisible(true);
     setError("");
     setSuccess("");
-  };
+  }, []);
 
-  const handleSaveEditCategory = async (e) => {
+  const handleSaveEditCategory = useCallback(async (e) => {
     e.preventDefault();
     if (!formData.categoryName?.trim()) {
       setError("Category name is required");
@@ -374,37 +443,56 @@ const fetchCategories = async () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, editingId, API.categories, makeApiCall, fetchCategories]);
 
-  const handleToggleStatus = async (id) => {
-    setLoading(true);
+  // ✅ Toggle status with proper state management
+  const toggleCategoryStatus = useCallback(async (categoryId) => {
+    setTogglingIds(prev => new Set([...prev, categoryId]));
+    setError(null);
+
     try {
-      const resp = await makeApiCall(API.categories.toggle(id));
+      const toggleUrl = API.categories.toggle(categoryId);
+      console.log('🔄 Toggling status for category:', categoryId);
+      
+      const result = await makeApiCall(toggleUrl);
+      
+      console.log('✅ Toggle result:', result);
+      
+      // Update local state immediately
+      setData(prevCategories => 
+        prevCategories.map(category => 
+          category.id === categoryId ? result : category
+        )
+      );
 
-      if (resp?.success) {
-        setSuccess("Status updated!");
-        await fetchCategories();
-      } else {
-        setError("Failed to update status");
-      }
+      setSuccess("Status updated successfully!");
+
     } catch (err) {
-      setError(`Failed to update status: ${err.message}`);
+      setError(`Failed to toggle category status: ${err.message}`);
+      console.error('❌ Toggle status error:', err);
+      
+      // Refresh data on error
+      await fetchCategories();
     } finally {
-      setLoading(false);
+      setTogglingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(categoryId);
+        return newSet;
+      });
     }
-  };
+  }, [API.categories, makeApiCall, fetchCategories]);
 
-  const confirmDeleteCategory = async (id) => {
+  const confirmDeleteCategory = useCallback(async (id) => {
     setLoading(true);
     try {
-      await handleToggleStatus(id);
+      await toggleCategoryStatus(id);
       setConfirmDeleteId(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [toggleCategoryStatus]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setEditingId(null);
     setFormData({ categoryName: "", vehicleTypeId: "", image: null });
     setImagePreview(null);
@@ -414,16 +502,10 @@ const fetchCategories = async () => {
 
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) fileInput.value = "";
-  };
-
-  const filteredData = useMemo(() => {
-    if (!searchQuery.trim()) return data;
-    const query = searchQuery.toLowerCase();
-    return data.filter((item) => (item.categoryName || "").toLowerCase().includes(query));
-  }, [data, searchQuery]);
+  }, []);
 
   // ✅ Category Image Component
-  const CategoryImage = ({ category }) => {
+  const CategoryImage = useCallback(({ category }) => {
     const imageUrl = category.image;
     const key = `${category.id}-${imageUrl}`;
     const hasError = imageErrorTrackerRef.current.has(key);
@@ -446,15 +528,12 @@ const fetchCategories = async () => {
         loading="lazy"
       />
     );
-  };
+  }, [handleImageLoad, handleImageError]);
 
   // ✅ Category Card Component
-  const CategoryCard = ({ category }) => {
-    // ✅ Get vehicleTypeId directly from category
-  console.log("🎴 CategoryCard - Full category:", category);
-  console.log("🎴 CategoryCard - vehicleTypeId:", category.vehicleTypeId);
-    const vehicleTypeId = category.vehicleTypeId;
-    const vehicleTypeName = getVehicleTypeName(vehicleTypeId);
+  const CategoryCard = useCallback(({ category }) => {
+    const vehicleTypeName = getVehicleTypeName(category.vehicleTypeId);
+    const isToggling = togglingIds.has(category.id);
 
     return (
       <div className="bg-white rounded-xl shadow-md hover:shadow-xl transition-shadow p-4 border border-gray-200">
@@ -498,7 +577,7 @@ const fetchCategories = async () => {
           <button
             className="flex-1 flex items-center justify-center gap-1 py-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
             onClick={() => handleEditCategory(category)}
-            disabled={loading}
+            disabled={loading || isToggling}
           >
             <FaEdit /> Edit
           </button>
@@ -507,32 +586,34 @@ const fetchCategories = async () => {
               category.isActive === 1
                 ? "text-orange-600 bg-orange-50 hover:bg-orange-100"
                 : "text-green-600 bg-green-50 hover:bg-green-100"
-            }`}
-            onClick={() => handleToggleStatus(category.id)}
-            disabled={loading}
+            } ${isToggling ? "opacity-50 cursor-not-allowed" : ""}`}
+            onClick={() => toggleCategoryStatus(category.id)}
+            disabled={loading || isToggling}
           >
-            {category.isActive === 1 ? <FaToggleOn /> : <FaToggleOff />}
-            {category.isActive === 1 ? "Disable" : "Enable"}
-          </button>
-          <button
-            className="px-3 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-            onClick={() => setConfirmDeleteId(category.id)}
-            disabled={loading}
-          >
-            <FaTrash />
+            {isToggling ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+            ) : (
+              <>
+                {category.isActive === 1 ? <FaToggleOn /> : <FaToggleOff />}
+                {category.isActive === 1 ? "Disable" : "Enable"}
+              </>
+            )}
           </button>
         </div>
       </div>
     );
-  };
+  }, [getVehicleTypeName, togglingIds, handleEditCategory, toggleCategoryStatus, loading]);
 
   return (
     <div className="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen p-3 sm:p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">
-          📋 All Categories
-        </h1>
+        <div>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">
+            📋 All Categories
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Server-side Pagination</p>
+        </div>
         {!formVisible && (
           <button
             onClick={() => setFormVisible(true)}
@@ -561,7 +642,7 @@ const fetchCategories = async () => {
         <div className="mb-4 p-3 sm:p-4 bg-red-100 text-red-700 rounded-lg border-l-4 border-red-500 shadow-md">
           <div className="flex items-start">
             <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
             </svg>
             <p className="text-sm sm:text-base">{error}</p>
           </div>
@@ -689,17 +770,47 @@ const fetchCategories = async () => {
         </div>
       ) : (
         <div className="bg-white p-4 sm:p-6 shadow-md rounded-xl">
-          {/* Search and Stats */}
+          {/* Search, Filter, and Stats */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
-            <div className="relative w-full sm:w-auto">
-              <FaSearch className="absolute left-3 top-3 text-gray-400 text-sm" />
-              <input
-                type="text"
-                placeholder="Search categories..."
-                className="border border-gray-300 rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+            <div className="flex gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-initial">
+                <FaSearch className="absolute left-3 top-3 text-gray-400 text-sm" />
+                <input
+                  type="text"
+                  placeholder="Search categories..."
+                  className="border border-gray-300 rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <select
+                value={vehicleTypeFilter}
+                onChange={(e) => {
+                  setVehicleTypeFilter(e.target.value);
+                  setCurrentPage(0);
+                }}
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+              >
+                <option value="">All Types</option>
+                {vehicleTypes.map((vt) => (
+                  <option key={vt.id} value={vt.id}>
+                    {vt.name || vt.typeName}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={itemsPerPage}
+                onChange={handlePageSizeChange}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={pageLoading}
+              >
+                <option value={5}>5 per page</option>
+                <option value={10}>10 per page</option>
+                <option value={20}>20 per page</option>
+                <option value={50}>50 per page</option>
+              </select>
             </div>
 
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
@@ -739,7 +850,7 @@ const fetchCategories = async () => {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-900 mb-4"></div>
               <span className="text-gray-600 text-sm">Loading categories...</span>
             </div>
-          ) : filteredData.length === 0 ? (
+          ) : data.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-gray-500">
               <FaSearch className="text-4xl mb-4" />
               <span className="text-sm">
@@ -759,7 +870,7 @@ const fetchCategories = async () => {
               {/* Mobile: Grid */}
               <div className="block sm:hidden">
                 <div className="grid grid-cols-1 gap-4">
-                  {filteredData.map((category) => (
+                  {data.map((category) => (
                     <CategoryCard key={category.id} category={category} />
                   ))}
                 </div>
@@ -769,7 +880,7 @@ const fetchCategories = async () => {
               <div className="hidden sm:block">
                 {viewMode === "grid" ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredData.map((category) => (
+                    {data.map((category) => (
                       <CategoryCard key={category.id} category={category} />
                     ))}
                   </div>
@@ -778,20 +889,35 @@ const fetchCategories = async () => {
                     <table className="w-full text-sm text-left text-gray-500">
                       <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                         <tr>
-                          <th className="px-6 py-3">ID</th>
+                          <th className="px-6 py-3">
+                            <button onClick={() => handleSortChange('id')} className="flex items-center">
+                              ID {getSortIcon('id')}
+                            </button>
+                          </th>
                           <th className="px-6 py-3">Image</th>
-                          <th className="px-6 py-3">Category Name</th>
+                          <th className="px-6 py-3">
+                            <button onClick={() => handleSortChange('categoryName')} className="flex items-center">
+                              Category Name {getSortIcon('categoryName')}
+                            </button>
+                          </th>
                           <th className="px-6 py-3">Vehicle Type</th>
-                          <th className="px-6 py-3">Status</th>
-                          <th className="px-6 py-3">Created</th>
+                          <th className="px-6 py-3">
+                            <button onClick={() => handleSortChange('isActive')} className="flex items-center">
+                              Status {getSortIcon('isActive')}
+                            </button>
+                          </th>
+                          <th className="px-6 py-3">
+                            <button onClick={() => handleSortChange('createdAt')} className="flex items-center">
+                              Created {getSortIcon('createdAt')}
+                            </button>
+                          </th>
                           <th className="px-6 py-3">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredData.map((category) => {
-                          // ✅ Use vehicleTypeId directly
-                          const vehicleTypeId = category.vehicleTypeId;
-                          const vehicleTypeName = getVehicleTypeName(vehicleTypeId);
+                        {data.map((category) => {
+                          const vehicleTypeName = getVehicleTypeName(category.vehicleTypeId);
+                          const isToggling = togglingIds.has(category.id);
 
                           return (
                             <tr
@@ -833,7 +959,7 @@ const fetchCategories = async () => {
                                   <button
                                     className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
                                     onClick={() => handleEditCategory(category)}
-                                    disabled={loading}
+                                    disabled={loading || isToggling}
                                   >
                                     <FaEdit />
                                   </button>
@@ -842,27 +968,16 @@ const fetchCategories = async () => {
                                       category.isActive === 1
                                         ? "text-orange-600 hover:bg-orange-100"
                                         : "text-green-600 hover:bg-green-100"
-                                    }`}
-                                    onClick={() => handleToggleStatus(category.id)}
-                                    disabled={loading}
+                                    } ${isToggling ? "opacity-50 cursor-not-allowed" : ""}`}
+                                    onClick={() => toggleCategoryStatus(category.id)}
+                                    disabled={loading || isToggling}
                                   >
-                                    {category.isActive === 1 ? <FaToggleOn /> : <FaToggleOff />}
+                                    {isToggling ? (
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                                    ) : (
+                                      category.isActive === 1 ? <FaToggleOn /> : <FaToggleOff />
+                                    )}
                                   </button>
-                                  <button
-                                    className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                                    onClick={() => setConfirmDeleteId(category.id)}
-                                    disabled={loading}
-                                  >
-                                    <FaTrash />
-                                  </button>
-                                  {category.image && (
-                                    <button
-                                      className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                      onClick={() => window.open(category.image, "_blank")}
-                                    >
-                                      <FaEye />
-                                    </button>
-                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -876,50 +991,70 @@ const fetchCategories = async () => {
             </>
           )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
+          {/* Enhanced Pagination */}
+          {totalPages > 0 && (
             <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-6">
               <p className="text-xs sm:text-sm text-gray-500 text-center sm:text-left">
-                Showing {totalElements === 0 ? 0 : currentPage * itemsPerPage + 1} to{" "}
-                {Math.min((currentPage + 1) * itemsPerPage, totalElements)} of {totalElements}
+                Showing <span className="font-semibold text-blue-600">{(currentPage * itemsPerPage) + 1}</span> to{" "}
+                <span className="font-semibold text-blue-600">{Math.min((currentPage + 1) * itemsPerPage, totalElements)}</span> of{" "}
+                <span className="font-semibold text-blue-600">{totalElements}</span>
               </p>
-              <div className="flex flex-wrap justify-center gap-2">
+              <div className="flex items-center space-x-2">
                 <button
-                  className="px-3 py-2 text-xs sm:text-sm text-white bg-indigo-900 rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors"
-                  disabled={currentPage === 0 || pageLoading}
-                  onClick={() => setCurrentPage((p) => p - 1)}
+                  onClick={() => setCurrentPage(0)}
+                  disabled={!hasPrevious || pageLoading}
+                  className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                  title="First Page"
                 >
-                  Previous
+                  &laquo; First
                 </button>
-                {[...Array(Math.min(totalPages, 5))].map((_, idx) => {
-                  const pageNum = currentPage < 3 ? idx : currentPage - 2 + idx;
-                  if (pageNum >= totalPages) return null;
-                  return (
-                    <button
-                      key={pageNum}
-                      className={`px-3 py-2 rounded-lg transition-colors text-xs sm:text-sm ${
-                        currentPage === pageNum
-                          ? "bg-indigo-900 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                      onClick={() => setCurrentPage(pageNum)}
-                      disabled={pageLoading}
-                    >
-                      {pageNum + 1}
-                    </button>
-                  );
-                })}
+                
                 <button
-                  disabled={currentPage >= totalPages - 1 || pageLoading}
-                  onClick={() => setCurrentPage((p) => p + 1)}
-                  className={`px-3 py-2 text-xs sm:text-sm rounded-lg transition-colors ${
-                    currentPage >= totalPages - 1
-                      ? "bg-gray-300 text-gray-500"
-                      : "bg-indigo-900 text-white hover:bg-indigo-700"
-                  }`}
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 0))}
+                  disabled={!hasPrevious || pageLoading}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
                 >
-                  Next
+                  &lsaquo; Prev
                 </button>
+                
+                <span className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-lg">
+                  Page {currentPage + 1} of {totalPages}
+                </span>
+                
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1))}
+                  disabled={!hasNext || pageLoading}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                >
+                  Next &rsaquo;
+                </button>
+                
+                <button
+                  onClick={() => setCurrentPage(totalPages - 1)}
+                  disabled={!hasNext || pageLoading}
+                  className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                  title="Last Page"
+                >
+                  Last &raquo;
+                </button>
+              </div>
+              
+              {/* Page Jump */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Go to:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={totalPages}
+                  value={currentPage + 1}
+                  onChange={(e) => {
+                    const page = parseInt(e.target.value) - 1;
+                    if (page >= 0 && page < totalPages) {
+                      setCurrentPage(page);
+                    }
+                  }}
+                  className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:border-indigo-500"
+                />
               </div>
             </div>
           )}

@@ -166,77 +166,81 @@ const StoreManagers = () => {
   };
 
   const validateForm = () => {
-    const errors = {};
-    const fieldErrors = [];
-    
-    if (!formData.name.trim()) {
-      errors.name = "Name is required";
-      fieldErrors.push("Please enter a name");
-    } else if (formData.name.trim().length < 2) {
-      errors.name = "Name must be at least 2 characters";
-      fieldErrors.push("Name must be at least 2 characters");
-    } else if (formData.name.trim().length > 100) {
-      errors.name = "Name must be less than 100 characters";
-      fieldErrors.push("Name is too long");
+  const errors = {};
+  const fieldErrors = [];
+  
+  if (!formData.name.trim()) {
+    errors.name = "Name is required";
+    fieldErrors.push("Please enter a name");
+  } else if (formData.name.trim().length < 2) {
+    errors.name = "Name must be at least 2 characters";
+    fieldErrors.push("Name must be at least 2 characters");
+  } else if (formData.name.trim().length > 100) {
+    errors.name = "Name must be less than 100 characters";
+    fieldErrors.push("Name is too long");
+  }
+  
+  if (!formData.email.trim()) {
+    errors.email = "Email is required";
+    fieldErrors.push("Please enter an email address");
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+    errors.email = "Please enter a valid email address";
+    fieldErrors.push("Email format is invalid");
+  }
+  
+  if (!formData.phoneNumber.trim()) {
+    errors.phoneNumber = "Phone number is required";
+    fieldErrors.push("Please enter a phone number");
+  } else if (formData.phoneNumber.trim().length < 7 || formData.phoneNumber.trim().length > 20) {
+    errors.phoneNumber = "Phone number must be 7-20 characters";
+    fieldErrors.push("Phone number must be 7-20 characters");
+  }
+  
+  if (!formData.storeId) {
+    errors.storeId = "Store selection is required";
+    fieldErrors.push("Please select a store");
+  }
+  
+  // Password validation - required for new managers, optional for edit
+  if (!editingId) {
+    // Create mode - password is required
+    if (!formData.password.trim()) {
+      errors.password = "Password is required";
+      fieldErrors.push("Please enter a password");
+    } else if (formData.password.length < 8 || formData.password.length > 72) {
+      errors.password = "Password must be 8-72 characters";
+      fieldErrors.push("Password must be 8-72 characters");
     }
     
-    if (!formData.email.trim()) {
-      errors.email = "Email is required";
-      fieldErrors.push("Please enter an email address");
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      errors.email = "Please enter a valid email address";
-      fieldErrors.push("Email format is invalid");
+    if (!formData.passwordConfirmation.trim()) {
+      errors.passwordConfirmation = "Please confirm password";
+      fieldErrors.push("Please confirm your password");
+    } else if (formData.password !== formData.passwordConfirmation) {
+      errors.passwordConfirmation = "Passwords do not match";
+      fieldErrors.push("Passwords do not match");
     }
-    
-    if (!formData.phoneNumber.trim()) {
-      errors.phoneNumber = "Phone number is required";
-      fieldErrors.push("Please enter a phone number");
-    } else if (!/^\+?[\d\s\-\(\)]{7,20}$/.test(formData.phoneNumber.trim())) {
-      errors.phoneNumber = "Please enter a valid phone number";
-      fieldErrors.push("Phone number format is invalid");
-    }
-    
-    if (!formData.storeId) {
-      errors.storeId = "Store selection is required";
-      fieldErrors.push("Please select a store");
-    }
-    
-    // Password validation - required for new managers, optional for edit
-    if (!editingId) {
-      if (!formData.password.trim()) {
-        errors.password = "Password is required";
-        fieldErrors.push("Please enter a password");
-      } else if (formData.password.length < 8) {
-        errors.password = "Password must be at least 8 characters";
-        fieldErrors.push("Password must be at least 8 characters");
+  } else {
+    // Edit mode - password is optional but if provided must be valid
+    if (formData.password.trim()) {
+      if (formData.password.length < 8 || formData.password.length > 72) {
+        errors.password = "Password must be 8-72 characters";
+        fieldErrors.push("Password must be 8-72 characters");
       }
       
       if (!formData.passwordConfirmation.trim()) {
-        errors.passwordConfirmation = "Please confirm password";
-        fieldErrors.push("Please confirm your password");
+        errors.passwordConfirmation = "Please confirm new password";
+        fieldErrors.push("Please confirm new password");
       } else if (formData.password !== formData.passwordConfirmation) {
         errors.passwordConfirmation = "Passwords do not match";
         fieldErrors.push("Passwords do not match");
       }
-    } else {
-      // Edit mode - password is optional but if provided must be valid
-      if (formData.password.trim() && formData.password.length < 8) {
-        errors.password = "Password must be at least 8 characters";
-        fieldErrors.push("Password must be at least 8 characters");
-      }
-      if (formData.password.trim() && !formData.passwordConfirmation.trim()) {
-        errors.passwordConfirmation = "Please confirm new password";
-        fieldErrors.push("Please confirm new password");
-      }
-      if (formData.password && formData.passwordConfirmation && formData.password !== formData.passwordConfirmation) {
-        errors.passwordConfirmation = "Passwords do not match";
-        fieldErrors.push("Passwords do not match");
-      }
     }
+  }
 
-    setValidationErrors(errors);
-    return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
-  };
+  setValidationErrors(errors);
+  return { isValid: Object.keys(errors).length === 0, errors, fieldErrors };
+};
+
 
   useEffect(() => {
     if (success || error) {
@@ -519,65 +523,109 @@ const handleAddStoreManager = async (e) => {
 };
 
 
-  // ✅ Update Store Manager
-  const handleSaveEdit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-    setIsSubmitting(true);
-    setValidationErrors({});
+  // ✅ Update Store Manager - FIXED to match backend
+const handleSaveEdit = async (e) => {
+  e.preventDefault();
+  setError("");
+  setSuccess("");
+  setIsSubmitting(true);
+  setValidationErrors({});
 
-    const validation = validateForm();
-    if (!validation.isValid) {
-      setError(validation.fieldErrors[0]);
-      setIsSubmitting(false);
-      return;
+  const validation = validateForm();
+  if (!validation.isValid) {
+    setError(validation.fieldErrors[0]);
+    setIsSubmitting(false);
+    return;
+  }
+
+  if (!editingId) {
+    setError("Invalid manager ID");
+    setIsSubmitting(false);
+    return;
+  }
+
+  try {
+    console.log("🔄 Updating store manager:", editingId);
+    
+    // ✅ Build update data matching backend DTO requirements
+    const updateData = {
+      id: editingId, // ✅ REQUIRED - Backend needs this
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      phoneNumber: formData.phoneNumber.trim(),
+      storeId: parseInt(formData.storeId)
+    };
+
+    // ✅ Only include password fields if password is being changed
+    if (formData.password.trim()) {
+      updateData.password = formData.password;
+      updateData.passwordConfirmation = formData.passwordConfirmation;
     }
-
-    if (!editingId) {
-      setError("Invalid manager ID");
-      setIsSubmitting(false);
-      return;
+    
+    console.log("📤 Sending update data:", { ...updateData, password: updateData.password ? "***" : undefined });
+    
+    // ✅ CORRECT API CALL - matches backend @PutMapping("/updateStoreManager/{id}")
+    const response = await api.put(`/api/auth/updateStoreManager/${editingId}`, updateData);
+    
+    console.log("✅ Update response:", response.data);
+    
+    if (response.data && response.data.message) {
+      setSuccess(response.data.message || "Store Manager updated successfully!");
+      toast.success("✅ Store Manager updated successfully!");
+      console.log("✅ Store Manager updated:", response.data);
+      
+      // Refresh the list
+      await fetchStoreManagers(currentPage, itemsPerPage);
+      
+      // Reset form after 2 seconds
+      setTimeout(() => {
+        resetForm();
+      }, 2000);
     }
-
-    try {
-      console.log("🔄 Updating store manager:", editingId);
+  } catch (error) {
+    console.error("❌ Error updating store manager:", error);
+    console.error("Error response:", error.response?.data);
+    
+    // ✅ Handle specific backend errors
+    if (error.response?.status === 409) {
+      const msg = error.response.data?.message || "Email or phone number already registered";
+      setError(msg);
+      toast.error(`❌ ${msg}`);
+    } else if (error.response?.status === 412) {
+      // Optimistic lock error
+      const msg = error.response.data?.message || "Record has been modified. Please refresh and retry";
+      setError(msg);
+      toast.error(`❌ ${msg}`);
+      // Refresh data
+      await fetchStoreManagers(currentPage, itemsPerPage);
+    } else if (error.response?.status === 400) {
+      const errorMsg = error.response.data?.message || "Invalid update data";
+      const details = error.response.data?.details;
       
-      const updateData = {
-        name: formData.name.trim(),
-        email: formData.email.trim(),
-        phoneNumber: formData.phoneNumber.trim(),
-        storeId: parseInt(formData.storeId)
-      };
-
-      // Only include password if it's being changed
-      if (formData.password.trim()) {
-        updateData.password = formData.password;
-        updateData.passwordConfirmation = formData.passwordConfirmation;
+      if (details && typeof details === 'object') {
+        // Handle validation errors from backend
+        setValidationErrors(details);
+        const firstError = Object.values(details)[0];
+        setError(firstError);
+        toast.error(`❌ ${firstError}`);
+      } else {
+        setError(errorMsg);
+        toast.error(`❌ ${errorMsg}`);
       }
-      
-      const response = await api.put(`api/auth/admin/storeManagers/${editingId}`, updateData);
-      
-      if (response.data) {
-        setSuccess("Store Manager updated successfully!");
-        toast.success("Store Manager updated successfully!");
-        console.log("✅ Store Manager updated:", response.data);
-        
-        // Refresh the list
-        await fetchStoreManagers(currentPage, itemsPerPage);
-        
-        // Reset form after 2 seconds
-        setTimeout(() => {
-          resetForm();
-        }, 2000);
-      }
-    } catch (error) {
-      console.error("❌ Error updating store manager:", error);
+    } else if (error.response?.status === 404) {
+      setError("Store manager not found");
+      toast.error("❌ Store manager not found");
+      // Refresh data
+      await fetchStoreManagers(currentPage, itemsPerPage);
+      resetForm();
+    } else {
       showErrorNotification(error, "Failed to update store manager");
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
 
   // ✅ Delete Store Manager
   const handleDeleteStoreManager = async (id) => {
@@ -1109,14 +1157,14 @@ const handleAddStoreManager = async (e) => {
                               <FaEdit className="mr-1" />
                               Edit
                             </button>
-                            <button
+                            {/* <button
                               className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition duration-200 text-red-700 bg-red-100 hover:bg-red-200"
                               onClick={() => setConfirmDeleteId(manager.id)}
                               title="Delete manager"
                             >
                               <FaTrash className="mr-1" />
                               Delete
-                            </button>
+                            </button> */}
                           </div>
                         </td>
                       </tr>

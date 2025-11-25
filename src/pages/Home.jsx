@@ -24,6 +24,10 @@ const Home = () => {
   const [ongoingBookings, setOngoingBookings] = useState([]);
   const [showOngoingBookings, setShowOngoingBookings] = useState(false);
   const [displayedUsers, setDisplayedUsers] = useState([]);
+  const [activeStoreCount, setActiveStoreCount] = useState(0);
+  const [activeBikesCount, setActiveBikesCount] = useState(0);
+  const [dashboardSummary, setDashboardSummary] = useState({});
+  const [userCountSummary, setUserCountSummary] = useState({});
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -38,7 +42,7 @@ const Home = () => {
     const fetchUsers = async () => {
       setLoading(true);
       try {
-        const response = await apiClient.get("/users/all", {
+        const response = await apiClient.get("api/auth/users/count", {
           params: { page: currentPage, size: 10, sortBy: 'id', sortDirection: 'asc' }
         });
         let usersData = response.data.content;
@@ -66,9 +70,23 @@ const Home = () => {
       }
     };
 
+    const fetchActiveBikes = async () => {
+      try {
+        const response = await apiClient.get("/api/bikes/count/active");
+        if (response.data && typeof response.data.activeBikes === 'number') {
+          setActiveBikesCount(response.data.activeBikes);
+        } else {
+          setActiveBikesCount(0);
+        }
+      } catch (error) {
+        console.error("Error fetching active bikes count:", error);
+        setActiveBikesCount(0);
+      }
+    };
+
     const fetchBookings = async () => {
       try {
-        const response = await apiClient.get("/booking/all");
+        const response = await apiClient.get("api/booking-bikes/dashboard/summary");
         const sortedBookings = response.data.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
         const bookingWithUsernames = await Promise.all(
           sortedBookings.map(async (booking) => {
@@ -92,215 +110,192 @@ const Home = () => {
       }
     };
 
-    // ✅ FIXED - Fetch Stores
-const fetchStores = async () => {
-  try {
-    console.log("🔄 Fetching stores...");
-    const response = await apiClient.get("/store/all");
-    
-    console.log("✅ Stores response:", response.data);
-    
-    // ✅ Handle response properly - check if data exists
-    if (response.data && response.data.content) {
-      setStores(response.data.content);
-      console.log("✅ Stores loaded from .content:", response.data.content.length);
-    } else if (response.data && Array.isArray(response.data)) {
-      setStores(response.data);
-      console.log("✅ Stores loaded direct array:", response.data.length);
-    } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
-      setStores(response.data.data);
-      console.log("✅ Stores loaded from .data:", response.data.data.length);
-    } else {
-      setStores([]);
-      console.warn("⚠️ No stores data found in response");
-    }
-  } catch (error) {
-    console.error("❌ Error fetching stores data:", error);
-    setStores([]);
-  }
-};
+    const fetchStores = async () => {
+      try {
+        const response = await apiClient.get("api/stores/count/active");
+        if (response.data && response.data.content) {
+          setStores(response.data.content);
+        } else if (response.data && Array.isArray(response.data)) {
+          setStores(response.data);
+        } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          setStores(response.data.data);
+        } else {
+          setStores([]);
+        }
+      } catch (error) {
+        console.error("Error fetching stores data:", error);
+        setStores([]);
+      }
+    };
 
-// ✅ FIXED - Fetch Bikes
-const fetchBikes = async () => {
-  try {
-    console.log("🔄 Fetching bikes...");
-    const response = await apiClient.get("/vehicle/all");
-    
-    console.log("✅ Bikes response:", response.data);
-    
-    // ✅ Handle response properly - check if data exists
-    if (response.data && response.data.content) {
-      setBikes(response.data.content);
-      console.log("✅ Bikes loaded from .content:", response.data.content.length);
-    } else if (response.data && Array.isArray(response.data)) {
-      setBikes(response.data);
-      console.log("✅ Bikes loaded direct array:", response.data.length);
-    } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
-      setBikes(response.data.data);
-      console.log("✅ Bikes loaded from .data:", response.data.data.length);
-    } else {
-      setBikes([]);
-      console.warn("⚠️ No bikes data found in response");
-    }
-  } catch (error) {
-    console.error("❌ Error fetching bikes data:", error);
-    setBikes([]);
-  }
-};
+    const fetchBikes = async () => {
+      try {
+        const response = await apiClient.get("api/bikes/count/active");
+        if (response.data && response.data.content) {
+          setBikes(response.data.content);
+        } else if (response.data && Array.isArray(response.data)) {
+          setBikes(response.data);
+        } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          setBikes(response.data.data);
+        } else {
+          setBikes([]);
+        }
+      } catch (error) {
+        console.error("Error fetching bikes data:", error);
+        setBikes([]);
+      }
+    };
 
+    const fetchDashboardSummary = async () => {
+      try {
+        const response = await apiClient.get("/api/booking-bikes/dashboard/summary");
+        if (response.data && (response.data.success || typeof response.data === 'object')) {
+          setDashboardSummary(response.data);
+        } else {
+          setDashboardSummary({});
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard summary:", error);
+        setDashboardSummary({});
+      }
+    };
+
+    const fetchActiveStoreCount = async () => {
+      try {
+        const response = await apiClient.get("/api/stores/count/active");
+        if (response.data && response.data.success) {
+          setActiveStoreCount(response.data.count);
+        } else {
+          setActiveStoreCount(0);
+        }
+      } catch (error) {
+        console.error("Error fetching active store count:", error);
+        setActiveStoreCount(0);
+      }
+    };
+
+    const fetchUserCountSummary = async () => {
+      try {
+        const response = await apiClient.get("api/auth/users/count");
+        if (response.data && response.data.totalUsers !== undefined) {
+          setUserCountSummary(response.data);
+        } else {
+          setUserCountSummary({});
+        }
+      } catch (error) {
+        console.error("Error fetching user count summary:", error);
+        setUserCountSummary({});
+      }
+    };
 
     fetchUsers();
     fetchBookings();
     fetchStores();
     fetchBikes();
+    fetchDashboardSummary();
+    fetchActiveStoreCount();
+    fetchActiveBikes();
+    fetchUserCountSummary();
   }, [currentPage]);
 
-  // Navigation Handlers
-  const handleViewAllBookings = () => {
-    navigate("/dashboard/allBookings");
-  };
+  const handleViewAllBookings = () => navigate("/dashboard/allBookings");
+  const handleViewAllBikes = () => navigate("/dashboard/allBikes");
+  const handleViewAllStores = () => navigate("/dashboard/storeMaster");
+  const handleViewAllUsers = () => navigate("allRegisterCustomers");
+  const handleViewTodaysBookings = () => navigate("/dashboard/allBookings");
+  const handleViewOngoingBookings = () => navigate("/dashboard/allBookings");
+  const handleViewVerifiedUsers = () => navigate("allRegisterCustomers");
+  const handleViewUnverifiedUsers = () => navigate("allRegisterCustomers");
 
-  const handleViewAllBikes = () => {
-    navigate("/dashboard/allBikes");
-  };
+  const todayCount = dashboardSummary.today || 0;
+  const ongoingCount = dashboardSummary.ongoing || 0;
+  const cancelledCount = dashboardSummary.cancelled || 0;
 
-  const handleViewAllStores = () => {
-    navigate("/dashboard/storeMaster");
-  };
-
-  const handleViewAllUsers = () => {
-    navigate("/dashboard/allUsers");
-  };
-
-  const handleViewTodaysBookings = () => {
-    navigate("/dashboard/allBookings");
-  };
-
-  const handleViewOngoingBookings = () => {
-    navigate("/dashboard/allBookings");
-  };
-
-  const handleViewVerifiedUsers = () => {
-    navigate("/dashboard/allUsers");
-  };
-
-  const handleViewUnverifiedUsers = () => {
-    navigate("/dashboard/allUsers");
-  };
+  const totalUsers = userCountSummary.totalUsers || 0;
+  const verifiedUsersCount = userCountSummary.verifiedUsers || 0;
+  const unverifiedUsersCount = userCountSummary.unverifiedUsers || 0;
 
   const stats = [
-  {
-    title: "Today's Bookings",
-    count: todaysBookings?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-indigo-700 to-blue-600",
-    icon: "📅",
-    hasButton: true,
-    onClick: handleViewTodaysBookings,
-  },
-  {
-    title: "Ongoing Bookings",
-    count: ongoingBookings?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-yellow-400 to-yellow-300",
-    icon: "🔄",
-    hasButton: true,
-    onClick: () => navigate("/dashboard/allBookings"),
-  },
-  {
-    title: "Cancelled Bookings",
-    count: bookings?.filter(b => b.status === 'CANCELLED')?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-red-500 to-red-400",
-    icon: "❌",
-    hasButton: true,
-    onClick: () => navigate("/dashboard/allBookings"),
-  },
-  {
-    title: "Total Users",
-    count: users?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-cyan-500 to-cyan-400",
-    icon: "👥",
-    hasButton: true,
-    onClick: handleViewAllUsers,
-  },
-  {
-    title: "Total Verified Users",
-    count: verifiedUsers?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-green-500 to-green-400",
-    icon: "✅",
-    hasButton: true,
-    onClick: () => navigate("/dashboard/verifiedUsers"),
-  },
-  {
-    title: "Total Unverified Users",
-    count: unverifiedUsers?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-yellow-400 to-yellow-300",
-    icon: "⚠️",
-    hasButton: true,
-    onClick: () => navigate("/dashboard/unverifiedUsers"),
-  },
-  {
-    title: "Users With 0 Bookings",
-    count: users?.filter(user => user.bookingCount === 0)?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-red-500 to-red-400",
-    icon: "❗",
-    hasButton: true,
-    onClick: () => navigate("/dashboard/allBookings"),
-  },
-  {
-    title: "Total Service Orders",
-    count: 62,
-    gradient: "bg-gradient-to-br from-indigo-700 to-blue-600",
-    icon: "⚙️",
-    hasButton: true,
-    onClick: () => navigate("/dashboard/serviceOrders"),
-  },
-  {
-    title: "Total Bike Sales",
-    count: 72,
-    gradient: "bg-gradient-to-br from-blue-700 to-indigo-600",
-    icon: "🛒",
-    hasButton: true,
-    onClick: handleViewAllBikes,
-  },
-  {
-    title: "Total Bookings",
-    count: bookings?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-teal-500 to-teal-400",
-    icon: "📚",
-    hasButton: true,
-    onClick: handleViewAllBookings,
-  },
-  {
-    title: "Total Stores",
-    count: stores?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-red-600 to-red-500",
-    icon: "🏪",
-    hasButton: true,
-    onClick: handleViewAllStores,
-  },
-  {
-    title: "Total Bikes",
-    count: bikes?.length || 0,  // ✅ Add safety
-    gradient: "bg-gradient-to-br from-red-700 to-red-600",
-    icon: "🏍️",
-    hasButton: true,
-    onClick: handleViewAllBikes,
-  },
-];
-
-
+    {
+      title: "Today's Bookings",
+      count: todayCount,
+      gradient: "bg-gradient-to-br from-indigo-700 to-blue-600",
+      icon: "📅",
+      hasButton: true,
+      onClick: handleViewTodaysBookings,
+    },
+    {
+      title: "Ongoing Bookings",
+      count: ongoingCount,
+      gradient: "bg-gradient-to-br from-yellow-400 to-yellow-300",
+      icon: "🔄",
+      hasButton: true,
+      onClick: handleViewAllBookings,
+    },
+    {
+      title: "Cancelled Bookings",
+      count: cancelledCount,
+      gradient: "bg-gradient-to-br from-red-500 to-red-400",
+      icon: "❌",
+      hasButton: true,
+      onClick: handleViewAllBookings,
+    },
+    {
+      title: "Total Bookings",
+      count: dashboardSummary.total || 0,
+      gradient: "bg-gradient-to-br from-teal-500 to-teal-400",
+      icon: "📚",
+      hasButton: true,
+      onClick: handleViewAllBookings,
+    },
+    {
+      title: "Active Stores",
+      count: activeStoreCount,
+      gradient: "bg-gradient-to-br from-red-600 to-red-500",
+      icon: "🏪",
+      hasButton: true,
+      onClick: handleViewAllStores,
+    },
+    {
+      title: "Active Bikes",
+      count: activeBikesCount,
+      gradient: "bg-gradient-to-br from-red-700 to-red-600",
+      icon: "🏍️",
+      hasButton: true,
+      onClick: handleViewAllBikes,
+    },
+    {
+      title: "Total Users",
+      count: totalUsers,
+      gradient: "bg-gradient-to-br from-green-600 to-green-500",
+      icon: "👥",
+      hasButton: true,
+      onClick: handleViewAllUsers,
+    },
+    {
+      title: "Verified Users",
+      count: verifiedUsersCount,
+      gradient: "bg-gradient-to-br from-blue-600 to-blue-500",
+      icon: "✅",
+      hasButton: true,
+      onClick: handleViewVerifiedUsers,
+    },
+    {
+      title: "Unverified Users",
+      count: unverifiedUsersCount,
+      gradient: "bg-gradient-to-br from-orange-500 to-orange-400",
+      icon: "🔍",
+      hasButton: true,
+      onClick: handleViewUnverifiedUsers,
+    },
+  ];
 
   const useCounter = (end, duration = 2000) => {
-    const { number } = useSpring({
-      from: { number: 0 },
-      number: end,
-      delay: 300,
-      config: { duration }
-    });
+    const { number } = useSpring({ from: { number: 0 }, number: end, delay: 300, config: { duration } });
     return number;
   };
 
   const counters = stats.map(stat => useCounter(stat.count));
-
   const trail = useTrail(stats.length, {
     ref: cardsSpringRef,
     from: { opacity: 0, y: 40, scale: 0.9 },
@@ -349,12 +344,12 @@ const fetchBikes = async () => {
 
     return (
       <animated.div style={tableAnimation} className="overflow-x-auto rounded-lg shadow-lg border border-gray-200 bg-white">
-        <table {...getTableProps()} className="w-full text-sm text-left text-gray-700">
+        <table {...getTableProps()} className="w-full text-xs sm:text-sm text-left text-gray-700">
           <thead className="text-xs text-white uppercase bg-indigo-900">
             {headerGroups.map(headerGroup => (
               <tr {...headerGroup.getHeaderGroupProps()}>
                 {headerGroup.headers.map(column => (
-                  <th {...column.getHeaderProps()} className="px-4 py-3">{column.render('Header')}</th>
+                  <th {...column.getHeaderProps()} className="px-2 sm:px-4 py-2 sm:py-3">{column.render('Header')}</th>
                 ))}
               </tr>
             ))}
@@ -369,7 +364,7 @@ const fetchBikes = async () => {
                   className={`${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors duration-150`}
                 >
                   {row.cells.map(cell => (
-                    <td {...cell.getCellProps()} className="px-4 py-3">{cell.render('Cell')}</td>
+                    <td {...cell.getCellProps()} className="px-2 sm:px-4 py-2 sm:py-3">{cell.render('Cell')}</td>
                   ))}
                 </animated.tr>
               );
@@ -388,8 +383,9 @@ const fetchBikes = async () => {
   });
 
   return (
-    <div className="p-6 bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen mt-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+    <div className="p-3 sm:p-4 md:p-6 bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen mt-3 sm:mt-5">
+      {/* Responsive Grid for Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-4 md:gap-6">
         {trail.map((style, index) => {
           const stat = stats[index];
           const countValue = counters[index];
@@ -397,21 +393,21 @@ const fetchBikes = async () => {
             <animated.div
               key={index}
               style={style}
-              className={`p-6 shadow-lg text-white relative flex flex-col justify-between transition-all duration-300 hover:shadow-2xl ${stat.gradient}`}
+              className={`p-3 sm:p-4 md:p-6 rounded-lg shadow-lg text-white relative flex flex-col justify-between transition-all duration-300 hover:shadow-2xl ${stat.gradient}`}
             >
-              <div className="flex justify-between items-center mb-2">
-                <h2 className="text-4xl font-extrabold select-none">
+              <div className="flex justify-between items-center mb-1 sm:mb-2">
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold select-none">
                   <animated.span>
                     {countValue.to(n => Math.floor(n))}
                   </animated.span>
                 </h2>
-                <span className="text-4xl select-none">{stat.icon}</span>
+                <span className="text-2xl sm:text-3xl md:text-4xl select-none">{stat.icon}</span>
               </div>
-              <p className="mt-2 text-lg font-medium select-none">{stat.title}</p>
+              <p className="mt-1 sm:mt-2 text-xs sm:text-sm md:text-lg font-medium select-none">{stat.title}</p>
               {stat.hasButton && (
                 <button
                   onClick={stat.onClick}
-                  className="self-end mt-2 text-xs px-2 py-1 bg-white text-blue-600 rounded hover:bg-gray-100"
+                  className="self-end mt-1 sm:mt-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-white text-blue-600 rounded hover:bg-gray-100 transition-colors"
                 >
                   View All
                 </button>
@@ -421,16 +417,17 @@ const fetchBikes = async () => {
         })}
       </div>
 
+      {/* Users Section */}
       {showUsers && (
-        <div id="users-section" className="mt-8">
-          <animated.h2 style={sectionHeaderAnimation} className="text-xl font-bold mb-4 text-gray-800 border-l-4 border-indigo-900 pl-3">
+        <div id="users-section" className="mt-4 sm:mt-6 md:mt-8">
+          <animated.h2 style={sectionHeaderAnimation} className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800 border-l-4 border-indigo-900 pl-2 sm:pl-3">
             All Users
           </animated.h2>
           {loading ? (
             <div className="flex justify-center items-center h-32">
               <animated.div
                 style={spinnerAnimation}
-                className="rounded-full h-12 w-12 border-4 border-indigo-900 border-t-transparent"
+                className="rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-indigo-900 border-t-transparent"
               ></animated.div>
             </div>
           ) : (
@@ -443,13 +440,13 @@ const fetchBikes = async () => {
                 ]}
                 data={displayedUsers}
               />
-              <div className="flex justify-between items-center mt-4">
-                <p className="text-sm text-gray-500">
+              <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
+                <p className="text-xs sm:text-sm text-gray-500">
                   Showing {currentPage * 10 + 1} to {Math.min((currentPage + 1) * 10, displayedUsers.length)} of {displayedUsers.length} entries
                 </p>
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap justify-center gap-1 sm:gap-2">
                   <button
-                    className="px-3 py-1 text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
+                    className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
                     disabled={currentPage === 0}
                     onClick={() => setCurrentPage(prev => prev - 1)}
                   >
@@ -458,7 +455,7 @@ const fetchBikes = async () => {
                   {[...Array(totalPages)].map((_, index) => (
                     <button
                       key={index}
-                      className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
+                      className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
                       onClick={() => setCurrentPage(index)}
                     >
                       {index + 1}
@@ -467,7 +464,7 @@ const fetchBikes = async () => {
                   <button
                     disabled={currentPage === totalPages - 1}
                     onClick={() => setCurrentPage(prev => prev + 1)}
-                    className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
+                    className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
                   >
                     Next
                   </button>
@@ -478,9 +475,10 @@ const fetchBikes = async () => {
         </div>
       )}
 
+      {/* Bookings Section */}
       {showBookings && (
-        <div id="bookings-section" className="mt-8">
-          <animated.h2 style={sectionHeaderAnimation} className="text-xl font-bold mb-4 text-gray-800 border-l-4 border-teal-400 pl-3">
+        <div id="bookings-section" className="mt-4 sm:mt-6 md:mt-8">
+          <animated.h2 style={sectionHeaderAnimation} className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800 border-l-4 border-teal-400 pl-2 sm:pl-3">
             All Bookings
           </animated.h2>
           <Table
@@ -499,13 +497,13 @@ const fetchBikes = async () => {
             ]}
             data={bookings}
           />
-          <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-gray-500">
+          <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
+            <p className="text-xs sm:text-sm text-gray-500">
               Showing {currentPage * 10 + 1} to {Math.min((currentPage + 1) * 10, bookings.length)} of {bookings.length} entries
             </p>
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap justify-center gap-1 sm:gap-2">
               <button
-                className="px-3 py-1 text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
+                className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
                 disabled={currentPage === 0}
                 onClick={() => setCurrentPage(prev => prev - 1)}
               >
@@ -514,7 +512,7 @@ const fetchBikes = async () => {
               {[...Array(totalPages)].map((_, index) => (
                 <button
                   key={index}
-                  className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
+                  className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
                   onClick={() => setCurrentPage(index)}
                 >
                   {index + 1}
@@ -523,7 +521,7 @@ const fetchBikes = async () => {
               <button
                 disabled={currentPage === totalPages - 1}
                 onClick={() => setCurrentPage(prev => prev + 1)}
-                className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
+                className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
               >
                 Next
               </button>
@@ -532,9 +530,10 @@ const fetchBikes = async () => {
         </div>
       )}
 
+      {/* Stores Section */}
       {showStores && (
-        <div id="stores-section" className="mt-8">
-          <animated.h2 style={sectionHeaderAnimation} className="text-xl font-bold mb-4 text-gray-800 border-l-4 border-red-400 pl-3">
+        <div id="stores-section" className="mt-4 sm:mt-6 md:mt-8">
+          <animated.h2 style={sectionHeaderAnimation} className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800 border-l-4 border-red-400 pl-2 sm:pl-3">
             All Stores
           </animated.h2>
           <Table
@@ -545,13 +544,13 @@ const fetchBikes = async () => {
             ]}
             data={stores}
           />
-          <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-gray-500">
+          <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
+            <p className="text-xs sm:text-sm text-gray-500">
               Showing {currentPage * 10 + 1} to {Math.min((currentPage + 1) * 10, stores.length)} of {stores.length} entries
             </p>
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap justify-center gap-1 sm:gap-2">
               <button
-                className="px-3 py-1 text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
+                className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
                 disabled={currentPage === 0}
                 onClick={() => setCurrentPage(prev => prev - 1)}
               >
@@ -560,7 +559,7 @@ const fetchBikes = async () => {
               {[...Array(totalPages)].map((_, index) => (
                 <button
                   key={index}
-                  className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
+                  className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
                   onClick={() => setCurrentPage(index)}
                 >
                   {index + 1}
@@ -569,7 +568,7 @@ const fetchBikes = async () => {
               <button
                 disabled={currentPage === totalPages - 1}
                 onClick={() => setCurrentPage(prev => prev + 1)}
-                className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
+                className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
               >
                 Next
               </button>
@@ -578,9 +577,10 @@ const fetchBikes = async () => {
         </div>
       )}
 
+      {/* Bikes Section */}
       {showBikes && (
-        <div id="bikes-section" className="mt-8">
-          <animated.h2 style={sectionHeaderAnimation} className="text-xl font-bold mb-4 text-gray-800 border-l-4 border-red-500 pl-3">
+        <div id="bikes-section" className="mt-4 sm:mt-6 md:mt-8">
+          <animated.h2 style={sectionHeaderAnimation} className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800 border-l-4 border-red-500 pl-2 sm:pl-3">
             All Bikes
           </animated.h2>
           <Table
@@ -592,13 +592,13 @@ const fetchBikes = async () => {
             ]}
             data={bikes}
           />
-          <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-gray-500">
+          <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
+            <p className="text-xs sm:text-sm text-gray-500">
               Showing {currentPage * 10 + 1} to {Math.min((currentPage + 1) * 10, bikes.length)} of {bikes.length} entries
             </p>
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap justify-center gap-1 sm:gap-2">
               <button
-                className="px-3 py-1 text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
+                className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
                 disabled={currentPage === 0}
                 onClick={() => setCurrentPage(prev => prev - 1)}
               >
@@ -607,7 +607,7 @@ const fetchBikes = async () => {
               {[...Array(totalPages)].map((_, index) => (
                 <button
                   key={index}
-                  className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
+                  className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
                   onClick={() => setCurrentPage(index)}
                 >
                   {index + 1}
@@ -616,7 +616,7 @@ const fetchBikes = async () => {
               <button
                 disabled={currentPage === totalPages - 1}
                 onClick={() => setCurrentPage(prev => prev + 1)}
-                className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
+                className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
               >
                 Next
               </button>
@@ -625,9 +625,10 @@ const fetchBikes = async () => {
         </div>
       )}
 
+      {/* Today's Bookings Section */}
       {showTodaysBookings && (
-        <div id="todays-bookings-section" className="mt-8">
-          <animated.h2 style={sectionHeaderAnimation} className="text-xl font-bold mb-4 text-gray-800 border-l-4 border-indigo-900 pl-3">
+        <div id="todays-bookings-section" className="mt-4 sm:mt-6 md:mt-8">
+          <animated.h2 style={sectionHeaderAnimation} className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800 border-l-4 border-indigo-900 pl-2 sm:pl-3">
             Today's Bookings
           </animated.h2>
           <Table
@@ -646,13 +647,13 @@ const fetchBikes = async () => {
             ]}
             data={todaysBookings}
           />
-          <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-gray-500">
+          <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
+            <p className="text-xs sm:text-sm text-gray-500">
               Showing {currentPage * 10 + 1} to {Math.min((currentPage + 1) * 10, todaysBookings.length)} of {todaysBookings.length} entries
             </p>
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap justify-center gap-1 sm:gap-2">
               <button
-                className="px-3 py-1 text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
+                className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
                 disabled={currentPage === 0}
                 onClick={() => setCurrentPage(prev => prev - 1)}
               >
@@ -661,7 +662,7 @@ const fetchBikes = async () => {
               {[...Array(totalPages)].map((_, index) => (
                 <button
                   key={index}
-                  className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
+                  className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
                   onClick={() => setCurrentPage(index)}
                 >
                   {index + 1}
@@ -670,7 +671,7 @@ const fetchBikes = async () => {
               <button
                 disabled={currentPage === totalPages - 1}
                 onClick={() => setCurrentPage(prev => prev + 1)}
-                className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
+                className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
               >
                 Next
               </button>
@@ -679,9 +680,10 @@ const fetchBikes = async () => {
         </div>
       )}
 
+      {/* Ongoing Bookings Section */}
       {showOngoingBookings && (
-        <div id="ongoing-bookings-section" className="mt-8">
-          <animated.h2 style={sectionHeaderAnimation} className="text-xl font-bold mb-4 text-gray-800 border-l-4 border-yellow-400 pl-3">
+        <div id="ongoing-bookings-section" className="mt-4 sm:mt-6 md:mt-8">
+          <animated.h2 style={sectionHeaderAnimation} className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800 border-l-4 border-yellow-400 pl-2 sm:pl-3">
             Ongoing Bookings
           </animated.h2>
           <Table
@@ -700,13 +702,13 @@ const fetchBikes = async () => {
             ]}
             data={ongoingBookings}
           />
-          <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-gray-500">
+          <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
+            <p className="text-xs sm:text-sm text-gray-500">
               Showing {currentPage * 10 + 1} to {Math.min((currentPage + 1) * 10, ongoingBookings.length)} of {ongoingBookings.length} entries
             </p>
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap justify-center gap-1 sm:gap-2">
               <button
-                className="px-3 py-1 text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
+                className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-white bg-indigo-900 rounded disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-150"
                 disabled={currentPage === 0}
                 onClick={() => setCurrentPage(prev => prev - 1)}
               >
@@ -715,7 +717,7 @@ const fetchBikes = async () => {
               {[...Array(totalPages)].map((_, index) => (
                 <button
                   key={index}
-                  className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
+                  className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === index ? "bg-indigo-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
                   onClick={() => setCurrentPage(index)}
                 >
                   {index + 1}
@@ -724,7 +726,7 @@ const fetchBikes = async () => {
               <button
                 disabled={currentPage === totalPages - 1}
                 onClick={() => setCurrentPage(prev => prev + 1)}
-                className={`px-3 py-1 rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
+                className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded transition-colors duration-150 ${currentPage === totalPages - 1 ? "bg-gray-300 text-gray-500" : "bg-indigo-900 text-white hover:bg-indigo-600"}`}
               >
                 Next
               </button>
@@ -733,12 +735,13 @@ const fetchBikes = async () => {
         </div>
       )}
 
+      {/* Scroll to Top Button */}
       <animated.button
         onClick={scrollToTop}
         style={pulseAnimation}
-        className="fixed bottom-4 right-4 bg-indigo-900 text-white p-3 rounded-full shadow-lg hover:bg-indigo-600 transition-all duration-200 z-50 flex items-center justify-center"
+        className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 bg-indigo-900 text-white p-2 sm:p-3 rounded-full shadow-lg hover:bg-indigo-600 transition-all duration-200 z-50 flex items-center justify-center"
       >
-        <span className="text-xl">↑</span>
+        <span className="text-lg sm:text-xl">↑</span>
       </animated.button>
     </div>
   );
