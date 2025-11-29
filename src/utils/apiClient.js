@@ -6,7 +6,7 @@ export const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:8080'
 
 // Storage keys
 export const STORAGE_KEYS = {
-  TOKEN: 'auth_token',
+  TOKEN: 'token',
   USER: 'user',
 };
 
@@ -229,17 +229,108 @@ export const createFormData = (data) => {
 
   return formData;
 };
-
-// ✅ BIKE API
+// ✅ BIKE API - UPDATED WITH PROPER TOKEN HANDLING
 export const bikeAPI = {
-  getAll: (params = {}) => api.get('/api/bikes/all', { params }),
-  getById: (id) => api.get(`/api/bikes/${id}`),
-  getActive: () => api.get('/api/bikes/active'),
-  getAvailable: () => api.get('/api/bikes/available'),
-  create: (data) => api.post('/api/bikes', data),
-  update: (id, data) => api.put(`/api/bikes/${id}`, data),
-  delete: (id) => api.delete(`/api/bikes/${id}`),
+  getAll: async (params = {}) => {
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      console.log('🚲 Fetching bikes with params:', params);
+      
+      const response = await axios.get(`${BASE_URL}/api/bikes/all`, {
+        params: {
+          page: params.page || 0,
+          size: params.size || 10,
+          sortBy: params.sortBy || 'createdAt',
+          sortDirection: params.sortDirection || 'desc',
+          ...(params.search && { search: params.search })
+        },
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('✅ Bikes response:', response.data);
+      return response;
+    } catch (error) {
+      console.error('❌ Error fetching bikes:', error);
+      throw error;
+    }
+  },
+
+  getById: (id) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/bikes/${id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  getActive: () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/bikes/active`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  getAvailable: () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/bikes/available`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  create: (data) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.post(`${BASE_URL}/api/bikes`, data, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  update: (id, data) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.put(`${BASE_URL}/api/bikes/${id}`, data, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  toggleActive: async (id) => {
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+      
+      console.log(`🔄 Toggling bike ${id} active status`);
+      
+      const response = await axios.put(
+        `${BASE_URL}/api/bikes/${id}/toggle-active`,
+        null,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log('✅ Toggle response:', response.data);
+      return response;
+    } catch (error) {
+      console.error('❌ Error toggling bike:', error);
+      throw error;
+    }
+  },
+
+  delete: (id) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.delete(`${BASE_URL}/api/bikes/${id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
 };
+
 
 // ✅ Store API helper functions
 export const storeAPI = {
@@ -278,9 +369,21 @@ export const storeAPI = {
 
 // ✅ Category API helper functions
 export const categoryAPI = {
-  getAll: (params = {}) => api.get('/api/categories/all', { params }),
+  getAll: (params = {}) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/categories/all`, {
+      params,
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
   getById: (id) => api.get(`/api/categories/${id}`),
-  getActive: () => api.get('/api/categories/active'),
+  
+    getActive: () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/categories/active`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
   create: (categoryData, image = null) => {
     const formData = new FormData();
     formData.append('categoryName', categoryData.categoryName);
@@ -300,8 +403,20 @@ export const categoryAPI = {
 
 // ✅ Brand API
 export const brandAPI = {
-  getAll: (params = {}) => api.get('/api/brands/all', { params }),
-  getActive: () => api.get('/api/brands/active'),
+  getAll: (params = {}) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/brands/all`, {
+      params,
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+  
+  getActive: () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/brands/active`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
   getById: (id) => api.get(`/api/brands/${id}`),
   create: (data) => api.post('/api/brands', data),
   update: (id, data) => api.put(`/api/brands/${id}`, data),
@@ -310,8 +425,20 @@ export const brandAPI = {
 
 // ✅ Model API
 export const modelAPI = {
-  getAll: (params = {}) => api.get('/api/models/all', { params }),
-  getActive: () => api.get('/api/models/active'),
+    getAll: (params = {}) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/models/all`, {
+      params,
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+  
+  getActive: () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    return axios.get(`${BASE_URL}/api/models/active`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
   getById: (id) => api.get(`/api/models/${id}`),
   create: (data) => api.post('/api/models', data),
   update: (id, data) => api.put(`/api/models/${id}`, data),
@@ -362,12 +489,21 @@ export const bookingAPI = {
   adminRegisterAndBook: (data) => api.post('/api/booking-bikes/admin/bookings/register-and-book', data),
   
   // Get all bookings with pagination - GET /api/booking-bikes/allBooking
-  getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc') => {
-    try {
-      console.log(`📋 [Booking API] Fetching bookings - Page: ${page}, Size: ${size}`);
-      const response = await api.get('/api/booking-bikes/allBooking', {
-        params: { page, size, sortBy, sortDirection }
-      });
+  // Get all bookings with pagination - GET /api/booking-bikes/allBooking
+getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc', statusFilter = 'all') => {
+  try {
+    console.log(`📋 [Booking API] Fetching bookings - Page: ${page}, Size: ${size}, Filter: ${statusFilter}`);
+    const response = await api.get('/api/booking-bikes/allBooking', {
+      params: { 
+        page, 
+        size, 
+        sortBy, 
+        sortDirection,
+        statusFilter,           // ✅ ADD THIS LINE
+        zoneId: 'Asia/Kolkata'  // ✅ ADD THIS LINE
+      }
+    });
+
       console.log('✅ [Booking API] Response:', response.data);
       
       return {
@@ -391,7 +527,7 @@ export const bookingAPI = {
   getAllNoPagination: async () => {
     try {
       console.log('📋 [Booking API] Fetching all bookings without pagination');
-      const response = await api.get('/api/booking-bikes/all');
+      const response = await api.get('/api/booking-bikes/allBooking');
       console.log('✅ [Booking API] Response:', response.data);
       return { data: Array.isArray(response.data) ? response.data : [] };
     } catch (error) {

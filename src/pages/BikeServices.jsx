@@ -14,7 +14,7 @@ const getAuthToken = () => {
   );
 };
 
-// ✅ Authenticated fetch wrapper
+// ✅ Updated Authenticated fetch wrapper
 const authenticatedFetch = async (url, options = {}) => {
   const token = getAuthToken();
 
@@ -27,8 +27,11 @@ const authenticatedFetch = async (url, options = {}) => {
     Authorization: `Bearer ${token}`,
   };
 
-  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
+  // ✅ DON'T set Content-Type for FormData - browser handles it automatically
+  if (!(options.body instanceof FormData)) {
+    if (!headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
   }
 
   const response = await fetch(url, { ...options, headers });
@@ -40,7 +43,8 @@ const authenticatedFetch = async (url, options = {}) => {
   }
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
   }
 
   return response;
@@ -49,6 +53,7 @@ const authenticatedFetch = async (url, options = {}) => {
 const BikeServices = () => {
   // ✅ State Management
   const [services, setServices] = useState([]);
+  const [vehicleTypes, setVehicleTypes] = useState([]);
   const [brands, setBrands] = useState([]);
   const [models, setModels] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -67,6 +72,7 @@ const BikeServices = () => {
     serviceName: "",
     serviceDescription: "",
     serviceType: "",
+    vehicleTypeId: "",
     brandId: "",
     categoryId: "",
     modelId: "",
@@ -91,8 +97,7 @@ const BikeServices = () => {
     try {
       await Promise.all([
         fetchServiceTypes(),
-        fetchBrands(),
-        fetchCategories(),
+        fetchVehicleTypes(),
         fetchYears(),
       ]);
     } catch (error) {
@@ -103,16 +108,17 @@ const BikeServices = () => {
   // ✅ Fetch Service Types from backend
   const fetchServiceTypes = async () => {
     try {
-      const response = await authenticatedFetch(
-        `${BASE_URL}/api/bike-services/service-types`
-      );
+      const response = await authenticatedFetch(`${BASE_URL}/api/bike-services/service-types`);
       const result = await response.json();
       if (result.success) {
-        setServiceTypes(result.data);
+        const transformedTypes = result.data.map(type => ({
+          ...type,
+          label: type.displayName,
+        }));
+        setServiceTypes(transformedTypes);
       }
     } catch (error) {
       console.error("Error fetching service types:", error);
-      // Fallback to static data
       setServiceTypes([
         { name: "ADMIN_SERVICE", code: 1, label: "Admin Service" },
         { name: "GENERAL_SERVICE", code: 2, label: "General Service" },
@@ -121,29 +127,46 @@ const BikeServices = () => {
     }
   };
 
-  // ✅ Fetch Brands from backend
-  const fetchBrands = async () => {
+  // ✅ Fetch Vehicle Types from backend
+  const fetchVehicleTypes = async () => {
     try {
-      const response = await authenticatedFetch(`${BASE_URL}/api/brands/active`);
+      const response = await authenticatedFetch(`${BASE_URL}/api/vehicle-types/active`);
       const result = await response.json();
-      if (result.success) {
-        setBrands(result.data);
-      }
+      setVehicleTypes(result);
     } catch (error) {
-      console.error("Error fetching brands:", error);
+      console.error("Error fetching vehicle types:", error);
     }
   };
 
-  // ✅ Fetch Categories from backend
-  const fetchCategories = async () => {
+  // ✅ Fetch Categories by Vehicle Type
+  const fetchCategoriesByVehicleType = async (vehicleTypeId) => {
     try {
-      const response = await authenticatedFetch(`${BASE_URL}/api/categories/active`);
+      const response = await authenticatedFetch(
+        `${BASE_URL}/api/categories/active?vehicleTypeId=${vehicleTypeId}`
+      );
       const result = await response.json();
       if (result.success) {
         setCategories(result.data);
       }
     } catch (error) {
       console.error("Error fetching categories:", error);
+      setCategories([]);
+    }
+  };
+
+  // ✅ Fetch Brands by Category
+  const fetchBrandsByCategory = async (categoryId) => {
+    try {
+      const response = await authenticatedFetch(
+        `${BASE_URL}/api/brands/active?categoryId=${categoryId}`
+      );
+      const result = await response.json();
+      if (result.success) {
+        setBrands(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching brands:", error);
+      setBrands([]);
     }
   };
 
@@ -151,7 +174,7 @@ const BikeServices = () => {
   const fetchModelsByBrand = async (brandId) => {
     try {
       const response = await authenticatedFetch(
-        `${BASE_URL}/api/models/by-brand/${brandId}`
+        `${BASE_URL}/api/models/active?brandId=${brandId}`
       );
       const result = await response.json();
       if (result.success) {
@@ -203,12 +226,37 @@ const BikeServices = () => {
 
     if (type === "file") {
       setFormData((prev) => ({ ...prev, [name]: files[0] }));
+    } else if (name === "vehicleTypeId") {
+      setFormData((prev) => ({ 
+        ...prev, 
+        [name]: value, 
+        categoryId: "", 
+        brandId: "", 
+        modelId: "" 
+      }));
+      setCategories([]);
+      setBrands([]);
+      setModels([]);
+      if (value) {
+        fetchCategoriesByVehicleType(value);
+      }
+    } else if (name === "categoryId") {
+      setFormData((prev) => ({ 
+        ...prev, 
+        [name]: value, 
+        brandId: "", 
+        modelId: "" 
+      }));
+      setBrands([]);
+      setModels([]);
+      if (value) {
+        fetchBrandsByCategory(value);
+      }
     } else if (name === "brandId") {
       setFormData((prev) => ({ ...prev, [name]: value, modelId: "" }));
+      setModels([]);
       if (value) {
         fetchModelsByBrand(value);
-      } else {
-        setModels([]);
       }
     } else if (["price", "yearId", "serviceType"].includes(name)) {
       setFormData((prev) => ({ ...prev, [name]: value === "" ? "" : Number(value) }));
@@ -217,118 +265,151 @@ const BikeServices = () => {
     }
   };
 
-  // ✅ Add Service
-  const handleAddService = async (e) => {
-    e.preventDefault();
-    try {
-      setLoading(true);
+  // ✅ CORRECT - Add Service with proper FormData handling
+const handleAddService = async (e) => {
+  e.preventDefault();
+  
+  // Validation: Check if image is selected
+  if (!formData.serviceImage) {
+    alert("Please select a service image");
+    return;
+  }
 
-      const formDataToSend = new FormData();
+  try {
+    setLoading(true);
 
-      // Create bikeService JSON
-      const bikeServiceJson = {
-        serviceName: formData.serviceName,
-        serviceDescription: formData.serviceDescription,
-        serviceType: serviceTypes.find((t) => t.code === formData.serviceType)?.name || "",
-        brandId: parseInt(formData.brandId),
-        categoryId: parseInt(formData.categoryId),
-        modelId: parseInt(formData.modelId),
-        yearId: parseInt(formData.yearId),
-        price: parseFloat(formData.price),
-        status: formData.status,
-      };
+    const formDataToSend = new FormData();
 
-      formDataToSend.append("bikeService", JSON.stringify(bikeServiceJson));
+    // Create the service object
+    const bikeServiceJson = {
+      serviceName: formData.serviceName,
+      serviceDescription: formData.serviceDescription,
+      serviceType: serviceTypes.find((t) => t.code === formData.serviceType)?.name || "",
+      brandId: parseInt(formData.brandId),
+      categoryId: parseInt(formData.categoryId),
+      modelId: parseInt(formData.modelId),
+      yearId: parseInt(formData.yearId),
+      price: parseFloat(formData.price),
+      status: formData.status,
+    };
 
-      if (formData.serviceImage) {
-        formDataToSend.append("image", formData.serviceImage);
-      }
+    // ✅ IMPORTANT: Append as Blob with proper content type
+    formDataToSend.append(
+      "bikeService",
+      new Blob([JSON.stringify(bikeServiceJson)], { type: "application/json" })
+    );
 
-      const response = await authenticatedFetch(
-        `${BASE_URL}/api/bike-services/create-with-image`,
-        {
-          method: "POST",
-          body: formDataToSend,
-        }
-      );
-
-      const result = await response.json();
-
-      if (result.success) {
-        alert("Service added successfully!");
-        resetForm();
-        setFormVisible(false);
-        fetchServices();
-      }
-    } catch (error) {
-      console.error("Error adding service:", error);
-      alert("Failed to add service: " + error.message);
-    } finally {
+    // ✅ Append the image file - make sure it's a File object
+    if (formData.serviceImage instanceof File) {
+      formDataToSend.append("image", formData.serviceImage);
+    } else {
+      alert("Invalid image file");
       setLoading(false);
+      return;
     }
-  };
 
-  // ✅ Update Service
-  const handleUpdateService = async (e) => {
-    e.preventDefault();
-    try {
-      setLoading(true);
-
-      const formDataToSend = new FormData();
-
-      const bikeServiceJson = {
-        serviceName: formData.serviceName,
-        serviceDescription: formData.serviceDescription,
-        serviceType: serviceTypes.find((t) => t.code === formData.serviceType)?.name || "",
-        brandId: parseInt(formData.brandId),
-        categoryId: parseInt(formData.categoryId),
-        modelId: parseInt(formData.modelId),
-        yearId: parseInt(formData.yearId),
-        price: parseFloat(formData.price),
-        status: formData.status,
-      };
-
-      formDataToSend.append("bikeService", JSON.stringify(bikeServiceJson));
-
-      if (formData.serviceImage instanceof File) {
-        formDataToSend.append("image", formData.serviceImage);
+    // ✅ Send request WITHOUT Content-Type header (let browser set it)
+    const response = await fetch(
+      `${BASE_URL}/api/bike-services/create-with-image`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+          // DON'T set Content-Type - let browser handle it for FormData
+        },
+        body: formDataToSend,
       }
+    );
 
-      const response = await authenticatedFetch(
-        `${BASE_URL}/api/bike-services/${editingId}/with-image`,
-        {
-          method: "PUT",
-          body: formDataToSend,
-        }
-      );
+    const result = await response.json();
 
-      const result = await response.json();
-
-      if (result.success) {
-        alert("Service updated successfully!");
-        resetForm();
-        setFormVisible(false);
-        fetchServices();
-      }
-    } catch (error) {
-      console.error("Error updating service:", error);
-      alert("Failed to update service: " + error.message);
-    } finally {
-      setLoading(false);
+    if (result.success) {
+      alert("Service added successfully!");
+      resetForm();
+      setFormVisible(false);
+      fetchServices();
+    } else {
+      alert(result.message || "Failed to add service");
     }
-  };
+  } catch (error) {
+    console.error("Error adding service:", error);
+    alert("Failed to add service: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// ✅ CORRECT - Update Service with proper FormData handling
+const handleUpdateService = async (e) => {
+  e.preventDefault();
+  try {
+    setLoading(true);
+
+    const formDataToSend = new FormData();
+
+    const bikeServiceJson = {
+      serviceName: formData.serviceName,
+      serviceDescription: formData.serviceDescription,
+      serviceType: serviceTypes.find((t) => t.code === formData.serviceType)?.name || "",
+      brandId: parseInt(formData.brandId),
+      categoryId: parseInt(formData.categoryId),
+      modelId: parseInt(formData.modelId),
+      yearId: parseInt(formData.yearId),
+      price: parseFloat(formData.price),
+      status: formData.status,
+    };
+
+    formDataToSend.append(
+      "bikeService",
+      new Blob([JSON.stringify(bikeServiceJson)], { type: "application/json" })
+    );
+
+    // Only append image if a new file is selected
+    if (formData.serviceImage instanceof File) {
+      formDataToSend.append("image", formData.serviceImage);
+    }
+
+    const response = await fetch(
+      `${BASE_URL}/api/bike-services/${editingId}/with-image`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        body: formDataToSend,
+      }
+    );
+
+    const result = await response.json();
+
+    if (result.success) {
+      alert("Service updated successfully!");
+      resetForm();
+      setFormVisible(false);
+      fetchServices();
+    } else {
+      alert(result.message || "Failed to update service");
+    }
+  } catch (error) {
+    console.error("Error updating service:", error);
+    alert("Failed to update service: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // ✅ Edit Service
   const handleEditService = async (service) => {
     setEditingId(service.id);
 
-    // Find service type code from name
     const serviceTypeObj = serviceTypes.find((t) => t.name === service.serviceType);
 
     setFormData({
       serviceName: service.serviceName || "",
       serviceDescription: service.serviceDescription || "",
       serviceType: serviceTypeObj?.code || "",
+      vehicleTypeId: service.vehicleTypeId || "",
       brandId: service.brandId || "",
       categoryId: service.categoryId || "",
       modelId: service.modelId || "",
@@ -338,6 +419,13 @@ const BikeServices = () => {
       serviceImage: service.serviceImage || null,
     });
 
+    // Load cascading data
+    if (service.vehicleTypeId) {
+      await fetchCategoriesByVehicleType(service.vehicleTypeId);
+    }
+    if (service.categoryId) {
+      await fetchBrandsByCategory(service.categoryId);
+    }
     if (service.brandId) {
       await fetchModelsByBrand(service.brandId);
     }
@@ -380,6 +468,7 @@ const BikeServices = () => {
       serviceName: "",
       serviceDescription: "",
       serviceType: "",
+      vehicleTypeId: "",
       brandId: "",
       categoryId: "",
       modelId: "",
@@ -388,6 +477,8 @@ const BikeServices = () => {
       status: "ACTIVE",
       serviceImage: null,
     });
+    setCategories([]);
+    setBrands([]);
     setModels([]);
   };
 
@@ -443,6 +534,25 @@ const BikeServices = () => {
                 </select>
               </div>
 
+              {/* Vehicle Type */}
+              <div>
+                <label className="block mb-2 font-medium">Vehicle Type *</label>
+                <select
+                  name="vehicleTypeId"
+                  value={formData.vehicleTypeId}
+                  onChange={handleInputChange}
+                  className="w-full border border-gray-300 p-2 rounded"
+                  required
+                >
+                  <option value="">Select Vehicle Type</option>
+                  {vehicleTypes.map((vt) => (
+                    <option key={vt.id} value={vt.id}>
+                      {vt.name || vt.vehicleTypeName || vt.typeName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Category */}
               <div>
                 <label className="block mb-2 font-medium">Category *</label>
@@ -452,6 +562,7 @@ const BikeServices = () => {
                   onChange={handleInputChange}
                   className="w-full border border-gray-300 p-2 rounded"
                   required
+                  disabled={!formData.vehicleTypeId}
                 >
                   <option value="">Select Category</option>
                   {categories.map((cat) => (
@@ -471,6 +582,7 @@ const BikeServices = () => {
                   onChange={handleInputChange}
                   className="w-full border border-gray-300 p-2 rounded"
                   required
+                  disabled={!formData.categoryId}
                 >
                   <option value="">Select Brand</option>
                   {brands.map((brand) => (
@@ -717,12 +829,12 @@ const BikeServices = () => {
                           >
                             <FaEdit className="mr-1.5" size={14} /> Edit
                           </button>
-                          <button
+                          {/* <button
                             className="px-3 py-1.5 flex items-center text-white bg-red-600 hover:bg-red-700 rounded"
                             onClick={() => handleDeleteService(service.id)}
                           >
                             <FaTrash className="mr-1.5" size={14} /> Delete
-                          </button>
+                          </button> */}
                         </div>
                       </td>
                     </tr>

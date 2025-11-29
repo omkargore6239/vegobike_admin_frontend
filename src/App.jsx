@@ -29,14 +29,14 @@ import ServiceOrders from "./pages/ServiceOrders";
 import TrackVehicle from "./pages/TrackVehicle";
 
 import StoreManagers from "./pages/StoreManagers";
-import AddBikeForm from "./pages/Addbikeform";
+import AddBikeForm from "./components/bikes/AddBikeForm";
 import AdminInvoice from './components/AdminInvoice';
 import Unauthorized from "./pages/storemanager/Unauthorized";
 import CreateBooking from "./pages/AdminBooking/CreateBooking";
 
 //All battery page
-import AllBattery from './pages/allbattery/AllBattery';
-import AddBattery from './pages/allbattery/AddBattery';
+import BatteryList from "./components/battery/BatteryList";
+import BatteryForm from "./components/battery/BatteryForm";
 
 
 // ✅ UPDATED: Store Manager now has more permissions
@@ -373,7 +373,7 @@ function App() {
     path="allBattery" 
     element={
       <ProtectedRoute routeName="allBattery">
-        <AllBattery />
+        <BatteryList />
       </ProtectedRoute>
     } 
   />
@@ -381,15 +381,15 @@ function App() {
     path="battery/add" 
     element={
       <ProtectedRoute routeName="allBattery">
-        <AddBattery />
+        <BatteryForm />
       </ProtectedRoute>
     } 
   />
   <Route 
-    path="battery/edit/:id" 
+    path="/dashboard/Battery/add/:id?" 
     element={
       <ProtectedRoute routeName="allBattery">
-        <AddBattery />
+        <BatteryForm />
       </ProtectedRoute>
     } 
   />

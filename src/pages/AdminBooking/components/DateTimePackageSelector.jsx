@@ -3,17 +3,76 @@ import { FaCalendar, FaClock, FaArrowLeft, FaArrowRight } from "react-icons/fa";
 import { toast } from "react-toastify";
 
 const DateTimePackageSelector = ({ initialData, onNext, onBack }) => {
-  const [startDate, setStartDate] = useState(initialData.startDate || "");
-  const [endDate, setEndDate] = useState(initialData.endDate || "");
+  // Helper to get current time + 10 minutes in datetime-local format
+  const getDefaultStartTime = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 10);
+    now.setSeconds(0);
+    now.setMilliseconds(0);
+    return now.toISOString().slice(0, 16);
+  };
 
-  // Get minimum selectable date-time - current date rounded to nearest 5 mins or next minute
+  // Helper to get start time + 1 hour as default end time
+  const getDefaultEndTime = (startDateTime) => {
+    const start = new Date(startDateTime);
+    start.setHours(start.getHours() + 1);
+    return start.toISOString().slice(0, 16);
+  };
+
+  // ✅ ALWAYS use fresh current time + 10 min, ignore old initialData
+  const [startDate, setStartDate] = useState(() => {
+    const freshDefault = getDefaultStartTime();
+    
+    // Only use initialData if it's in the future
+    if (initialData.startDate) {
+      const storedDate = new Date(initialData.startDate);
+      const now = new Date();
+      if (storedDate > now) {
+        return storedDate.toISOString().slice(0, 16);
+      }
+    }
+    
+    // Otherwise use fresh current + 10 min
+    return freshDefault;
+  });
+
+  const [endDate, setEndDate] = useState(() => {
+    const freshStartDefault = getDefaultStartTime();
+    const freshEndDefault = getDefaultEndTime(freshStartDefault);
+    
+    // Only use initialData end if start is also valid and in future
+    if (initialData.startDate && initialData.endDate) {
+      const storedStart = new Date(initialData.startDate);
+      const storedEnd = new Date(initialData.endDate);
+      const now = new Date();
+      
+      if (storedStart > now && storedEnd > storedStart) {
+        return storedEnd.toISOString().slice(0, 16);
+      }
+    }
+    
+    // Otherwise use fresh start + 1 hour
+    return freshEndDefault;
+  });
+
+  // Update end date when start date changes
+  useEffect(() => {
+    if (startDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      
+      // If end is before or equal to start, auto-adjust to start + 1 hour
+      if (end <= start) {
+        setEndDate(getDefaultEndTime(startDate));
+      }
+    }
+  }, [startDate]);
+
+  // Get minimum selectable date-time (current time)
   const getMinDateTimeLocal = () => {
     const now = new Date();
     now.setSeconds(0);
     now.setMilliseconds(0);
-    // Optional: round up to next 5 minutes
-    const minutes = now.getMinutes();
-    now.setMinutes(minutes + (5 - (minutes % 5)));
     return now.toISOString().slice(0, 16);
   };
 
@@ -98,11 +157,9 @@ const DateTimePackageSelector = ({ initialData, onNext, onBack }) => {
             min={minDateTime}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent"
           />
-          {startDate && (
-            <p className="text-xs text-gray-600 mt-2">
-              📅 Selected: <strong>{formatDateDisplay(startDate)}</strong>
-            </p>
-          )}
+          <p className="text-xs text-gray-600 mt-2">
+            📅 Selected: <strong>{formatDateDisplay(startDate)}</strong>
+          </p>
         </div>
 
         {/* End Date & Time */}
@@ -118,11 +175,9 @@ const DateTimePackageSelector = ({ initialData, onNext, onBack }) => {
             min={startDate || minDateTime}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent"
           />
-          {endDate && (
-            <p className="text-xs text-gray-600 mt-2">
-              📅 Selected: <strong>{formatDateDisplay(endDate)}</strong>
-            </p>
-          )}
+          <p className="text-xs text-gray-600 mt-2">
+            📅 Selected: <strong>{formatDateDisplay(endDate)}</strong>
+          </p>
         </div>
       </div>
 
@@ -168,26 +223,6 @@ const DateTimePackageSelector = ({ initialData, onNext, onBack }) => {
                 {duration.remainingHours.toFixed(1)}h
               </p>
             </div>
-          </div>
-
-          {/* Pricing Logic Explanation */}
-          <div className="bg-white rounded-lg p-4 border border-blue-200">
-            <p className="text-sm text-blue-800 mb-2">
-              <strong>💡 Backend Pricing Logic:</strong>
-            </p>
-            <p className="text-xs text-blue-700 leading-relaxed">
-              {duration.hours < 24
-                ? duration.hours > 6
-                  ? "⚡ Will be charged as 1 full day (more than 6 hours)"
-                  : "⚡ Will be charged at hourly rate"
-                : `⚡ ${duration.days} full day(s)${
-                    duration.remainingHours > 6
-                      ? " + 1 additional day (remainder > 6h)"
-                      : duration.remainingHours > 0
-                      ? ` + ${duration.remainingHours.toFixed(1)}h at hourly rate`
-                      : ""
-                  }`}
-            </p>
           </div>
         </div>
       )}

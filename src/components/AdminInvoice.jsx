@@ -612,7 +612,7 @@ const amountPayable = Math.max(0, totalWithGst - depositAmount);
         {/* Footer */}
         <div className="bg-gray-50 px-8 py-6 border-t">
           <div className="text-center text-sm text-gray-600">
-            <p className="mb-2 font-semibold">VegoBike - Admin Invoice System</p>
+            <p className="mb-2 font-semibold">Vego - Admin Invoice System</p>
             <p>This is an administrative copy for internal records and accounting.</p>
             <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-500">
               <span>📧 admin@vegobike.in</span>

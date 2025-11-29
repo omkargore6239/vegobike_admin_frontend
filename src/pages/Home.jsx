@@ -29,12 +29,39 @@ const Home = () => {
   const [dashboardSummary, setDashboardSummary] = useState({});
   const [userCountSummary, setUserCountSummary] = useState({});
 
+  //static fetch KPI values
+const [storeStats, setStoreStats] = useState({});
+
+  
+  // ✅ NEW: Store Info from JWT
+  const [currentStore, setCurrentStore] = useState(null);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
   const cardsSpringRef = useSpringRef();
   const tableSpringRef = useSpringRef();
+
+  // ✅ NEW: Get user role and store info
+  const getUserRoleAndStore = () => {
+    try {
+      const role = parseInt(localStorage.getItem('userRole'));
+      const storeId = localStorage.getItem('storeId'); // ✅ Add this to your login
+      const storeName = localStorage.getItem('storeName');
+      
+      return {
+        role: role === 2 ? 'STORE_MANAGER' : 'ADMIN',
+        storeId: storeId ? parseInt(storeId) : null,
+        storeName: storeName || null
+      };
+    } catch {
+      return { role: 'ADMIN', storeId: null, storeName: null };
+    }
+  };
+
+  const { role: userRole, storeId: currentStoreId, storeName: storeName } = getUserRoleAndStore();
+  console.log('👤 User Role:', userRole, 'Store:', storeName || 'All Stores');
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -72,6 +99,7 @@ const Home = () => {
 
     const fetchActiveBikes = async () => {
       try {
+        // ✅ Backend already filters by storeId for STORE_MANAGER
         const response = await apiClient.get("/api/bikes/count/active");
         if (response.data && typeof response.data.activeBikes === 'number') {
           setActiveBikesCount(response.data.activeBikes);
@@ -86,6 +114,7 @@ const Home = () => {
 
     const fetchBookings = async () => {
       try {
+        // ✅ Backend already filters dashboard/summary by storeId for STORE_MANAGER
         const response = await apiClient.get("api/booking-bikes/dashboard/summary");
         const sortedBookings = response.data.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
         const bookingWithUsernames = await Promise.all(
@@ -112,6 +141,13 @@ const Home = () => {
 
     const fetchStores = async () => {
       try {
+        // ✅ For Store Manager, show only their store
+        if (userRole === 'STORE_MANAGER') {
+          setStores([{ id: currentStoreId, name: storeName, address: 'Current Store' }]);
+          setActiveStoreCount(1);
+          return;
+        }
+        
         const response = await apiClient.get("api/stores/count/active");
         if (response.data && response.data.content) {
           setStores(response.data.content);
@@ -130,6 +166,7 @@ const Home = () => {
 
     const fetchBikes = async () => {
       try {
+        // ✅ Backend already filters by store for STORE_MANAGER
         const response = await apiClient.get("api/bikes/count/active");
         if (response.data && response.data.content) {
           setBikes(response.data.content);
@@ -148,9 +185,17 @@ const Home = () => {
 
     const fetchDashboardSummary = async () => {
       try {
+        // ✅ Backend already filters by store for STORE_MANAGER
         const response = await apiClient.get("/api/booking-bikes/dashboard/summary");
         if (response.data && (response.data.success || typeof response.data === 'object')) {
           setDashboardSummary(response.data);
+          // ✅ Set store info from backend response
+          if (response.data.storeId) {
+            setCurrentStore({
+              id: response.data.storeId,
+              name: storeName || `Store ${response.data.storeId}`
+            });
+          }
         } else {
           setDashboardSummary({});
         }
@@ -162,6 +207,10 @@ const Home = () => {
 
     const fetchActiveStoreCount = async () => {
       try {
+        if (userRole === 'STORE_MANAGER') {
+          setActiveStoreCount(1); // Their own store
+          return;
+        }
         const response = await apiClient.get("/api/stores/count/active");
         if (response.data && response.data.success) {
           setActiveStoreCount(response.data.count);
@@ -196,7 +245,7 @@ const Home = () => {
     fetchActiveStoreCount();
     fetchActiveBikes();
     fetchUserCountSummary();
-  }, [currentPage]);
+  }, [currentPage, userRole, currentStoreId, storeName]);
 
   const handleViewAllBookings = () => navigate("/dashboard/allBookings");
   const handleViewAllBikes = () => navigate("/dashboard/allBikes");
@@ -207,18 +256,11 @@ const Home = () => {
   const handleViewVerifiedUsers = () => navigate("allRegisterCustomers");
   const handleViewUnverifiedUsers = () => navigate("allRegisterCustomers");
 
-  const todayCount = dashboardSummary.today || 0;
-  const ongoingCount = dashboardSummary.ongoing || 0;
-  const cancelledCount = dashboardSummary.cancelled || 0;
-
-  const totalUsers = userCountSummary.totalUsers || 0;
-  const verifiedUsersCount = userCountSummary.verifiedUsers || 0;
-  const unverifiedUsersCount = userCountSummary.unverifiedUsers || 0;
-
-  const stats = [
+  // ✅ Role-Based Stats (Store Manager: 5 cards, Admin: 9 cards)
+  const baseStats = [
     {
       title: "Today's Bookings",
-      count: todayCount,
+      count: dashboardSummary.today || 0,
       gradient: "bg-gradient-to-br from-indigo-700 to-blue-600",
       icon: "📅",
       hasButton: true,
@@ -226,7 +268,7 @@ const Home = () => {
     },
     {
       title: "Ongoing Bookings",
-      count: ongoingCount,
+      count: dashboardSummary.ongoing || 0,
       gradient: "bg-gradient-to-br from-yellow-400 to-yellow-300",
       icon: "🔄",
       hasButton: true,
@@ -234,7 +276,7 @@ const Home = () => {
     },
     {
       title: "Cancelled Bookings",
-      count: cancelledCount,
+      count: dashboardSummary.cancelled || 0,
       gradient: "bg-gradient-to-br from-red-500 to-red-400",
       icon: "❌",
       hasButton: true,
@@ -249,14 +291,6 @@ const Home = () => {
       onClick: handleViewAllBookings,
     },
     {
-      title: "Active Stores",
-      count: activeStoreCount,
-      gradient: "bg-gradient-to-br from-red-600 to-red-500",
-      icon: "🏪",
-      hasButton: true,
-      onClick: handleViewAllStores,
-    },
-    {
       title: "Active Bikes",
       count: activeBikesCount,
       gradient: "bg-gradient-to-br from-red-700 to-red-600",
@@ -264,34 +298,53 @@ const Home = () => {
       hasButton: true,
       onClick: handleViewAllBikes,
     },
-    {
-      title: "Total Users",
-      count: totalUsers,
-      gradient: "bg-gradient-to-br from-green-600 to-green-500",
-      icon: "👥",
-      hasButton: true,
-      onClick: handleViewAllUsers,
-    },
-    {
-      title: "Verified Users",
-      count: verifiedUsersCount,
-      gradient: "bg-gradient-to-br from-blue-600 to-blue-500",
-      icon: "✅",
-      hasButton: true,
-      onClick: handleViewVerifiedUsers,
-    },
-    {
-      title: "Unverified Users",
-      count: unverifiedUsersCount,
-      gradient: "bg-gradient-to-br from-orange-500 to-orange-400",
-      icon: "🔍",
-      hasButton: true,
-      onClick: handleViewUnverifiedUsers,
-    },
   ];
 
+  const stats = userRole === 'STORE_MANAGER' 
+    ? baseStats  // ✅ Store Manager: Only 5 cards (their store only)
+    : [
+        ...baseStats,
+        {
+          title: "Active Stores",
+          count: activeStoreCount,
+          gradient: "bg-gradient-to-br from-red-600 to-red-500",
+          icon: "🏪",
+          hasButton: true,
+          onClick: handleViewAllStores,
+        },
+        {
+          title: "Total Users",
+          count: userCountSummary.totalUsers || 0,
+          gradient: "bg-gradient-to-br from-green-600 to-green-500",
+          icon: "👥",
+          hasButton: true,
+          onClick: handleViewAllUsers,
+        },
+        {
+          title: "Verified Users",
+          count: userCountSummary.verifiedUsers || 0,
+          gradient: "bg-gradient-to-br from-blue-600 to-blue-500",
+          icon: "✅",
+          hasButton: true,
+          onClick: handleViewVerifiedUsers,
+        },
+        {
+          title: "Unverified Users",
+          count: userCountSummary.unverifiedUsers || 0,
+          gradient: "bg-gradient-to-br from-orange-500 to-orange-400",
+          icon: "🔍",
+          hasButton: true,
+          onClick: handleViewUnverifiedUsers,
+        },
+      ];
+
   const useCounter = (end, duration = 2000) => {
-    const { number } = useSpring({ from: { number: 0 }, number: end, delay: 300, config: { duration } });
+    const { number } = useSpring({ 
+      from: { number: 0 }, 
+      number: end || 0, 
+      delay: 300, 
+      config: { duration } 
+    });
     return number;
   };
 
@@ -384,11 +437,16 @@ const Home = () => {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen mt-3 sm:mt-5">
-      {/* Responsive Grid for Stats Cards */}
+      
+
+      {/* ✅ SAME EXACT KPI CARDS GRID */}
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-4 md:gap-6">
         {trail.map((style, index) => {
           const stat = stats[index];
           const countValue = counters[index];
+          
+          if (!stat || countValue === undefined) return null;
+          
           return (
             <animated.div
               key={index}

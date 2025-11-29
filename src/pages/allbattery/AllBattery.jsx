@@ -1,5 +1,3 @@
-// F:\Eptiq Technologies\webapps\vegobike\vegobike_admin_frontend\src\pages\allbattery\AllBattery.jsx
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -20,9 +18,10 @@ const AllBattery = () => {
   const [stores, setStores] = useState([]);
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [cityFilter, setCityFilter] = useState('all');
-  const [storeFilter, setStoreFilter] = useState('all');
+  const [searchField, setSearchField] = useState('batteryId');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+  const [storeFilter, setStoreFilter] = useState('');
   
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,148 +33,194 @@ const AllBattery = () => {
   const [totalItems, setTotalItems] = useState(0);
   
   const [selectedBattery, setSelectedBattery] = useState(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Battery Status Configuration matching backend enum
+  // ✅ Battery Status Configuration matching YOUR EXACT BACKEND ENUM
   const BATTERY_STATUS = {
-    0: { label: 'Out of Service', color: 'from-red-500 to-rose-600', bgColor: '#FEE2E2', textColor: '#DC2626' },
-    1: { label: 'In Bike', color: 'from-green-500 to-emerald-500', bgColor: '#D1FAE5', textColor: '#059669' },
-    2: { label: 'Charging', color: 'from-yellow-500 to-amber-500', bgColor: '#FEF3C7', textColor: '#D97706' },
-    3: { label: 'Open', color: 'from-blue-500 to-cyan-500', bgColor: '#DBEAFE', textColor: '#2563EB' }
+    0: { label: 'OUT_OF_SERVICE', enumLabel: 'out of service', color: 'from-red-500 to-rose-600', bgColor: '#FEE2E2', textColor: '#DC2626' },
+    1: { label: 'IN BIKE', enumLabel: 'in bike', color: 'from-green-500 to-emerald-500', bgColor: '#D1FAE5', textColor: '#059669' },
+    2: { label: 'CHARGING', enumLabel: 'charging', color: 'from-yellow-500 to-amber-500', bgColor: '#FEF3C7', textColor: '#D97706' },
+    3: { label: 'OPEN', enumLabel: 'open', color: 'from-blue-500 to-cyan-500', bgColor: '#DBEAFE', textColor: '#2563EB' }
   };
 
-  // Fetch Batteries with pagination
+  // Get auth token
+  const getAuthToken = () => {
+    return localStorage.getItem('token') || localStorage.getItem('authToken');
+  };
+
+  // Fetch Batteries with proper search functionality
   const fetchBatteries = useCallback(async () => {
     setLoading(true);
     setError(null);
     
     try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        toast.error('Please login to continue');
+        navigate('/login');
+        return;
+      }
+
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        size: pageSize.toString()
+        size: pageSize.toString(),
+        sortBy: 'id',
+        direction: 'desc'
       });
 
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-      if (cityFilter !== 'all') params.set('cityId', cityFilter);
-      if (storeFilter !== 'all') params.set('storeId', storeFilter);
+      if (searchQuery.trim()) {
+        switch (searchField) {
+          case 'batteryId':
+            params.set('batteryId', searchQuery.trim());
+            break;
+          case 'company':
+            params.set('company', searchQuery.trim());
+            break;
+          case 'storeName':
+            params.set('storeName', searchQuery.trim());
+            break;
+          case 'cityName':
+            params.set('cityName', searchQuery.trim());
+            break;
+          default:
+            params.set('batteryId', searchQuery.trim());
+        }
+      }
 
-      const response = await fetch(`${BASE_URL}/api/batteries?${params.toString()}`, {
+      if (statusFilter !== '') params.set('batteryStatus', statusFilter);
+      if (cityFilter !== '') {
+        const cityName = getCityName(cityFilter);
+        if (cityName !== 'N/A') params.set('cityName', cityName);
+      }
+      if (storeFilter !== '') {
+        const storeName = getStoreName(storeFilter);
+        if (storeName !== 'N/A') params.set('storeName', storeName);
+      }
+
+      const url = `${BASE_URL}/api/batteries/getall?${params.toString()}`;
+      console.log('🔍 Fetching batteries from:', url);
+
+      const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
-      if (!response.ok) throw new Error('Failed to fetch batteries');
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Session expired. Please login again.');
+          navigate('/login');
+          return;
+        }
+        throw new Error(`Failed to fetch batteries: ${response.status}`);
+      }
       
-      const data = await response.json();
-      setBatteries(data.content || data);
-      setTotalPages(data.totalPages || 1);
-      setTotalItems(data.totalElements || data.length);
+      const result = await response.json();
+      console.log('✅ Batteries API response:', result);
+
+      if (result.success) {
+        setBatteries(result.data || []);
+        
+        if (result.pagination) {
+          setTotalPages(result.pagination.totalPages || 1);
+          setTotalItems(result.pagination.totalElements || 0);
+          setCurrentPage(result.pagination.currentPage || 0);
+        } else {
+          setTotalPages(1);
+          setTotalItems(result.data?.length || 0);
+        }
+        
+        if (result.data?.length > 0) {
+          toast.success(`📋 Loaded ${result.data.length} batteries`);
+        }
+      } else {
+        throw new Error('Failed to load batteries');
+      }
       
-      toast.success(`📋 Loaded ${(data.content || data).length} batteries`);
     } catch (err) {
       console.error('❌ Error fetching batteries:', err);
       setError(err);
       toast.error('❌ Failed to load batteries');
       setBatteries([]);
+      setTotalPages(0);
+      setTotalItems(0);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, statusFilter, cityFilter, storeFilter]);
+  }, [currentPage, pageSize, statusFilter, cityFilter, storeFilter, searchQuery, searchField]);
 
-  // Fetch Cities
   const fetchCities = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/cities`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      const token = getAuthToken();
+      const response = await fetch(`${BASE_URL}/api/cities/active`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
       if (response.ok) {
-        const data = await response.json();
-        setCities(data);
+        const result = await response.json();
+        const citiesData = result.data || result;
+        setCities(Array.isArray(citiesData) ? citiesData : []);
+        console.log('✅ Cities loaded:', citiesData);
       }
     } catch (err) {
-      console.error('Error fetching cities:', err);
+      console.error('❌ Error fetching cities:', err);
     }
   };
 
-  // Fetch Stores
   const fetchStores = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/stores`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      const token = getAuthToken();
+      const response = await fetch(`${BASE_URL}/api/stores/active`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
       if (response.ok) {
-        const data = await response.json();
-        setStores(data);
+        const result = await response.json();
+        const storesData = result.data || result;
+        setStores(Array.isArray(storesData) ? storesData : []);
+        console.log('✅ Stores loaded:', storesData);
       }
     } catch (err) {
-      console.error('Error fetching stores:', err);
+      console.error('❌ Error fetching stores:', err);
     }
   };
 
-  // Search batteries
-  const handleSearch = (query) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      fetchBatteries();
-    } else {
-      const filtered = batteries.filter(battery =>
-        battery.batteryId?.toLowerCase().includes(query.toLowerCase()) ||
-        battery.company?.toLowerCase().includes(query.toLowerCase())
-      );
-      setBatteries(filtered);
-    }
-  };
-
-  // Delete Battery
-  const handleDelete = async () => {
-    if (!selectedBattery) return;
-
-    try {
-      const response = await fetch(`${BASE_URL}/api/batteries/${selectedBattery.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-
-      if (!response.ok) throw new Error('Failed to delete battery');
-      
-      toast.success('🗑️ Battery deleted successfully');
-      setShowDeleteModal(false);
-      setSelectedBattery(null);
-      fetchBatteries();
-    } catch (err) {
-      console.error('Error deleting battery:', err);
-      toast.error('❌ Failed to delete battery');
-    }
-  };
-
-  // Refresh data
   const handleRefresh = async () => {
     setRefreshing(true);
     toast.info('🔄 Refreshing batteries...');
     setSearchQuery('');
-    setStatusFilter('all');
-    setCityFilter('all');
-    setStoreFilter('all');
+    setStatusFilter('');
+    setCityFilter('');
+    setStoreFilter('');
+    setCurrentPage(0);
     await fetchBatteries();
     setRefreshing(false);
   };
 
-  // Clear filters
   const clearFilters = () => {
-    setStatusFilter('all');
-    setCityFilter('all');
-    setStoreFilter('all');
+    setStatusFilter('');
+    setCityFilter('');
+    setStoreFilter('');
     setSearchQuery('');
+    setCurrentPage(0);
+  };
+
+  const handleSearch = () => {
+    setCurrentPage(0);
     fetchBatteries();
   };
 
-  // Get status badge
   const getStatusBadge = (statusCode) => {
-    const status = BATTERY_STATUS[statusCode] || BATTERY_STATUS[0];
+    const status = BATTERY_STATUS[statusCode] || BATTERY_STATUS[3]; // Default to OPEN
     return (
       <span 
         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r ${status.color} text-white shadow-sm`}
@@ -185,19 +230,18 @@ const AllBattery = () => {
     );
   };
 
-  // Get city name
   const getCityName = (cityId) => {
-    const city = cities.find(c => c.id === cityId);
-    return city ? city.name : `City ${cityId}`;
+    if (!cityId) return 'N/A';
+    const city = cities.find(c => c.id === parseInt(cityId));
+    return city ? (city.name || city.cityName) : 'N/A';
   };
 
-  // Get store name
   const getStoreName = (storeId) => {
-    const store = stores.find(s => s.id === storeId);
-    return store ? store.name : `Store ${storeId}`;
+    if (!storeId) return 'N/A';
+    const store = stores.find(s => s.id === parseInt(storeId));
+    return store ? (store.name || store.storeName) : 'N/A';
   };
 
-  // Format date
   const formatDate = (timestamp) => {
     if (!timestamp) return 'N/A';
     return new Date(timestamp).toLocaleDateString('en-IN', {
@@ -208,13 +252,19 @@ const AllBattery = () => {
   };
 
   useEffect(() => {
-    fetchBatteries();
     fetchCities();
     fetchStores();
-  }, [fetchBatteries]);
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchBatteries();
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [currentPage, pageSize, statusFilter, cityFilter, storeFilter, searchQuery, searchField]);
 
   return (
-    
     <div className="min-h-screen bg-gray-100 py-1 px-1">
       <ToastContainer position="top-right" autoClose={3000} />
       
@@ -231,7 +281,7 @@ const AllBattery = () => {
             
             <div className="flex items-center space-x-3">
               <button
-                onClick={() => navigate('/dashboard/battery/add')}
+                onClick={() => navigate('/dashboard/Battery/add')}
                 className="flex items-center px-4 py-2 rounded-lg shadow-md transition-all bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold hover:shadow-lg"
               >
                 <FaPlus className="mr-2" />
@@ -281,23 +331,37 @@ const AllBattery = () => {
         {/* Search & Filters */}
         <div className="bg-white rounded-xl shadow-lg p-3 mb-2">
           <div className="flex items-center justify-between space-x-4 mb-3">
-            <div className="flex-1 relative">
-              <FaSearch className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
-              <input
-                type="text"
-                placeholder="Search by Battery ID or Company..."
-                className="w-full pl-8 pr-20 py-1.5 border border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 transition-all text-sm"
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => handleSearch('')}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-colors"
-                >
-                  <FaTimes className="text-xs" />
-                </button>
-              )}
+            <div className="flex-1 flex space-x-2">
+              <select
+                value={searchField}
+                onChange={(e) => setSearchField(e.target.value)}
+                className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
+              >
+                <option value="batteryId">Battery ID</option>
+                <option value="company">Company</option>
+                <option value="storeName">Store</option>
+                <option value="cityName">City</option>
+              </select>
+              
+              <div className="flex-1 relative">
+                <FaSearch className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
+                <input
+                  type="text"
+                  placeholder={`Search by ${searchField === 'batteryId' ? 'Battery ID' : searchField === 'company' ? 'Company' : searchField === 'storeName' ? 'Store Name' : 'City Name'}...`}
+                  className="w-full pl-8 pr-20 py-1.5 border border-gray-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 transition-all text-sm"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-colors"
+                  >
+                    <FaTimes className="text-xs" />
+                  </button>
+                )}
+              </div>
             </div>
             
             <button
@@ -308,7 +372,7 @@ const AllBattery = () => {
             >
               <FaInfoCircle className="mr-2" />
               Filters
-              {(statusFilter !== 'all' || cityFilter !== 'all' || storeFilter !== 'all') && (
+              {(statusFilter !== '' || cityFilter !== '' || storeFilter !== '') && (
                 <span className="ml-2 bg-red-500 text-white rounded-full w-2 h-2"></span>
               )}
             </button>
@@ -331,7 +395,7 @@ const AllBattery = () => {
             </div>
           </div>
 
-          {/* Advanced Filters */}
+          {/* Advanced Filters - ✅ CORRECTED STATUS OPTIONS */}
           {showFilters && (
             <div className="border-t pt-3 grid grid-cols-4 gap-3">
               <div>
@@ -341,11 +405,11 @@ const AllBattery = () => {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:border-indigo-500"
                 >
-                  <option value="all">All Status</option>
-                  <option value="0">Out of Service</option>
-                  <option value="1">In Bike</option>
-                  <option value="2">Charging</option>
-                  <option value="3">Open</option>
+                  <option value="">All Status</option>
+                  <option value="0">OUT OF SERVICE</option>
+                  <option value="1">IN BIKE</option>
+                  <option value="2">CHARGING</option>
+                  <option value="3">OPEN</option>
                 </select>
               </div>
 
@@ -356,9 +420,9 @@ const AllBattery = () => {
                   onChange={(e) => setCityFilter(e.target.value)}
                   className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:border-indigo-500"
                 >
-                  <option value="all">All Cities</option>
+                  <option value="">All Cities</option>
                   {cities.map(city => (
-                    <option key={city.id} value={city.id}>{city.name}</option>
+                    <option key={city.id} value={city.id}>{city.name || city.cityName}</option>
                   ))}
                 </select>
               </div>
@@ -370,9 +434,9 @@ const AllBattery = () => {
                   onChange={(e) => setStoreFilter(e.target.value)}
                   className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:border-indigo-500"
                 >
-                  <option value="all">All Stores</option>
+                  <option value="">All Stores</option>
                   {stores.map(store => (
-                    <option key={store.id} value={store.id}>{store.name}</option>
+                    <option key={store.id} value={store.id}>{store.name || store.storeName}</option>
                   ))}
                 </select>
               </div>
@@ -443,13 +507,13 @@ const AllBattery = () => {
                       <td className="px-3 py-2">
                         <div className="flex items-center text-sm text-gray-700">
                           <FaMapMarkerAlt className="mr-1 text-xs text-gray-400" />
-                          {getCityName(battery.cityId)}
+                          {battery.cityName || getCityName(battery.cityId)}
                         </div>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center text-sm text-gray-700">
                           <FaStore className="mr-1 text-xs text-gray-400" />
-                          {getStoreName(battery.storeId)}
+                          {battery.storeName || getStoreName(battery.storeId)}
                         </div>
                       </td>
                       <td className="px-3 py-2">
@@ -468,21 +532,15 @@ const AllBattery = () => {
                             <FaEye className="text-xs" />
                           </button>
                           <button
-                            onClick={() => navigate(`/dashboard/battery/edit/${battery.id}`)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              navigate(`/dashboard/Battery/add/${battery.id}`);
+                            }}
                             className="p-1.5 bg-yellow-100 hover:bg-yellow-600 text-yellow-600 hover:text-white rounded transition-colors"
                             title="Edit"
                           >
                             <FaEdit className="text-xs" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedBattery(battery);
-                              setShowDeleteModal(true);
-                            }}
-                            className="p-1.5 bg-red-100 hover:bg-red-600 text-red-600 hover:text-white rounded transition-colors"
-                            title="Delete"
-                          >
-                            <FaTrash className="text-xs" />
                           </button>
                         </div>
                       </td>
@@ -544,46 +602,6 @@ const AllBattery = () => {
           )}
         </div>
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteModal && selectedBattery && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-              <div className="bg-gradient-to-r from-red-600 to-rose-600 text-white p-4 rounded-t-xl">
-                <div className="flex items-center">
-                  <FaExclamationTriangle className="mr-2 text-2xl" />
-                  <h3 className="text-lg font-bold">Delete Battery</h3>
-                </div>
-              </div>
-              
-              <div className="p-6">
-                <p className="text-gray-700 mb-4">
-                  Are you sure you want to delete battery <strong>{selectedBattery.batteryId}</strong>?
-                </p>
-                <p className="text-sm text-red-600 font-medium">This action cannot be undone.</p>
-              </div>
-              
-              <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setSelectedBattery(null);
-                  }}
-                  className="px-5 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="px-5 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white rounded-lg font-medium transition-all text-sm flex items-center"
-                >
-                  <FaTrash className="mr-2" />
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Details Modal */}
         {showDetailsModal && selectedBattery && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -620,11 +638,11 @@ const AllBattery = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">City</label>
-                    <p className="text-sm font-medium text-gray-900">{getCityName(selectedBattery.cityId)}</p>
+                    <p className="text-sm font-medium text-gray-900">{selectedBattery.cityName || getCityName(selectedBattery.cityId)}</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Store</label>
-                    <p className="text-sm font-medium text-gray-900">{getStoreName(selectedBattery.storeId)}</p>
+                    <p className="text-sm font-medium text-gray-900">{selectedBattery.storeName || getStoreName(selectedBattery.storeId)}</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Created At</label>
@@ -663,7 +681,11 @@ const AllBattery = () => {
                   Close
                 </button>
                 <button
-                  onClick={() => navigate(`/dashboard/battery/edit/${selectedBattery.id}`)}
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    setSelectedBattery(null);
+                    navigate(`/dashboard/Battery/add/${selectedBattery.id}`);
+                  }}
                   className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg font-medium transition-all text-sm flex items-center"
                 >
                   <FaEdit className="mr-2" />
@@ -675,7 +697,6 @@ const AllBattery = () => {
         )}
       </div>
     </div>
-    
   );
 };
 

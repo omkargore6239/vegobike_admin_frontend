@@ -116,7 +116,7 @@ const Sidebar = () => {
   { id: 7, path: "/dashboard/allBookings", name: "All Bookings", icon: TbBrandBooking },
   { id: 2, path: "/dashboard/storeMaster", name: "Store Master", icon: MdOutlineLocalGroceryStore },
   { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
-  // { id: 3.1, path: "/dashboard/allBattery", name: "All Battery", icon: FaBatteryFull },
+  { id: 3.1, path: "/dashboard/allBattery", name: "All Battery", icon: FaBatteryFull },
   {
     id: 4,
     name: "Price Master",
@@ -165,7 +165,7 @@ const Sidebar = () => {
     { id: 3, path: "/dashboard/allBikes", name: "All Bikes", icon: RiMotorbikeLine },
      // { id: 3.5, path: "/dashboard/addBike", name: "➕ Add Bike", icon: FaPlus },
       // { id: 3.7, path: "/dashboard/createBooking", name: "📅 Create Booking", icon: FaPlus }, 
-      // { id: 3.1, path: "/dashboard/allBattery", name: "All Battery", icon: FaBatteryFull },
+      { id: 3.1, path: "/dashboard/allBattery", name: "All Battery", icon: FaBatteryFull },
   ];
 
   // ✅ SELECT LINKS BASED ON ROLE
@@ -187,7 +187,7 @@ const Sidebar = () => {
             </div>
           </button>
           <img src="/vegologo.png" alt="VegoBike Logo" className="h-10 w-10" />
-          <h1 className={fonts.sidebarTitle}>VeGoBike</h1>
+          <h1 className={fonts.sidebarTitle}>Ve Go</h1>
           
           {/* ✅ SHOW USER ROLE */}
           <span className="ml-4 text-xs bg-indigo-700 px-2 py-1 rounded text-white font-semibold">
@@ -297,7 +297,7 @@ const Sidebar = () => {
             
             {/* Footer */}
             <div className={`${fonts.sidebarFooter} ${colors.sidebarFooter} text-center text-xs`}>
-              VegoBike © 2025
+              Ve go © 2025
             </div>
           </div>
         )}
