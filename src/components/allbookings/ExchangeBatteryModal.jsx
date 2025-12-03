@@ -119,10 +119,12 @@ const ExchangeBatteryModal = ({
               >
                 <option value="">Select battery</option>
                 {batteries.map((batt) => (
-                  <option key={batt.id} value={batt.id}>
-                    ID: {batt.id} | Serial: {batt.serialNumber || 'N/A'}
-                  </option>
-                ))}
+  <option key={batt.id} value={batt.id}>
+    {batt.batteryId}
+  </option>
+))}
+
+
               </select>
             )}
           </div>

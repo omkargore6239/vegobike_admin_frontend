@@ -62,7 +62,7 @@ const AdditionalDetailsSection = ({
                   {/* Always include the current battery option if in edit mode and present */}
                   {isEditMode && currentBattery && (
                     <option value={String(currentBattery.id)}>
-                      {currentBattery.batteryId} - {currentBattery.company} (Currently Assigned)
+                      {currentBattery.batteryId} - {currentBattery.company}
                     </option>
                   )}
                   {/* All available open batteries, except the current assigned one */}

@@ -116,7 +116,7 @@ const BatteryForm = () => {
         setImagePreview(reader.result);
       };
       reader.readAsDataURL(file);
-      console.log("New image selected:", file.name);
+      // console.log("New image selected:", file.name);
     }
   };
 
@@ -166,7 +166,7 @@ const BatteryForm = () => {
                   {isEditMode ? "Edit Battery" : "Add New Battery"}
                 </h1>
                 <p className="text-gray-500 text-sm">
-                  {isEditMode ? `Update battery information (Database ID: ${id})` : "Fill in the details to add a new battery"}
+                  {isEditMode ? `Update battery information` : "Fill in the details to add a new battery"}
                 </p>
               </div>
             </div>
@@ -313,7 +313,7 @@ const BatteryForm = () => {
     >
       {BATTERY_STATUS_OPTIONS.map((status) => (
         <option key={status.code} value={status.code}>
-          {status.label} (Code: {status.code})
+          {status.label} 
         </option>
       ))}
     </select>
@@ -378,11 +378,7 @@ const BatteryForm = () => {
                         </button>
                       </div>
 
-                      {imagePreview && (
-                        <div className="bg-green-50 border border-green-200 rounded px-3 py-2 inline-block">
-                          <p className="text-xs text-green-700">✓ New image selected</p>
-                        </div>
-                      )}
+                      
 
                       {existingImage && !imagePreview && (
                         <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 inline-block">
@@ -450,29 +446,7 @@ const BatteryForm = () => {
           </div>
         </form>
 
-        {/* Info Box */}
-        <div className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 mt-4">
-          <div className="flex items-start">
-            <FaBatteryFull className="text-blue-500 mt-0.5 mr-3 flex-shrink-0 text-xl" />
-            <div>
-              <h4 className="text-sm font-semibold text-blue-800 mb-2">Battery Status Guide (Enum Codes)</h4>
-              <ul className="text-xs text-blue-700 space-y-1">
-                <li>
-                  <strong>OPEN (Code: 3)</strong> - Battery is available and ready to be assigned
-                </li>
-                <li>
-                  <strong>CHARGING (Code: 2)</strong> - Battery is currently being charged
-                </li>
-                <li>
-                  <strong>OUT OF SERVICE (Code: 0)</strong> - Battery is not operational
-                </li>
-                <li className="text-gray-600 italic mt-2 pt-2 border-t border-blue-200">
-                  <strong>IN BIKE (Code: 1)</strong> is automatically set by the system when a battery is assigned to a bike
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
+       
       </div>
     </div>
   );

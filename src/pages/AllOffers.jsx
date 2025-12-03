@@ -651,8 +651,9 @@ useEffect(() => {
                   errors.discountType ? 'border-red-500' : 'border-gray-300'
                 }`}
               >
-                <option value="percentage">Percentage (%)</option>
                 <option value="amount">Fixed Amount (₹)</option>
+                <option value="percentage">Percentage (%)</option>
+                
               </select>
               {errors.discountType && (
                 <p className="text-red-600 text-sm mt-1">{errors.discountType}</p>
@@ -669,7 +670,7 @@ useEffect(() => {
                 name="discountValue"
                 value={offerData.discountValue}
                 onChange={handleChange}
-                placeholder={offerData.discountType === "percentage" ? "e.g., 20" : "e.g., 100"}
+                // placeholder={offerData.discountType === "percentage" ? "e.g., 20" : "e.g., 100"}
                 min="0"
                 max={offerData.discountType === "percentage" ? "100" : undefined}
                 className={`w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
@@ -764,22 +765,26 @@ useEffect(() => {
             
             {/* Usage Limit */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Usage Limit (Total)
-              </label>
-              <input
-                type="number"
-                name="usageLimit"
-                value={offerData.usageLimit}
-                onChange={handleChange}
-                placeholder="Leave empty for unlimited"
-                min="0"
-                className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Total number of times this coupon can be used
-              </p>
-            </div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Usage Limit (Total)
+  </label>
+
+  <input
+    type="number"
+    name="usageLimit"
+    value={offerData.usageLimit}
+    onChange={handleChange}
+    placeholder="Enter usage limit"
+    min="0"
+    required   
+    className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+  />
+
+  <p className="text-xs text-gray-500 mt-1">
+    Total number of times this coupon can be used
+  </p>
+</div>
+
             
             {/* Customer Eligibility */}
             <div className="col-span-2">
@@ -1119,7 +1124,7 @@ useEffect(() => {
                     </td>
                     
                     {/* Discount */}
-                    <td className="px-6 py-4">
+                    {/* <td className="px-6 py-4">
                       <div className="text-sm font-semibold text-gray-900">
                         {offer.discountType === 'percentage'
                           ? `${offer.discountValue}%`
@@ -1128,7 +1133,7 @@ useEffect(() => {
                       <div className="text-xs text-gray-500">
                         {offer.discountType === 'percentage' ? 'Percentage' : 'Fixed Amount'}
                       </div>
-                    </td>
+                    </td> */}
                     
                     {/* Min Amount */}
                     <td className="px-6 py-4">

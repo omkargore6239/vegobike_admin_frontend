@@ -1,4 +1,4 @@
-// hooks/useBookingData.js (or wherever your hook is located)
+// hooks/useBookingData.js
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { bookingAPI } from '../../../utils/apiClient';
@@ -8,12 +8,12 @@ export const useBookingData = (navigate) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(() => {
     const saved = sessionStorage.getItem('bookingsCurrentPage');
-    return saved ? parseInt(saved) : 0;
+    return saved ? parseInt(saved, 10) : 0;
   });
   const [loading, setLoading] = useState(true);
   const [pageSize, setPageSize] = useState(() => {
     const saved = sessionStorage.getItem('bookingsPageSize');
-    return saved ? parseInt(saved) : 10;
+    return saved ? parseInt(saved, 10) : 10;
   });
   const [totalPages, setTotalPages] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
@@ -27,8 +27,12 @@ export const useBookingData = (navigate) => {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState('desc');
   const [isSearching, setIsSearching] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const saved = sessionStorage.getItem('bookingsStatusFilter');
+    return saved || 'all';
+  });
 
+  // ✅ Save state to sessionStorage
   useEffect(() => {
     sessionStorage.setItem('bookingsCurrentPage', currentPage.toString());
   }, [currentPage]);
@@ -42,66 +46,84 @@ export const useBookingData = (navigate) => {
   }, [viewMode]);
 
   useEffect(() => {
+    sessionStorage.setItem('bookingsStatusFilter', statusFilter);
+  }, [statusFilter]);
+
+  useEffect(() => {
     if (selectedBooking) {
       sessionStorage.setItem('selectedBookingId', selectedBooking.id.toString());
     }
   }, [selectedBooking]);
 
-  useEffect(() => {
-    const savedViewMode = sessionStorage.getItem('bookingsViewMode') === 'true';
-    const savedBookingId = sessionStorage.getItem('selectedBookingId');
-    
-    if (savedViewMode && savedBookingId && !selectedBooking) {
-      const restoreBooking = async () => {
-        try {
-          const response = await bookingAPI.getById(parseInt(savedBookingId));
-          setSelectedBooking(response.data);
-        } catch (error) {
-          console.error('Failed to restore booking:', error);
-          sessionStorage.removeItem('bookingsViewMode');
-          sessionStorage.removeItem('selectedBookingId');
-          setViewMode(false);
-        }
-      };
-      restoreBooking();
-    }
-  }, []);
+  // ✅ Restore booking on page refresh
+useEffect(() => {
+  const savedViewMode = sessionStorage.getItem('bookingsViewMode') === 'true';
+  const savedBookingId = sessionStorage.getItem('selectedBookingId');
+  
+  if (savedViewMode && savedBookingId && !selectedBooking) {
+    const restoreBooking = async () => {
+      // This is RESTORING the detail view when you click sidebar!
+      setSelectedBooking(response.data);
+      setViewMode(true);
+    };
+    restoreBooking();
+  }
+}, []);
 
+
+  // ✅ MAIN FETCH FUNCTION - Properly handles all filters and pagination
   const fetchBookings = useCallback(async () => {
+    if (searchQuery.trim()) {
+      console.log('⏭️ [useBookingData] Skipping fetch - search query active');
+      return; // Don't fetch if actively searching
+    }
+
     setLoading(true);
     setError(null);
-    
-    try {
-      console.log(`📋 Fetching bookings - Page: ${currentPage}, Size: ${pageSize}, Sort: ${sortBy} ${sortDirection}, Filter: ${statusFilter}`);
+    setIsSearching(false);
 
-      const response = await bookingAPI.getAll(
-        currentPage, 
-        pageSize, 
-        sortBy, 
+    try {
+      console.log('📋 [useBookingData] Fetching bookings:', {
+        page: currentPage,
+        size: pageSize,
+        sortBy,
         sortDirection,
         statusFilter
+      });
+
+      const response = await bookingAPI.getAll(
+        currentPage,
+        pageSize,
+        sortBy,
+        sortDirection,
+        statusFilter || 'all'
       );
-      
-      console.log('✅ Bookings fetched:', response.data?.length || 0);
-      console.log('📊 Total items:', response.pagination?.totalItems || 0);
+
+      console.log('✅ [useBookingData] API Response:', {
+        bookingsCount: response.data?.length || 0,
+        totalItems: response.pagination?.totalItems || 0,
+        totalPages: response.pagination?.totalPages || 0,
+        currentPage: response.pagination?.currentPage
+      });
 
       setBookings(response.data || []);
       setTotalPages(response.pagination?.totalPages || 0);
       setTotalItems(response.pagination?.totalItems || 0);
-      
-      //alert for allbooking page 
-      // if (!refreshing) {
-      //   toast.success(`📋 Loaded ${response.data?.length || 0} bookings`);
-      // }
 
     } catch (error) {
-      console.error('❌ Error fetching bookings:', error);
+      console.error('❌ [useBookingData] Error fetching bookings:', error);
+      console.error('❌ Error details:', error.response?.data);
       setError(error);
-      
+      setBookings([]);
+      setTotalPages(0);
+      setTotalItems(0);
+
+      // Handle authentication errors
       if (error.response?.status === 401) {
         toast.error('🔐 Session expired. Please login again.');
         setTimeout(() => {
           localStorage.removeItem('token');
+          localStorage.removeItem('authtoken');
           localStorage.removeItem('isLoggedIn');
           localStorage.removeItem('userRole');
           navigate('/');
@@ -109,18 +131,36 @@ export const useBookingData = (navigate) => {
       } else if (error.response?.status === 403) {
         toast.error('🚫 Access denied to bookings.');
       } else {
-        toast.error('❌ Failed to load bookings.');
+        toast.error(`❌ Failed to load bookings: ${error.response?.data?.message || error.message}`);
       }
-      
-      setBookings([]);
+
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [currentPage, pageSize, sortBy, sortDirection, statusFilter, navigate, refreshing]);
+  }, [
+    currentPage,
+    pageSize,
+    sortBy,
+    sortDirection,
+    statusFilter,
+    searchQuery,
+    navigate,
+  ]);
 
+  // ✅ Fetch on mount and when dependencies change (but NOT in view mode)
+  useEffect(() => {
+    if (!viewMode) {
+      console.log('🔄 [useBookingData] Effect triggered - fetching bookings');
+      fetchBookings();
+    }
+  }, [fetchBookings, viewMode]);
+
+  // ✅ Search bookings with backend API
   const handleSearchBookings = useCallback(async (query) => {
     if (!query || query.trim() === '') {
+      console.log('🔄 [useBookingData] Empty search - fetching all bookings');
+      setCurrentPage(0);
       fetchBookings();
       return;
     }
@@ -129,59 +169,76 @@ export const useBookingData = (navigate) => {
     setError(null);
     
     try {
-      // Try server-side search first
+      console.log(`🔍 [useBookingData] Searching for: "${query}"`);
       const response = await bookingAPI.searchBookings(query.trim());
+      
+      console.log('✅ [useBookingData] Search results:', response.data?.length || 0);
+      
       setBookings(response.data || []);
       setTotalItems(response.data?.length || 0);
       setTotalPages(1);
       setCurrentPage(0);
       
-      toast.success(`🔍 Found ${response.data?.length || 0} booking(s)`);
+      if (response.data && response.data.length > 0) {
+        toast.success(`🔍 Found ${response.data.length} booking(s)`);
+      } else {
+        toast.info('🔍 No bookings found matching your search');
+      }
     } catch (error) {
-      console.error('❌ Search API not available, using client-side filter');
+      console.error('❌ [useBookingData] Search error:', error);
       
-      // Fallback: client-side filtering
+      // Fallback: client-side filtering if backend search fails
+      console.log('⚠️ [useBookingData] Using client-side search fallback');
       const filtered = bookings.filter(booking => {
         const searchTerm = query.toLowerCase();
         return (
           (booking.bookingId || '').toLowerCase().includes(searchTerm) ||
           (booking.customerName || '').toLowerCase().includes(searchTerm) ||
           (booking.customerNumber || '').toLowerCase().includes(searchTerm) ||
-          (booking.bikeDetails?.registrationNumber || '').toLowerCase().includes(searchTerm)
+          (booking.bikeDetails?.registrationNumber || '').toLowerCase().includes(searchTerm) ||
+          (booking.id || '').toString().includes(searchTerm)
         );
       });
       
       setBookings(filtered);
       setTotalItems(filtered.length);
+      setTotalPages(1);
       toast.info(`🔍 Found ${filtered.length} booking(s) (local search)`);
     } finally {
       setIsSearching(false);
     }
   }, [bookings, fetchBookings]);
 
+  // ✅ Refresh bookings - clears all filters and search
   const handleRefresh = async () => {
+    console.log('🔄 [useBookingData] Manual refresh triggered');
     setRefreshing(true);
     toast.info('🔄 Refreshing bookings...');
+    
     setSearchQuery("");
+    setStatusFilter('all');
+    setCurrentPage(0);
+    
     await fetchBookings();
+    
+    toast.success('✅ Bookings refreshed!');
   };
 
-  useEffect(() => {
-    if (!viewMode) {
-      fetchBookings();
-    }
-  }, [fetchBookings, viewMode]);
-
+  // ✅ Handle search with debounce (500ms delay)
   const handleSearchChange = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
     
-    if (window.searchTimeout) {
-      clearTimeout(window.searchTimeout);
+    // Clear previous timeout
+    if (window.bookingSearchTimeout) {
+      clearTimeout(window.bookingSearchTimeout);
     }
 
-    window.searchTimeout = setTimeout(() => {
+    // Set new timeout
+    window.bookingSearchTimeout = setTimeout(() => {
       if (query.trim() === '') {
+        console.log('🔄 [useBookingData] Search cleared - fetching all');
+        setCurrentPage(0);
         fetchBookings();
       } else {
         handleSearchBookings(query);
@@ -189,24 +246,50 @@ export const useBookingData = (navigate) => {
     }, 500);
   };
 
+  // ✅ Clear search and restore bookings
   const handleClearSearch = () => {
+    console.log('🗑️ [useBookingData] Clearing search');
+    
+    if (window.bookingSearchTimeout) {
+      clearTimeout(window.bookingSearchTimeout);
+    }
+    
     setSearchQuery("");
+    setIsSearching(false);
+    setCurrentPage(0);
     fetchBookings();
   };
 
+  // ✅ Page change handler with validation
   const handlePageChange = (newPage) => {
     if (newPage >= 0 && newPage < totalPages) {
+      console.log(`📄 [useBookingData] Page changed: ${currentPage} → ${newPage}`);
       setCurrentPage(newPage);
+    } else {
+      console.warn(`⚠️ [useBookingData] Invalid page: ${newPage} (total: ${totalPages})`);
     }
   };
 
+  // ✅ Page size change handler - resets to first page
   const handlePageSizeChange = (e) => {
-    setPageSize(parseInt(e.target.value));
-    setCurrentPage(0);
+    const newSize = parseInt(e.target.value, 10);
+    console.log(`📏 [useBookingData] Page size changed: ${pageSize} → ${newSize}`);
+    
+    setPageSize(newSize);
+    setCurrentPage(0); // Always reset to first page when changing size
   };
 
+  // ✅ Status filter change handler
+  const handleStatusFilterChange = (newFilter) => {
+    console.log(`🔧 [useBookingData] Status filter changed: ${statusFilter} → ${newFilter}`);
+    
+    setStatusFilter(newFilter);
+    setCurrentPage(0); // Reset to first page when changing filter
+  };
+
+  // ✅ View booking details
   const handleView = async (booking) => {
-    console.log('👁️ Viewing booking:', booking);
+    console.log('👁️ [useBookingData] Viewing booking:', booking.id);
 
     try {
       setLoading(true);
@@ -214,16 +297,17 @@ export const useBookingData = (navigate) => {
       const response = await bookingAPI.getById(booking.id);
       const fullBooking = response.data || booking;
       
-      console.log('✅ Full booking data fetched:', fullBooking);
+      console.log('✅ [useBookingData] Full booking data fetched');
 
       setSelectedBooking(fullBooking);
       setViewMode(true);
       sessionStorage.setItem('selectedBookingId', fullBooking.id.toString());
       
     } catch (error) {
-      console.error('❌ Error fetching booking details:', error);
-      toast.error('Failed to load booking details.');
+      console.error('❌ [useBookingData] Error fetching booking details:', error);
+      toast.error('Failed to load booking details. Showing available data.');
       
+      // Fallback to partial booking data
       setSelectedBooking(booking);
       setViewMode(true);
     } finally {
@@ -231,39 +315,54 @@ export const useBookingData = (navigate) => {
     }
   };
 
+  // ✅ Back to list view
   const handleBack = () => {
+    console.log('🔙 [useBookingData] Returning to list view');
+    
     setViewMode(false);
     setSelectedBooking(null);
     sessionStorage.removeItem('bookingsViewMode');
     sessionStorage.removeItem('selectedBookingId');
-    fetchBookings();
+    
+    // Refresh bookings when returning to list
+    if (!searchQuery.trim()) {
+      fetchBookings();
+    }
   };
 
   return {
+    // State
     bookings,
     setBookings,
     searchQuery,
-    setSearchQuery: handleSearchChange,
     currentPage,
-    setCurrentPage: handlePageChange,
     loading,
     pageSize,
-    setPageSize: handlePageSizeChange,
     totalPages,
     totalItems,
     selectedBooking,
-    setSelectedBooking,
     viewMode,
-    setViewMode,
     refreshing,
     error,
     isSearching,
     sortBy,
-    setSortBy,
     sortDirection,
-    setSortDirection,
     statusFilter,
-    setStatusFilter,
+    
+    // Setters
+    setSearchQuery: handleSearchChange,
+    setCurrentPage: handlePageChange,
+    setLoading,
+    setPageSize: handlePageSizeChange,
+    setTotalPages,
+    setTotalItems,
+    setSelectedBooking,
+    setViewMode,
+    setSortBy,
+    setSortDirection,
+    setStatusFilter: handleStatusFilterChange, // ✅ Use wrapper function
+    
+    // Actions
     fetchBookings,
     handleRefresh,
     handleClearSearch,

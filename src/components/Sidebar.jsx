@@ -83,14 +83,15 @@ const Sidebar = () => {
 
 
   const handleLinkClick = (index, path) => {
-    setActiveLink(index);
-    if (windowWidth < 768) setIsMenuOpen(false);
-    if (path && path === location.pathname) {
-      window.location.reload();
-    } else if (path) {
-      navigate(path);
-    }
-  };
+  setActiveLink(index);
+  if (windowWidth < 768) setIsMenuOpen(false);
+  if (!path) return;
+
+  // Simple: always navigate, never hard reload
+  navigate(path);
+};
+
+
 
 
   const toggleSubmenu = (index) => {

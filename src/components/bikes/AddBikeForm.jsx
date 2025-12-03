@@ -169,7 +169,7 @@ const AddBikeForm = () => {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-blue-800">Currently Assigned Battery</h3>
+                {/* <h3 className="text-sm font-medium text-blue-800">Currently Assigned Battery</h3> */}
                 <div className="mt-2 text-sm text-blue-700">
                   <p>
                     <span className="font-semibold">Battery ID:</span> {currentBattery.batteryId}

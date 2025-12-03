@@ -28,12 +28,7 @@ const Home = () => {
   const [activeBikesCount, setActiveBikesCount] = useState(0);
   const [dashboardSummary, setDashboardSummary] = useState({});
   const [userCountSummary, setUserCountSummary] = useState({});
-
-  //static fetch KPI values
-const [storeStats, setStoreStats] = useState({});
-
-  
-  // ✅ NEW: Store Info from JWT
+  const [storeStats, setStoreStats] = useState({});
   const [currentStore, setCurrentStore] = useState(null);
 
   useEffect(() => {
@@ -43,11 +38,11 @@ const [storeStats, setStoreStats] = useState({});
   const cardsSpringRef = useSpringRef();
   const tableSpringRef = useSpringRef();
 
-  // ✅ NEW: Get user role and store info
+  // ✅ Get user role and store info
   const getUserRoleAndStore = () => {
     try {
       const role = parseInt(localStorage.getItem('userRole'));
-      const storeId = localStorage.getItem('storeId'); // ✅ Add this to your login
+      const storeId = localStorage.getItem('storeId');
       const storeName = localStorage.getItem('storeName');
       
       return {
@@ -99,7 +94,6 @@ const [storeStats, setStoreStats] = useState({});
 
     const fetchActiveBikes = async () => {
       try {
-        // ✅ Backend already filters by storeId for STORE_MANAGER
         const response = await apiClient.get("/api/bikes/count/active");
         if (response.data && typeof response.data.activeBikes === 'number') {
           setActiveBikesCount(response.data.activeBikes);
@@ -114,7 +108,6 @@ const [storeStats, setStoreStats] = useState({});
 
     const fetchBookings = async () => {
       try {
-        // ✅ Backend already filters dashboard/summary by storeId for STORE_MANAGER
         const response = await apiClient.get("api/booking-bikes/dashboard/summary");
         const sortedBookings = response.data.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
         const bookingWithUsernames = await Promise.all(
@@ -141,7 +134,6 @@ const [storeStats, setStoreStats] = useState({});
 
     const fetchStores = async () => {
       try {
-        // ✅ For Store Manager, show only their store
         if (userRole === 'STORE_MANAGER') {
           setStores([{ id: currentStoreId, name: storeName, address: 'Current Store' }]);
           setActiveStoreCount(1);
@@ -166,7 +158,6 @@ const [storeStats, setStoreStats] = useState({});
 
     const fetchBikes = async () => {
       try {
-        // ✅ Backend already filters by store for STORE_MANAGER
         const response = await apiClient.get("api/bikes/count/active");
         if (response.data && response.data.content) {
           setBikes(response.data.content);
@@ -184,31 +175,40 @@ const [storeStats, setStoreStats] = useState({});
     };
 
     const fetchDashboardSummary = async () => {
-      try {
-        // ✅ Backend already filters by store for STORE_MANAGER
-        const response = await apiClient.get("/api/booking-bikes/dashboard/summary");
-        if (response.data && (response.data.success || typeof response.data === 'object')) {
-          setDashboardSummary(response.data);
-          // ✅ Set store info from backend response
-          if (response.data.storeId) {
-            setCurrentStore({
-              id: response.data.storeId,
-              name: storeName || `Store ${response.data.storeId}`
-            });
-          }
-        } else {
-          setDashboardSummary({});
-        }
-      } catch (error) {
-        console.error("Error fetching dashboard summary:", error);
-        setDashboardSummary({});
+  try {
+    // ✅ Add storeId param for Store Managers
+    const params = userRole === 'STORE_MANAGER' && currentStoreId 
+      ? { storeId: currentStoreId } 
+      : {};
+    
+    console.log('📊 Fetching dashboard summary with params:', params);
+    
+    const response = await apiClient.get("/api/booking-bikes/dashboard/summary", { params });
+    
+    console.log('📊 Dashboard summary response:', response.data);
+    
+    if (response.data && (response.data.success || typeof response.data === 'object')) {
+      setDashboardSummary(response.data);
+      if (response.data.storeId) {
+        setCurrentStore({
+          id: response.data.storeId,
+          name: storeName || `Store ${response.data.storeId}`
+        });
       }
-    };
+    } else {
+      setDashboardSummary({});
+    }
+  } catch (error) {
+    console.error("Error fetching dashboard summary:", error);
+    setDashboardSummary({});
+  }
+};
+
 
     const fetchActiveStoreCount = async () => {
       try {
         if (userRole === 'STORE_MANAGER') {
-          setActiveStoreCount(1); // Their own store
+          setActiveStoreCount(1);
           return;
         }
         const response = await apiClient.get("/api/stores/count/active");
@@ -247,16 +247,73 @@ const [storeStats, setStoreStats] = useState({});
     fetchUserCountSummary();
   }, [currentPage, userRole, currentStoreId, storeName]);
 
-  const handleViewAllBookings = () => navigate("/dashboard/allBookings");
-  const handleViewAllBikes = () => navigate("/dashboard/allBikes");
-  const handleViewAllStores = () => navigate("/dashboard/storeMaster");
-  const handleViewAllUsers = () => navigate("allRegisterCustomers");
-  const handleViewTodaysBookings = () => navigate("/dashboard/allBookings");
-  const handleViewOngoingBookings = () => navigate("/dashboard/allBookings");
-  const handleViewVerifiedUsers = () => navigate("allRegisterCustomers");
-  const handleViewUnverifiedUsers = () => navigate("allRegisterCustomers");
+  // ✅ ALL HANDLERS WITH STATUS FILTERS
+  const handleViewTodaysBookings = () => {
+    navigate("/dashboard/allBookings", { 
+      state: { statusFilter: 'today' } 
+    });
+  };
 
-  // ✅ Role-Based Stats (Store Manager: 5 cards, Admin: 9 cards)
+  const handleViewOngoingBookings = () => {
+    navigate("/dashboard/allBookings", { 
+      state: { statusFilter: 'ongoing' } 
+    });
+  };
+
+  const handleViewCancelledBookings = () => {
+    navigate("/dashboard/allBookings", { 
+      state: { statusFilter: 'cancelled' } 
+    });
+  };
+
+  const handleViewTodaysEndTrips = () => {
+    navigate("/dashboard/allBookings", { 
+      state: { statusFilter: 'todayendtrips' } 
+    });
+  };
+
+  const handleViewAllBookings = () => {
+    navigate("/dashboard/allBookings", { 
+      state: { statusFilter: 'all' } 
+    });
+  };
+
+  const handleViewAllBikes = () => {
+  navigate('/dashboard/allbikes', {
+    state: {
+      showActiveOnly: true  // ✅ Explicitly set to show active only
+    }
+  });
+};
+  // In Home.jsx - Update the handleViewAllStores function
+const handleViewAllStores = () => {
+  navigate("/dashboard/storeMaster", {
+    state: {
+      showActiveOnly: true  // ✅ Pass flag to show active stores only
+    }
+  });
+};
+
+const handleViewAllUsers = () => {
+  navigate("/dashboard/allRegisterCustomers", {
+    state: { userFilter: "all" },
+  });
+};
+
+const handleViewVerifiedUsers = () => {
+  navigate("/dashboard/allRegisterCustomers", {
+    state: { userFilter: "verified" },
+  });
+};
+
+const handleViewUnverifiedUsers = () => {
+  navigate("/dashboard/allRegisterCustomers", {
+    state: { userFilter: "unverified" },
+  });
+};
+
+
+  // ✅ Stats with correct handlers
   const baseStats = [
     {
       title: "Today's Bookings",
@@ -264,7 +321,7 @@ const [storeStats, setStoreStats] = useState({});
       gradient: "bg-gradient-to-br from-indigo-700 to-blue-600",
       icon: "📅",
       hasButton: true,
-      onClick: handleViewTodaysBookings,
+      onClick: handleViewTodaysBookings, // ✅ Fixed
     },
     {
       title: "Ongoing Bookings",
@@ -272,7 +329,7 @@ const [storeStats, setStoreStats] = useState({});
       gradient: "bg-gradient-to-br from-yellow-400 to-yellow-300",
       icon: "🔄",
       hasButton: true,
-      onClick: handleViewAllBookings,
+      onClick: handleViewOngoingBookings, // ✅ Fixed
     },
     {
       title: "Cancelled Bookings",
@@ -280,7 +337,7 @@ const [storeStats, setStoreStats] = useState({});
       gradient: "bg-gradient-to-br from-red-500 to-red-400",
       icon: "❌",
       hasButton: true,
-      onClick: handleViewAllBookings,
+      onClick: handleViewCancelledBookings, // ✅ Fixed
     },
     {
       title: "Total Bookings",
@@ -288,7 +345,15 @@ const [storeStats, setStoreStats] = useState({});
       gradient: "bg-gradient-to-br from-teal-500 to-teal-400",
       icon: "📚",
       hasButton: true,
-      onClick: handleViewAllBookings,
+      onClick: handleViewAllBookings, // ✅ Fixed
+    },
+    {
+      title: "Today's End Trips",
+      count: dashboardSummary.todayEndTrips || 0,
+      gradient: "bg-gradient-to-br from-purple-600 to-purple-500",
+      icon: "🏁",
+      hasButton: true,
+      onClick: handleViewTodaysEndTrips, // ✅ Fixed
     },
     {
       title: "Active Bikes",
@@ -301,7 +366,7 @@ const [storeStats, setStoreStats] = useState({});
   ];
 
   const stats = userRole === 'STORE_MANAGER' 
-    ? baseStats  // ✅ Store Manager: Only 5 cards (their store only)
+    ? baseStats
     : [
         ...baseStats,
         {
@@ -437,10 +502,12 @@ const [storeStats, setStoreStats] = useState({});
 
   return (
     <div className="p-3 sm:p-4 md:p-6 bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen mt-3 sm:mt-5">
-      
-
-      {/* ✅ SAME EXACT KPI CARDS GRID */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-4 md:gap-6">
+      {/* KPI CARDS GRID */}
+      <div className={`grid gap-2 sm:gap-4 md:gap-6 ${
+        userRole === 'STORE_MANAGER' 
+          ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6' 
+          : 'grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
+      }`}>
         {trail.map((style, index) => {
           const stat = stats[index];
           const countValue = counters[index];
@@ -474,6 +541,8 @@ const [storeStats, setStoreStats] = useState({});
           );
         })}
       </div>
+
+
 
       {/* Users Section */}
       {showUsers && (

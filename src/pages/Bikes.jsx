@@ -10,8 +10,10 @@ import {
   FaTimes,
   FaToggleOn,
   FaToggleOff,
+  FaEye,
+  FaEyeSlash,
 } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
   bikeAPI,
@@ -23,6 +25,7 @@ import {
 
 const Bikes = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // State management
   const [rawBikes, setRawBikes] = useState([]);
@@ -42,15 +45,57 @@ const Bikes = () => {
   const [sortBy] = useState("createdAt");
   const [sortDirection] = useState("desc");
 
-  // ✅ SIMPLIFIED: Only search filter (removed brand/category/model)
+  // ✅ CRITICAL FIX: Always default to showing active bikes only
+  const [showActiveOnly, setShowActiveOnly] = useState(true);
+
+  // Search filter
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+
+  // User role
+  const [userRole, setUserRole] = useState(null);
+  const [storeId, setStoreId] = useState(null);
 
   // Refs
   const isFetchingRef = useRef(false);
   const abortControllerRef = useRef(null);
+  const hasHandledNavigation = useRef(false);
 
-  // ✅ Helper function to check if bike is active
+  // ✅ CRITICAL: Handle navigation from Home page
+  useEffect(() => {
+    if (!hasHandledNavigation.current && location.state) {
+      console.log("📍 Navigation state received:", location.state);
+      
+      // If coming from Home with showActive flag
+      if (location.state.showActiveOnly !== undefined) {
+        console.log("✅ Setting showActiveOnly from navigation:", location.state.showActiveOnly);
+        setShowActiveOnly(location.state.showActiveOnly);
+      } else {
+        // Default to active only if not specified
+        console.log("✅ No navigation state - defaulting to active only");
+        setShowActiveOnly(true);
+      }
+      
+      hasHandledNavigation.current = true;
+      
+      // Clear navigation state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  // Get user role and store info
+  useEffect(() => {
+    const role = localStorage.getItem("userRole");
+    const store = localStorage.getItem("storeId");
+    
+    console.log("👤 User role:", role);
+    console.log("🏪 Store ID:", store);
+    
+    setUserRole(role);
+    setStoreId(store);
+  }, []);
+
+  // Helper function to check if bike is active
   const isBikeActive = (bike) => {
     return bike.active === true;
   };
@@ -82,7 +127,7 @@ const Bikes = () => {
     }
   }, [success, error]);
 
-  // ✅ Debounce effect
+  // Debounce effect
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
@@ -91,7 +136,7 @@ const Bikes = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // ✅ Direct Toggle - No confirmation modal
+  // Toggle active status
   const handleToggleActive = async (bike) => {
     const currentActive = isBikeActive(bike);
     const statusText = currentActive ? 'Inactive' : 'Active';
@@ -104,7 +149,7 @@ const Bikes = () => {
       toast.success(`✅ Bike marked as ${statusText} successfully!`);
       
       // Refetch to get updated data
-      await fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm);
+      await fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm, showActiveOnly);
       
     } catch (error) {
       console.error('❌ Error toggling bike status:', error);
@@ -130,39 +175,30 @@ const Bikes = () => {
 
       if (brandsRes.status === "fulfilled") {
         const brandsData = brandsRes.value.data?.data || brandsRes.value.data || [];
-        console.log("✅ Brands loaded:", brandsData.length);
         setBrands(brandsData);
       } else {
-        console.error("❌ Failed to fetch brands");
         setBrands([]);
       }
 
       if (categoriesRes.status === "fulfilled") {
         const categoriesData = categoriesRes.value.data?.data || categoriesRes.value.data || [];
-        console.log("✅ Categories loaded:", categoriesData.length);
         setCategories(categoriesData);
       } else {
-        console.error("❌ Failed to fetch categories");
         setCategories([]);
       }
 
       if (modelsRes.status === "fulfilled") {
         const modelsData = modelsRes.value.data?.data || modelsRes.value.data || [];
-        console.log("✅ Models loaded:", modelsData.length);
         setModels(modelsData);
       } else {
-        console.error("❌ Failed to fetch models");
         setModels([]);
       }
 
       setReferencesLoaded(true);
-      console.log("✅ Reference data loaded");
     } catch (error) {
       console.error("❌ Error fetching reference data:", error);
-      toast.error("Failed to load reference data");
 
       if (retryAttempt < 2) {
-        console.log(`🔄 Retrying (${retryAttempt + 1}/3)...`);
         setTimeout(() => fetchReferenceData(retryAttempt + 1), 3000);
       } else {
         setReferencesLoaded(true);
@@ -186,9 +222,7 @@ const Bikes = () => {
     const brandName = bike.brandName || "Unknown Brand";
     const modelName = bike.modelName || "Unknown Model";
     const categoryName = bike.categoryName || "Unknown Category";
-
     const bikeStatus = bike.status || "AVAILABLE";
-
     const displayName = `${brandName} ${modelName}`.trim();
 
     return {
@@ -209,8 +243,8 @@ const Bikes = () => {
     };
   };
 
-  // ✅ Fetch bikes with pagination and search
-  const fetchBikes = async (page = 0, size = 10, searchQuery = "") => {
+  // ✅ CRITICAL: Fetch bikes with proper active filter
+  const fetchBikes = async (page = 0, size = 10, searchQuery = "", activeOnly = true) => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -226,7 +260,7 @@ const Bikes = () => {
     try {
       setLoading(true);
       console.log(
-        `🚲 Fetching bikes: page=${page}, size=${size}, sortBy=${sortBy}, sortDirection=${sortDirection}, search=${searchQuery}`
+        `🚲 Fetching bikes: page=${page}, size=${size}, activeOnly=${activeOnly}, search=${searchQuery}`
       );
 
       const params = {
@@ -236,10 +270,24 @@ const Bikes = () => {
         sortDirection,
       };
 
-      // ✅ Add search parameter if exists
+      // Add search parameter
       if (searchQuery && searchQuery.trim()) {
         params.search = searchQuery.trim();
       }
+
+      // ✅ CRITICAL: Always add active filter when enabled
+      if (activeOnly) {
+        params.active = true;
+        console.log("✅ Filtering by active=true");
+      }
+
+      // Add storeId for store managers
+      if (userRole === "STORE_MANAGER" && storeId) {
+        params.storeId = storeId;
+        console.log("🏪 Filtering by store:", storeId);
+      }
+
+      console.log("📤 API params:", params);
 
       const response = await bikeAPI.getAll(params);
 
@@ -247,19 +295,27 @@ const Bikes = () => {
 
       if (response.data?.content) {
         const bikesData = response.data.content;
-        const processed = bikesData.map(processBikeData);
+        
+        // ✅ DOUBLE CHECK: Client-side filter as backup
+        let processed = bikesData.map(processBikeData);
+        
+        if (activeOnly) {
+          console.log("🔍 Before client filter:", processed.length);
+          processed = processed.filter(bike => bike.active === true);
+          console.log("✅ After client filter:", processed.length);
+        }
 
         setRawBikes(processed);
         setTotalPages(response.data.totalPages || 0);
         setTotalItems(response.data.totalElements || 0);
 
-        console.log(
-          `✅ Loaded ${processed.length} bikes (Page ${page + 1}/${
-            response.data.totalPages || 1
-          })`
-        );
+        console.log(`✅ Loaded ${processed.length} ${activeOnly ? 'active' : 'all'} bikes`);
       } else if (Array.isArray(response.data)) {
-        const processed = response.data.map(processBikeData);
+        let processed = response.data.map(processBikeData);
+        
+        if (activeOnly) {
+          processed = processed.filter(bike => bike.active === true);
+        }
 
         setRawBikes(processed);
         setTotalPages(1);
@@ -301,22 +357,22 @@ const Bikes = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  // ✅ Fetch bikes when page, size, or search changes
+  // Fetch bikes when filters change
   useEffect(() => {
     if (!referencesLoaded) {
       return;
     }
 
-    fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm);
+    console.log("🔄 Fetching with showActiveOnly:", showActiveOnly);
+    fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm, showActiveOnly);
 
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [referencesLoaded, currentPage, pageSize, debouncedSearchTerm]);
+  }, [referencesLoaded, currentPage, pageSize, debouncedSearchTerm, showActiveOnly]);
 
-  // ✅ REMOVED: Frontend filtering - backend handles everything
   const filteredBikes = rawBikes;
 
   // Handle page size change
@@ -329,81 +385,79 @@ const Bikes = () => {
   // Retry function
   const handleRetry = () => {
     setError("");
-    fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm);
+    fetchBikesRef.current(currentPage, pageSize, debouncedSearchTerm, showActiveOnly);
   };
 
-  // ✅ SIMPLIFIED: Clear only search filter
+  // Clear search filter
   const handleClearFilters = () => {
     console.log("🧹 Clearing search filter");
     setSearchTerm("");
+  };
+
+  // Toggle between active only and all bikes
+  const handleToggleShowAll = () => {
+    const newValue = !showActiveOnly;
+    console.log(`🔄 Toggling showActiveOnly: ${showActiveOnly} → ${newValue}`);
+    setShowActiveOnly(newValue);
+    setCurrentPage(0);
+    
+    toast.info(newValue ? "Showing active bikes only" : "Showing all bikes");
   };
 
   // Navigation handlers
   const handleAddBike = () => navigate("/dashboard/addBike");
 
   // Edit handler
-  // In your Bikes.jsx - Replace the handleEditBike function
-
-const handleEditBike = (bike) => {
-  console.log("📝 Editing bike - Full data:", bike);
-  
-  // Prepare comprehensive bike data for edit
-  const bikeDataForEdit = {
-    id: bike.id,
-    name: bike.name || bike.displayName || `${bike.brandName} ${bike.modelName}`.trim(),
-    vehicleTypeId: bike.vehicleTypeId || null,
-    categoryId: bike.categoryId || null,
-    brandId: bike.brandId || null,
-    modelId: bike.modelId || null,
-    fuelType: bike.fuelType || 'PETROL',
-    registrationNumber: bike.registrationNumber || '',
-    registrationYear: bike.registrationYear || bike.registrationYearId || new Date().getFullYear(),
-    chassisNumber: bike.chassisNumber || '',
-    engineNumber: bike.engineNumber || '',
-    storeId: bike.storeId || null,
-    storeName: bike.storeName || '',
-    imeiNumber: bike.imeiNumber || '',
-    batteryId: bike.batteryId || '',
-    latitude: bike.latitude || '',
-    longitude: bike.longitude || '',
+  const handleEditBike = (bike) => {
+    console.log("📝 Editing bike:", bike.id);
     
-    // Boolean fields
-    isPuc: bike.puc === true || bike.isPuc === true,
-    isInsurance: bike.insurance === true || bike.isInsurance === true,
-    isDocuments: bike.documents === true || bike.isDocuments === true,
-    active: bike.active === true,
+    const bikeDataForEdit = {
+      id: bike.id,
+      name: bike.name || bike.displayName || `${bike.brandName} ${bike.modelName}`.trim(),
+      vehicleTypeId: bike.vehicleTypeId || null,
+      categoryId: bike.categoryId || null,
+      brandId: bike.brandId || null,
+      modelId: bike.modelId || null,
+      fuelType: bike.fuelType || 'PETROL',
+      registrationNumber: bike.registrationNumber || '',
+      registrationYear: bike.registrationYear || bike.registrationYearId || new Date().getFullYear(),
+      chassisNumber: bike.chassisNumber || '',
+      engineNumber: bike.engineNumber || '',
+      storeId: bike.storeId || null,
+      storeName: bike.storeName || '',
+      imeiNumber: bike.imeiNumber || '',
+      batteryId: bike.batteryId || '',
+      latitude: bike.latitude || '',
+      longitude: bike.longitude || '',
+      
+      isPuc: bike.puc === true || bike.isPuc === true,
+      isInsurance: bike.insurance === true || bike.isInsurance === true,
+      isDocuments: bike.documents === true || bike.isDocuments === true,
+      active: bike.active === true,
+      
+      bikeImages: Array.isArray(bike.bikeImages) ? bike.bikeImages : [],
+      pucImageUrl: bike.pucImageUrl || null,
+      insuranceImageUrl: bike.insuranceImageUrl || null,
+      documentImageUrl: bike.documentImageUrl || null,
+      
+      brandName: bike.brandName || '',
+      modelName: bike.modelName || '',
+      categoryName: bike.categoryName || '',
+      
+      existingBikeImages: Array.isArray(bike.bikeImages) ? bike.bikeImages : [],
+      existingPucImage: bike.pucImageUrl || null,
+      existingInsuranceImage: bike.insuranceImageUrl || null,
+      existingDocumentImage: bike.documentImageUrl || null,
+    };
     
-    // Image URLs
-    bikeImages: Array.isArray(bike.bikeImages) ? bike.bikeImages : [],
-    pucImageUrl: bike.pucImageUrl || null,
-    insuranceImageUrl: bike.insuranceImageUrl || null,
-    documentImageUrl: bike.documentImageUrl || null,
-    
-    // Additional metadata
-    brandName: bike.brandName || '',
-    modelName: bike.modelName || '',
-    categoryName: bike.categoryName || '',
-    
-    // For edit mode reference
-    existingBikeImages: Array.isArray(bike.bikeImages) ? bike.bikeImages : [],
-    existingPucImage: bike.pucImageUrl || null,
-    existingInsuranceImage: bike.insuranceImageUrl || null,
-    existingDocumentImage: bike.documentImageUrl || null,
+    navigate(`/dashboard/addBike/${bike.id}`, {
+      state: {
+        bike: bikeDataForEdit,
+        isEditMode: true,
+      },
+      replace: false,
+    });
   };
-  
-  console.log("📤 Navigating to edit form with data:", bikeDataForEdit);
-  
-  // Navigate with state
-  navigate(`/dashboard/addBike/${bike.id}`, {
-    state: {
-      bike: bikeDataForEdit,
-      isEditMode: true,
-    },
-    replace: false,
-  });
-};
-
-
 
   // Status Display
   const getStatusDisplay = (bike) => {
@@ -419,7 +473,7 @@ const handleEditBike = (bike) => {
     };
   };
 
-  // Image error handlers
+  // Image handlers
   const handleImageError = (e, bikeName) => {
     console.error(`⚠️ Image failed for ${bikeName}`);
     e.target.style.display = "none";
@@ -433,7 +487,6 @@ const handleEditBike = (bike) => {
     if (fallbackDiv) fallbackDiv.style.display = "none";
   };
 
-  // ✅ SIMPLIFIED: Check if search filter is active
   const hasActiveFilters = searchTerm.trim() !== "";
 
   return (
@@ -444,14 +497,42 @@ const handleEditBike = (bike) => {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-[#2B2B80] to-[#1a1a4d] bg-clip-text text-transparent">
-                🏍️ All Bikes
+                🏍️ {showActiveOnly ? 'Active Bikes' : 'All Bikes'}
               </h1>
               <p className="text-gray-500 mt-1">
-                Manage your bike inventory ({totalItems} bikes total)
+                {userRole === "STORE_MANAGER" ? (
+                  <>Manage your store's bikes ({totalItems} bikes)</>
+                ) : (
+                  <>Manage bike inventory ({totalItems} {showActiveOnly ? 'active' : 'total'} bikes)</>
+                )}
               </p>
             </div>
 
             <div className="flex items-center space-x-4">
+              {/* Toggle Active/All Bikes Button */}
+              <button
+                onClick={handleToggleShowAll}
+                className={`inline-flex items-center px-4 py-2 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl ${
+                  showActiveOnly
+                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700'
+                    : 'bg-gradient-to-r from-gray-500 to-gray-600 text-white hover:from-gray-600 hover:to-gray-700'
+                }`}
+                title={showActiveOnly ? "Click to show all bikes" : "Click to show active bikes only"}
+              >
+                {showActiveOnly ? (
+                  <>
+                    <FaEye className="mr-2" />
+                    Active Only
+                  </>
+                ) : (
+                  <>
+                    <FaEyeSlash className="mr-2" />
+                    
+                    Active Only
+                  </>
+                )}
+              </button>
+
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
@@ -474,7 +555,7 @@ const handleEditBike = (bike) => {
           </div>
         </div>
 
-        {/* ✅ SIMPLIFIED: Search Section (removed brand/category/model filters) */}
+        {/* Search Section */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">
@@ -492,7 +573,6 @@ const handleEditBike = (bike) => {
             )}
           </div>
 
-          {/* ✅ Single Search Input */}
           <div className="max-w-2xl">
             <input
               type="text"
@@ -501,10 +581,21 @@ const handleEditBike = (bike) => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2B2B80] focus:border-transparent transition text-base"
             />
-         
           </div>
 
-          {/* Search Info */}
+          {/* Active Filter Info Banner */}
+          {/* {showActiveOnly && (
+            <div className="mt-4 p-3 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-lg">
+              <div className="flex items-center">
+                <FaCheck className="text-emerald-600 mr-2" />
+                <p className="text-sm text-emerald-700">
+                  <strong>Showing active bikes only.</strong> 
+                </p>
+              </div>
+            </div>
+          )} */}
+
+          {/* Search Results Info */}
           {hasActiveFilters && (
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-700">
@@ -564,7 +655,7 @@ const handleEditBike = (bike) => {
                     <td colSpan="8" className="text-center py-16">
                       <div className="flex flex-col items-center">
                         <div className="w-16 h-16 border-4 border-[#2B2B80] border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-gray-500 font-medium">Loading bikes...</p>
+                        <p className="text-gray-500 font-medium">Loading {showActiveOnly ? 'active ' : ''}bikes...</p>
                       </div>
                     </td>
                   </tr>
@@ -575,9 +666,15 @@ const handleEditBike = (bike) => {
                         <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
                           <FaMotorcycle className="text-slate-400 text-3xl" />
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">No bikes found</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          {showActiveOnly ? "No active bikes found" : "No bikes found"}
+                        </h3>
                         <p className="text-gray-500">
-                          {hasActiveFilters ? "Try a different search term" : "Add your first bike"}
+                          {hasActiveFilters 
+                            ? "Try a different search term" 
+                            : showActiveOnly 
+                              ? "Click 'Show All' to see inactive bikes" 
+                              : "Add your first bike"}
                         </p>
                       </div>
                     </td>
@@ -627,7 +724,6 @@ const handleEditBike = (bike) => {
                         <td className="px-6 py-4 text-gray-600">{bike.modelName}</td>
                         <td className="px-6 py-4 font-mono text-sm text-gray-900">{bike.registrationNumber}</td>
                         
-                        {/* Status Badge */}
                         <td className="px-6 py-4">
                           <div className="inline-flex items-center">
                             <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold ${statusInfo.class}`}>
@@ -637,10 +733,8 @@ const handleEditBike = (bike) => {
                           </div>
                         </td>
                         
-                        {/* Action Buttons */}
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-center space-x-2">
-                            {/* Edit Button */}
                             <button
                               onClick={() => handleEditBike(bike)}
                               className="group relative p-2.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 font-semibold border border-blue-200 hover:border-blue-300"
@@ -649,7 +743,6 @@ const handleEditBike = (bike) => {
                               <FaEdit size={18} />
                             </button>
                             
-                            {/* Toggle Button */}
                             <button
                               onClick={() => handleToggleActive(bike)}
                               className={`group relative p-2.5 rounded-lg transition-all duration-200 font-semibold border-2 ${

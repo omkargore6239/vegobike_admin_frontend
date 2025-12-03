@@ -16,6 +16,9 @@ import {
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { apiClient, BASE_URL, storeAPI, cityAPI } from '../api/apiConfig';
+import { useLocation } from "react-router-dom";
+
+
 
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -42,6 +45,8 @@ const StoreManagement = () => {
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  
 
   // Add after existing state declarations (around line 30)
 const [filterStoreName, setFilterStoreName] = useState("");
@@ -76,6 +81,18 @@ const debouncedCityName = useDebounce(filterCityName, 500);
   const [cities, setCities] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [citiesError, setCitiesError] = useState('');
+
+const [showActiveOnly, setShowActiveOnly] = useState(false);
+const location = useLocation();
+
+useEffect(() => {
+  if (location.state && typeof location.state.showActiveOnly === "boolean") {
+    setShowActiveOnly(location.state.showActiveOnly);
+  } else {
+    setShowActiveOnly(false); // opened from sidebar → ALL stores
+  }
+}, [location.state]);
+
 
 
 
@@ -244,13 +261,14 @@ const fetchStores = async (
 ) => {
   setLoading(true);
   setError('');
-  
+
   try {
     // Build params object, only include non-empty values
     const params = {
       page,
       size,
-      sort: `${sortByParam},${sortDirParam}`
+      sort: `${sortByParam},${sortDirParam}`,
+      onlyActive: showActiveOnly, // ✅ send active flag to backend
     };
 
     // Add search filters only if they have values
@@ -264,23 +282,22 @@ const fetchStores = async (
       params.cityName = cityName.trim();
     }
 
-    console.log('📡 Fetching stores with params:', params);
-    
+    console.log("📡 Fetching stores with params:", params);
+
     const response = await storeAPI.getAll({ ...params });
-    
+
     if (response.data && response.data.success) {
       const storesData = response.data.data;
-      
-      // Process each store
+
       const processedStores = storesData.map((store) => ({
-        ...store,
-        storeImage: store.storeImage ? getImageUrl(store.storeImage) : null
-      }));
-      
-      setStores(processedStores);
-      setFilteredStores(processedStores);
-      setRetryCount(0);
-      
+  ...store,
+  storeImage: store.storeImage ? getImageUrl(store.storeImage) : null,
+}));
+
+setStores(processedStores);
+setFilteredStores(processedStores);
+
+
       // Update pagination
       if (response.data.pagination) {
         setCurrentPage(response.data.pagination.currentPage);
@@ -289,28 +306,38 @@ const fetchStores = async (
         setHasNext(response.data.pagination.hasNext);
         setHasPrevious(response.data.pagination.hasPrevious);
       }
-      
+
       if (processedStores.length > 0) {
         setSuccess(`Successfully loaded ${processedStores.length} stores`);
-        setTimeout(() => setSuccess(''), 3000);
+        setTimeout(() => setSuccess(""), 3000);
       }
     } else {
-      setError('Failed to fetch stores data');
+      setError("Failed to fetch stores data");
       setStores([]);
       setFilteredStores([]);
     }
   } catch (error) {
-    console.error('❌ Error fetching stores:', error);
-    setError('Failed to fetch stores. Please check your connection and try again.');
+    console.error("❌ Error fetching stores:", error);
+    setError("Failed to fetch stores. Please check your connection and try again.");
     setStores([]);
     setFilteredStores([]);
-    
+
     // Retry logic
     if (retryAttempt < 2) {
       console.log(`Retrying stores fetch (attempt ${retryAttempt + 1}/3)...`);
       setRetryCount(retryAttempt + 1);
       setTimeout(
-        () => fetchStores(page, size, storeName, contactNumber, cityName, sortByParam, sortDirParam, retryAttempt + 1),
+        () =>
+          fetchStores(
+            page,
+            size,
+            storeName,
+            contactNumber,
+            cityName,
+            sortByParam,
+            sortDirParam,
+            retryAttempt + 1
+          ),
         3000 * (retryAttempt + 1)
       );
     }
@@ -320,12 +347,13 @@ const fetchStores = async (
 };
 
 
-  // Replace existing useEffect at line ~210
-useEffect(() => {
+
+  useEffect(() => {
   fetchStores(0, itemsPerPage, "", "", "", sortBy, sortDir);
   fetchCities();
   window.scrollTo(0, 0);
-}, []); // Empty dependency array - load only once
+}, [showActiveOnly]);  // refetch when active/all flag changes
+
 
 // Add after the initial data load useEffect
 useEffect(() => {

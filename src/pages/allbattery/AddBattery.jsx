@@ -251,7 +251,7 @@ const AddBattery = () => {
       };
       reader.readAsDataURL(file);
       
-      console.log('✅ New image selected:', file.name);
+      // console.log('✅ New image selected:', file.name);
     }
   };
 
@@ -680,7 +680,7 @@ const AddBattery = () => {
                       
                       {imagePreview && (
                         <div className="bg-green-50 border border-green-200 rounded px-3 py-2 inline-block">
-                          <p className="text-xs text-green-700">✓ New image selected</p>
+                          {/* <p className="text-xs text-green-700">✓ New image selected</p> */}
                         </div>
                       )}
                       {existingImage && !imagePreview && (
@@ -755,23 +755,7 @@ const AddBattery = () => {
           </div>
         </form>
 
-        {/* Info Box */}
-        <div className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 mt-4">
-          <div className="flex items-start">
-            <FaBatteryFull className="text-blue-500 mt-0.5 mr-3 flex-shrink-0 text-xl" />
-            <div>
-              <h4 className="text-sm font-semibold text-blue-800 mb-2">Battery Status Guide (Enum Codes)</h4>
-              <ul className="text-xs text-blue-700 space-y-1">
-                <li><strong>🟢 OPEN (Code: 3):</strong> Battery is available and ready to be assigned</li>
-                <li><strong>🟡 CHARGING (Code: 2):</strong> Battery is currently being charged</li>
-                <li><strong>🔴 OUT OF SERVICE (Code: 0):</strong> Battery is not operational</li>
-                <li className="text-gray-600 italic mt-2 pt-2 border-t border-blue-200">
-                  ℹ️ <strong>IN BIKE (Code: 1)</strong> is automatically set by the system when a battery is assigned to a bike
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
+        
       </div>
     </div>
   );

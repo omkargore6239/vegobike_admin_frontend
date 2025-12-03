@@ -480,7 +480,8 @@ export const lateChargesAPI = {
   delete: (id) => api.delete(`/api/late-charges/${id}`),
 };
 
-// ✅ BOOKING API - FULLY UPDATED
+// ✅ BOOKING API - FULLY CORRECTED TO MATCH BACKEND
+// ✅ BOOKING API - FULLY UPDATED AND CORRECTED
 export const bookingAPI = {
   // Get all bikes
   getAllBikes: (params = {}) => api.get('/api/bikes/all', { params }),
@@ -488,55 +489,86 @@ export const bookingAPI = {
   // Admin register and book
   adminRegisterAndBook: (data) => api.post('/api/booking-bikes/admin/bookings/register-and-book', data),
   
-  // Get all bookings with pagination - GET /api/booking-bikes/allBooking
-  // Get all bookings with pagination - GET /api/booking-bikes/allBooking
-getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc', statusFilter = 'all') => {
-  try {
-    console.log(`📋 [Booking API] Fetching bookings - Page: ${page}, Size: ${size}, Filter: ${statusFilter}`);
-    const response = await api.get('/api/booking-bikes/allBooking', {
-      params: { 
-        page, 
-        size, 
-        sortBy, 
-        sortDirection,
-        statusFilter,           // ✅ ADD THIS LINE
-        zoneId: 'Asia/Kolkata'  // ✅ ADD THIS LINE
-      }
-    });
+  // ✅ MAIN METHOD: Get all bookings with pagination and filters
+  getAll: async (
+    page = 0,
+    size = 10,
+    sortBy = 'createdAt',
+    sortDirection = 'desc',
+    statusFilter = 'all'
+  ) => {
+    try {
+      console.log(
+        `📋 [Booking API] Fetching bookings - Page: ${page}, Size: ${size}, Sort: ${sortBy} ${sortDirection}, Filter: "${statusFilter}"`
+      );
+
+      const response = await api.get('/api/booking-bikes/allBooking', {
+        params: {
+          page,
+          size,
+          sortBy,
+          sortDirection,
+          statusFilter,              // ✅ CRITICAL: Must match backend param name exactly
+          zoneId: 'Asia/Kolkata',
+        },
+      });
 
       console.log('✅ [Booking API] Response:', response.data);
+      console.log(`📊 Fetched ${response.data.bookings?.length || 0} bookings, Total: ${response.data.totalItems || 0}`);
+
+      // Backend returns Map<String, Object> structure
+      return {
+        data: response.data.bookings || [],
+        pagination: {
+          currentPage: response.data.currentPage ?? page,
+          totalItems: response.data.totalItems ?? 0,
+          totalPages: response.data.totalPages ?? 0,
+          pageSize: response.data.pageSize ?? size,
+          hasNext: response.data.hasNext ?? false,
+          hasPrevious: response.data.hasPrevious ?? false,
+        },
+      };
+    } catch (error) {
+      console.error('❌ [Booking API] Error fetching bookings:', error);
+      console.error('❌ Error response:', error.response?.data);
+      throw error;
+    }
+  },
+
+  // ✅ Get end trip bookings by date range (custom date filter)
+  getEndTripBookings: async (fromDate, toDate, page = 0, size = 10) => {
+    try {
+      console.log(`📅 [Booking API] Fetching end trip bookings from ${fromDate} to ${toDate}`);
+      
+      const response = await api.get('/api/booking-bikes/allBooking/end-trips', {
+        params: {
+          fromDate,
+          toDate,
+          page,
+          size,
+          sortBy: 'endDate1',
+          sortDirection: 'desc'
+        }
+      });
+      
+      console.log('✅ [Booking API] End trip response:', response.data);
       
       return {
         data: response.data.bookings || [],
         pagination: {
-          currentPage: response.data.currentPage,
-          totalItems: response.data.totalItems,
-          totalPages: response.data.totalPages,
-          pageSize: response.data.pageSize,
-          hasNext: response.data.hasNext,
-          hasPrevious: response.data.hasPrevious
+          currentPage: response.data.currentPage ?? page,
+          totalItems: response.data.totalItems ?? 0,
+          totalPages: response.data.totalPages ?? 0,
+          pageSize: response.data.pageSize ?? size
         }
       };
     } catch (error) {
-      console.error('❌ [Booking API] Error fetching bookings:', error);
+      console.error('❌ [Booking API] Error fetching end trip bookings:', error);
       throw error;
     }
   },
 
-  // Get all bookings without pagination
-  getAllNoPagination: async () => {
-    try {
-      console.log('📋 [Booking API] Fetching all bookings without pagination');
-      const response = await api.get('/api/booking-bikes/allBooking');
-      console.log('✅ [Booking API] Response:', response.data);
-      return { data: Array.isArray(response.data) ? response.data : [] };
-    } catch (error) {
-      console.error('❌ [Booking API] Error fetching bookings:', error);
-      throw error;
-    }
-  },
-
-  // ✅ Search bookings - GET /api/booking-bikes/searchBookings
+  // ✅ Search bookings
   searchBookings: async (query) => {
     try {
       console.log(`🔍 [Booking API] Searching bookings with query: "${query}"`);
@@ -570,7 +602,7 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
   // Accept booking
   accept: async (bookingId) => {
     try {
-      console.log(`📋 [Booking API] Accepting booking: ${bookingId}`);
+      console.log(`✅ [Booking API] Accepting booking: ${bookingId}`);
       const response = await api.post(`/api/booking-bikes/${bookingId}/accept`);
       console.log(`✅ [Booking API] Booking accepted:`, response.data);
       return { data: response.data };
@@ -583,8 +615,8 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
   // Cancel booking
   cancel: async (bookingId) => {
     try {
-      console.log(`📋 [Booking API] Cancelling booking: ${bookingId}`);
-      const response = await api.post(`/api/booking-bikes/${bookingId}/cancel`);
+      console.log(`❌ [Booking API] Cancelling booking: ${bookingId}`);
+      const response = await api.post(`/api/booking-bikes/${bookingId}/cancelled`);
       console.log(`✅ [Booking API] Booking cancelled:`, response.data);
       return { data: response.data };
     } catch (error) {
@@ -594,10 +626,11 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
   },
   
   // Complete booking
-  complete: async (bookingId) => {
+  complete: async (bookingId, endTripKm = null) => {
     try {
-      console.log(`📋 [Booking API] Completing booking: ${bookingId}`);
-      const response = await api.post(`/api/booking-bikes/${bookingId}/complete`);
+      console.log(`🏁 [Booking API] Completing booking: ${bookingId}`);
+      const params = endTripKm ? `?endTripKm=${endTripKm}` : '';
+      const response = await api.post(`/api/booking-bikes/${bookingId}/complete${params}`);
       console.log(`✅ [Booking API] Booking completed:`, response.data);
       return { data: response.data };
     } catch (error) {
@@ -605,8 +638,6 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
       throw error;
     }
   },
-
-  
   
   // Start trip
   startTrip: async (bookingId, images, startTripKm) => {
@@ -619,7 +650,7 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
       }
       formData.append('startTripKm', startTripKm);
       
-      console.log(`📋 [Booking API] Starting trip: ${bookingId}`);
+      console.log(`🚀 [Booking API] Starting trip: ${bookingId}`);
       const response = await api.post(`/api/booking-bikes/${bookingId}/start`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -642,7 +673,7 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
       }
       formData.append('endTripKm', endTripKm);
       
-      console.log(`📋 [Booking API] Ending trip: ${bookingId}`);
+      console.log(`🏁 [Booking API] Ending trip: ${bookingId}`);
       const response = await api.post(`/api/booking-bikes/${bookingId}/end`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -657,7 +688,7 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
   // Get bookings by customer
   getByCustomer: async (customerId, page = 0, size = 10, sortBy = 'latest') => {
     try {
-      console.log(`📋 [Booking API] Fetching customer bookings: ${customerId}`);
+      console.log(`👤 [Booking API] Fetching customer bookings: ${customerId}`);
       const response = await api.get('/api/booking-bikes/by-customer', { 
         params: { customerId, page, size, sortBy } 
       });
@@ -668,34 +699,31 @@ getAll: async (page = 0, size = 10, sortBy = 'createdAt', sortDirection = 'desc'
       throw error;
     }
   },
-  // ✅ CORRECT - send as query parameter in URL
-// ✅ CORRECT - Matches backend exactly
-// Backend: POST /api/booking-bikes/admin/bookings/{bookingId}/extend?newEndDateTime={epochMillis}
-extendTrip: async (bookingId, epochMillis) => {
-  try {
-    console.log(`⏱️ [Booking API] Extending trip`);
-    console.log(`  - Booking ID: ${bookingId}`);
-    console.log(`  - New End DateTime (ms): ${epochMillis}`);
-    console.log(`  - New End DateTime (ISO): ${new Date(epochMillis).toISOString()}`);
-    
-    // ✅ POST request with query parameter
-    const response = await api.post(
-      `/api/booking-bikes/admin/bookings/${bookingId}/extend?newEndDateTime=${epochMillis}`
-    );
-    
-    console.log(`✅ [Booking API] Trip extended successfully:`, response.data);
-    return { data: response.data };
-  } catch (error) {
-    console.error(`❌ [Booking API] Error extending trip:`, error);
-    throw error;
-  }
-},
-
+  
+  // Extend trip
+  extendTrip: async (bookingId, epochMillis) => {
+    try {
+      console.log(`⏱️ [Booking API] Extending trip`);
+      console.log(`  - Booking ID: ${bookingId}`);
+      console.log(`  - New End DateTime (ms): ${epochMillis}`);
+      console.log(`  - New End DateTime (ISO): ${new Date(epochMillis).toISOString()}`);
+      
+      const response = await api.post(
+        `/api/booking-bikes/admin/bookings/${bookingId}/extend?newEndDateTime=${epochMillis}`
+      );
+      
+      console.log(`✅ [Booking API] Trip extended successfully:`, response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error(`❌ [Booking API] Error extending trip:`, error);
+      throw error;
+    }
+  },
 
   // Confirm Razorpay payment
   confirmRazorpayPayment: async (orderId, paymentId, signature) => {
     try {
-      console.log('📋 [Booking API] Confirming payment:', { orderId, paymentId });
+      console.log('💳 [Booking API] Confirming payment:', { orderId, paymentId });
       const response = await api.post('/api/booking-bikes/payment/razorpay/confirm', null, {
         params: { orderId, paymentId, signature }
       });
@@ -709,7 +737,39 @@ extendTrip: async (bookingId, epochMillis) => {
   
   // Update charges
   updateCharges: (id, charges) => api.put(`/api/booking-bikes/${id}`, charges),
+  
+  // Get available bikes
+  getAvailableBikes: async (storeId, startDate, endDate) => {
+    try {
+      console.log(`🚲 [Booking API] Fetching available bikes for store: ${storeId}, dates: ${startDate} to ${endDate}`);
+      const response = await api.post('/api/booking-bikes/admin/available-bikes', {
+        storeId: storeId,
+        startDate: startDate,
+        endDate: endDate
+      });
+      console.log('✅ [Booking API] Available bikes:', response.data);
+      return { data: Array.isArray(response.data) ? response.data : [] };
+    } catch (error) {
+      console.error('❌ [Booking API] Error fetching available bikes:', error);
+      throw error;
+    }
+  },
+  
+  // Get invoice for completed booking
+  getInvoice: async (bookingId) => {
+    try {
+      console.log(`📄 [Booking API] Fetching invoice for booking: ${bookingId}`);
+      const response = await api.get(`/api/booking-bikes/${bookingId}/invoice`);
+      console.log('✅ [Booking API] Invoice fetched:', response.data);
+      return { data: response.data };
+    } catch (error) {
+      console.error('❌ [Booking API] Error fetching invoice:', error);
+      throw error;
+    }
+  }
 };
+
+
 
 getAvailableBikes: async (storeId, startDate, endDate) => {
     try {

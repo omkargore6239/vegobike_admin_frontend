@@ -1,9 +1,9 @@
 // AllRegisterCustomers.jsx - COMPLETE CODE WITH DOCUMENT API
 
 import React, { useEffect, useState } from "react";
-import { 
-  FaEye, FaCheckCircle, FaTimesCircle, FaUser, FaSearch, 
-  FaExclamationTriangle, FaRedo, FaCheck, FaTimes, FaPhone, 
+import {
+  FaEye, FaCheckCircle, FaTimesCircle, FaUser, FaSearch,
+  FaExclamationTriangle, FaRedo, FaCheck, FaTimes, FaPhone,
   FaEnvelope, FaMapMarkerAlt, FaCreditCard, FaUniversity,
   FaCalendarAlt, FaShieldAlt, FaArrowLeft, FaIdCard
 } from "react-icons/fa";
@@ -11,8 +11,26 @@ import { documentAPI } from "../api/apiConfig";
 import apiClient, { BASE_URL } from "../api/apiConfig";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useLocation } from "react-router-dom";
 
 const AllRegisterCustomers = () => {
+  const location = useLocation();
+
+// start as undefined so we can detect “not set yet”
+const [filter, setFilter] = useState(undefined);
+
+// run once on mount
+useEffect(() => {
+  const navFilter = location.state?.userFilter;
+  console.log("🔁 navFilter from location:", navFilter);
+
+  // when opened from sidebar, navFilter is undefined ⇒ filter becomes "all"
+  setFilter(navFilter ? navFilter.toLowerCase() : "all");
+}, []);  // IMPORTANT: empty dependency
+
+
+
+
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -22,32 +40,36 @@ const AllRegisterCustomers = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [retryCount, setRetryCount] = useState(0);
-  
+
   const [itemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
-  
+
   const [selectedUser, setSelectedUser] = useState(null);
   const [viewMode, setViewMode] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [documentUpdating, setDocumentUpdating] = useState({});
-  
+
   const [documentStatus, setDocumentStatus] = useState({
-    aadharFrontSide: 'PENDING',
-    aadharBackSide: 'PENDING',
-    drivingLicense: 'PENDING',
+    aadharFrontSide: "PENDING",
+    aadharBackSide: "PENDING",
+    drivingLicense: "PENDING",
   });
 
   const showErrorNotification = (error, context = "") => {
     const contextMessage = context ? `${context}: ` : "";
-    const errorMessage = error.response?.data?.message || error.message || "An error occurred";
-    
+    const errorMessage =
+      error.response?.data?.message || error.message || "An error occurred";
+
     console.error(`❌ ${contextMessage}${errorMessage}`, error);
-    
+
     toast.error(
       <div>
-        <div className="font-medium">{contextMessage}{errorMessage}</div>
+        <div className="font-medium">
+          {contextMessage}
+          {errorMessage}
+        </div>
       </div>,
       {
         position: "top-right",
@@ -58,30 +80,28 @@ const AllRegisterCustomers = () => {
     setError(`${contextMessage}${errorMessage}`);
   };
 
-  // ✅ UPDATED: Helper to construct image URLs
-  const getImageUrl = (imagePath, type = 'profile') => {
+  // Helper to construct image URLs
+  const getImageUrl = (imagePath, type = "profile") => {
     if (!imagePath) return null;
-    
-    // If already a full URL
-    if (imagePath.startsWith('http')) {
+
+    if (imagePath.startsWith("http")) {
       return imagePath;
     }
-    
+
     let cleanPath = imagePath.trim();
-    cleanPath = cleanPath.replace(/^\/+/, '');
-    
-    if (type === 'profile') {
-      cleanPath = cleanPath.replace(/^uploads\/profile\/+/, '');
-      cleanPath = cleanPath.replace(/^uploads\/+/, '');
-      cleanPath = cleanPath.replace(/^profile\/+/, '');
-      const filename = cleanPath.split('/').pop();
+    cleanPath = cleanPath.replace(/^\/+/, "");
+
+    if (type === "profile") {
+      cleanPath = cleanPath.replace(/^uploads\/profile\/+/, "");
+      cleanPath = cleanPath.replace(/^uploads\/+/, "");
+      cleanPath = cleanPath.replace(/^profile\/+/, "");
+      const filename = cleanPath.split("/").pop();
       return `${BASE_URL}/uploads/profiles/${filename}`;
     } else {
-      // For document images
-      cleanPath = cleanPath.replace(/^uploads\/documents\/+/, '');
-      cleanPath = cleanPath.replace(/^uploads\/+/, '');
-      cleanPath = cleanPath.replace(/^documents\/+/, '');
-      const filename = cleanPath.split('/').pop();
+      cleanPath = cleanPath.replace(/^uploads\/documents\/+/, "");
+      cleanPath = cleanPath.replace(/^uploads\/+/, "");
+      cleanPath = cleanPath.replace(/^documents\/+/, "");
+      const filename = cleanPath.split("/").pop();
       return `${BASE_URL}/uploads/documents_images/${filename}`;
     }
   };
@@ -97,170 +117,196 @@ const AllRegisterCustomers = () => {
   }, [success, error]);
 
   useEffect(() => {
-    const delaySearch = setTimeout(() => {
-      if (searchQuery.trim() === "") {
-        fetchUsers(currentPage, itemsPerPage);
-      } else {
-        handleSearch(searchQuery);
-      }
-    }, 500);
+  const delaySearch = setTimeout(() => {
+    if (searchQuery.trim() === "") {
+      // ✅ just reset pagination; main effect will refetch with correct filter
+      setCurrentPage(0);
+    } else {
+      handleSearch(searchQuery);
+    }
+  }, 500);
 
-    return () => clearTimeout(delaySearch);
-  }, [searchQuery]);
+  return () => clearTimeout(delaySearch);
+}, [searchQuery]);
+
 
   const handleSearch = async (query) => {
   if (!query || query.trim() === "") {
-    fetchUsers(currentPage, itemsPerPage);
+    // let main effect refetch using current filter
+    setCurrentPage(0);
     return;
   }
 
-  setIsSearching(true);
-  setError("");
+    setIsSearching(true);
+    setError("");
 
-  try {
-    console.log(`🔍 Searching users with query: "${query}"`);
-    
-    const response = await apiClient.get("/api/auth/search", {
-      params: { searchText: query.trim() }
-    });
-    
-    if (response.data && Array.isArray(response.data)) {
-      const users = response.data;
-      
-      const processedUsers = users.map(user => ({
-        id: user.id,
-        name: user.name || 'N/A',
-        email: user.email || user.username || '',
-        phoneNumber: user.phoneNumber || '',
-        alternateNumber: user.alternateNumber || '',
-        address: user.address || '',
-        isActive: user.isActive,
-        isDocumentVerified: user.isDocumentVerified || 0, // ✅ Keep as number
-        roleId: user.roleId,
-        storeId: user.storeId,
-        accountNumber: user.accountNumber || '',
-        ifsc: user.ifsc || '',
-        upiId: user.upiId || '',
-        firebaseToken: user.firebaseToken || '',
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        profileImage: user.profileImage ? getImageUrl(user.profileImage, 'profile') : null,
-        aadharFrontSide: user.aadharFrontSide || null,
-        aadharBackSide: user.aadharBackSide || null,
-        drivingLicense: user.drivingLicense || null,
-        adhaarFrontStatus: user.isAdhaarFrontVerified !== undefined 
-          ? convertStatusToString(user.isAdhaarFrontVerified) 
-          : 'PENDING',
-        adhaarBackStatus: user.isAdhaarBackVerified !== undefined 
-          ? convertStatusToString(user.isAdhaarBackVerified) 
-          : 'PENDING',
-        licenseStatus: user.licenseStatus || 'PENDING'
-      }));
-      console.log('📊 Verification Status Breakdown:', {
-  verified: processedUsers.filter(u => u.isDocumentVerified === 1).length,
-  pending: processedUsers.filter(u => u.isDocumentVerified === 0).length,
-  rejected: processedUsers.filter(u => u.isDocumentVerified === 2).length,
-  total: processedUsers.length
-});
-      
-      setData(processedUsers);
-      setFilteredData(processedUsers);
-      setTotalElements(processedUsers.length);
-      setTotalPages(1);
-      setCurrentPage(0);
-      
-      if (processedUsers.length > 0) {
-        toast.success(`🔍 Found ${processedUsers.length} customer(s)`, { autoClose: 2000 });
-      } else {
-        toast.info(`ℹ️ No customers found`, { autoClose: 2000 });
+    try {
+      console.log(`🔍 Searching users with query: "${query}"`);
+
+      const response = await apiClient.get("/api/auth/search", {
+        params: { searchText: query.trim() },
+      });
+
+      if (response.data && Array.isArray(response.data)) {
+        const users = response.data;
+
+        const processedUsers = users.map((user) => ({
+          id: user.id,
+          name: user.name || "N/A",
+          email: user.email || user.username || "",
+          phoneNumber: user.phoneNumber || "",
+          alternateNumber: user.alternateNumber || "",
+          address: user.address || "",
+          isActive: user.isActive,
+          isDocumentVerified: user.isDocumentVerified || 0,
+          roleId: user.roleId,
+          storeId: user.storeId,
+          accountNumber: user.accountNumber || "",
+          ifsc: user.ifsc || "",
+          upiId: user.upiId || "",
+          firebaseToken: user.firebaseToken || "",
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          profileImage: user.profileImage
+            ? getImageUrl(user.profileImage, "profile")
+            : null,
+          aadharFrontSide: user.aadharFrontSide || null,
+          aadharBackSide: user.aadharBackSide || null,
+          drivingLicense: user.drivingLicense || null,
+          adhaarFrontStatus:
+            user.isAdhaarFrontVerified !== undefined
+              ? convertStatusToString(user.isAdhaarFrontVerified)
+              : "PENDING",
+          adhaarBackStatus:
+            user.isAdhaarBackVerified !== undefined
+              ? convertStatusToString(user.isAdhaarBackVerified)
+              : "PENDING",
+          licenseStatus: user.licenseStatus || "PENDING",
+        }));
+
+        console.log("📊 Verification Status Breakdown:", {
+          verified: processedUsers.filter((u) => u.isDocumentVerified === 1)
+            .length,
+          pending: processedUsers.filter((u) => u.isDocumentVerified === 0)
+            .length,
+          rejected: processedUsers.filter((u) => u.isDocumentVerified === 2)
+            .length,
+          total: processedUsers.length,
+        });
+
+        setData(processedUsers);
+        setFilteredData(processedUsers);
+        setTotalElements(processedUsers.length);
+        setTotalPages(1);
+        setCurrentPage(0);
+
+        if (processedUsers.length > 0) {
+          toast.success(`🔍 Found ${processedUsers.length} customer(s)`, {
+            autoClose: 2000,
+          });
+        } else {
+          toast.info(`ℹ️ No customers found`, { autoClose: 2000 });
+        }
       }
+    } catch (error) {
+      console.error("❌ Error searching users:", error);
+      showErrorNotification(error, "Search failed");
+      setData([]);
+      setFilteredData([]);
+    } finally {
+      setIsSearching(false);
     }
-  } catch (error) {
-    console.error("❌ Error searching users:", error);
-    showErrorNotification(error, "Search failed");
-    setData([]);
-    setFilteredData([]);
-  } finally {
-    setIsSearching(false);
-  }
-};
+  };
 
-const convertStatusToString = (numericStatus) => {
-  if (numericStatus === 1) return 'VERIFIED';
-  if (numericStatus === 2) return 'REJECTED';
-  return 'PENDING';
-};
+  const convertStatusToString = (numericStatus) => {
+    if (numericStatus === 1) return "VERIFIED";
+    if (numericStatus === 2) return "REJECTED";
+    return "PENDING";
+  };
 
-// ✅ FIXED: Convert frontend string status to backend numeric status
-const convertStatusToNumber = (stringStatus) => {
-  if (stringStatus === 'VERIFIED') return 1;
-  if (stringStatus === 'REJECTED') return 2;
-  return 0;
-};
+  const convertStatusToNumber = (stringStatus) => {
+    if (stringStatus === "VERIFIED") return 1;
+    if (stringStatus === "REJECTED") return 2;
+    return 0;
+  };
 
   const fetchUsers = async (page = 0, size = 10, retryAttempt = 0) => {
   setLoading(true);
   setError("");
-  
+
   try {
-    console.log(`🔄 Fetching users: page=${page}, size=${size}`);
-    
-    const response = await apiClient.get("/api/auth/users", {
-      params: { page, size }
+    console.log("🚀 fetchUsers called with:", {
+      page,
+      size,
+      filter,
+      from: "AllRegisterCustomers",
     });
-    
+
+    const response = await apiClient.get("/api/auth/users", {
+      params: {
+        page,
+        size,
+        sortBy: "id",
+        filter, // "all" | "verified" | "unverified"
+      },
+    });
+
     console.log("✅ Users API Response:", response.data);
-    
-    if (response.data && response.data.users && Array.isArray(response.data.users)) {
+
+    if (response.data && Array.isArray(response.data.users)) {
       const users = response.data.users;
-      
-      const processedUsers = users.map(user => ({
+
+      const processedUsers = users.map((user) => ({
         id: user.id,
-        name: user.name || 'N/A',
-        email: user.email || user.username || '',
-        phoneNumber: user.phoneNumber || '',
-        alternateNumber: user.alternateNumber || '',
-        address: user.address || '',
+        name: user.name || "N/A",
+        email: user.email || user.username || "",
+        phoneNumber: user.phoneNumber || "",
+        alternateNumber: user.alternateNumber || "",
+        address: user.address || "",
         isActive: user.isActive,
-        isDocumentVerified: user.isDocumentVerified || 0, // ✅ Keep as number
+        isDocumentVerified: user.isDocumentVerified ?? 0,
         roleId: user.roleId,
         storeId: user.storeId,
-        accountNumber: user.accountNumber || '',
-        ifsc: user.ifsc || '',
-        upiId: user.upiId || '',
-        firebaseToken: user.firebaseToken || '',
+        accountNumber: user.accountNumber || "",
+        ifsc: user.ifsc || "",
+        upiId: user.upiId || "",
+        firebaseToken: user.firebaseToken || "",
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
-        profileImage: user.profileImage ? getImageUrl(user.profileImage, 'profile') : null,
+        profileImage: user.profileImage
+          ? getImageUrl(user.profileImage, "profile")
+          : null,
         aadharFrontSide: user.aadharFrontSide || null,
         aadharBackSide: user.aadharBackSide || null,
         drivingLicense: user.drivingLicense || null,
-        // ✅ FIXED: Convert individual document statuses properly
-        adhaarFrontStatus: user.isAdhaarFrontVerified !== undefined 
-          ? convertStatusToString(user.isAdhaarFrontVerified) 
-          : 'PENDING',
-        adhaarBackStatus: user.isAdhaarBackVerified !== undefined 
-          ? convertStatusToString(user.isAdhaarBackVerified) 
-          : 'PENDING',
-        licenseStatus: user.licenseStatus || 'PENDING'
+        adhaarFrontStatus:
+          user.isAdhaarFrontVerified !== undefined
+            ? convertStatusToString(user.isAdhaarFrontVerified)
+            : "PENDING",
+        adhaarBackStatus:
+          user.isAdhaarBackVerified !== undefined
+            ? convertStatusToString(user.isAdhaarBackVerified)
+            : "PENDING",
+        licenseStatus: user.licenseStatus || "PENDING",
       }));
 
-      console.log('📊 Verification Status Breakdown:', {
-  verified: processedUsers.filter(u => u.isDocumentVerified === 1).length,
-  pending: processedUsers.filter(u => u.isDocumentVerified === 0).length,
-  rejected: processedUsers.filter(u => u.isDocumentVerified === 2).length,
-  total: processedUsers.length
-});
-      
+      console.log("📊 Verification Status Breakdown:", {
+        verified: processedUsers.filter((u) => u.isDocumentVerified === 1).length,
+        pending: processedUsers.filter((u) => u.isDocumentVerified === 0).length,
+        rejected: processedUsers.filter((u) => u.isDocumentVerified === 2).length,
+        total: processedUsers.length,
+      });
+
       setData(processedUsers);
       setFilteredData(processedUsers);
-      setTotalPages(response.data.totalPages || Math.ceil(users.length / size));
-      setTotalElements(response.data.count || users.length);
-      setCurrentPage(response.data.currentPage || page);
+
+      setTotalPages(response.data.totalPages ?? 1);
+      setTotalElements(response.data.count ?? processedUsers.length);
+      setCurrentPage(response.data.currentPage ?? page);
       setRetryCount(0);
-      
+
       if (processedUsers.length > 0) {
-        setSuccess(`Successfully loaded ${processedUsers.length} users`);
+        setSuccess("Successfully loaded users");
         setTimeout(() => setSuccess(""), 3000);
       }
     } else {
@@ -274,50 +320,66 @@ const convertStatusToNumber = (stringStatus) => {
     showErrorNotification(error, "Failed to fetch users");
     setData([]);
     setFilteredData([]);
-    
+
     if (retryAttempt < 2) {
       setRetryCount(retryAttempt + 1);
-      setTimeout(() => fetchUsers(page, size, retryAttempt + 1), 3000 * (retryAttempt + 1));
+      setTimeout(
+        () => fetchUsers(page, size, retryAttempt + 1),
+        3000 * (retryAttempt + 1)
+      );
     }
   } finally {
     setLoading(false);
   }
 };
 
-  useEffect(() => {
-    fetchUsers(currentPage, itemsPerPage);
-    window.scrollTo(0, 0);
-  }, []);
+
+//  useEffect(() => {
+//   if (filter !== "all" && filter !== "verified" && filter !== "unverified") return;
+//   fetchUsers(currentPage, itemsPerPage);
+//   window.scrollTo(0, 0);
+// }, [currentPage, itemsPerPage, filter]);
+
+useEffect(() => {
+  if (filter !== "all" && filter !== "verified" && filter !== "unverified") {
+    // filter still undefined/null → do nothing, no fetch
+    return;
+  }
+
+  fetchUsers(currentPage, itemsPerPage);
+  window.scrollTo(0, 0);
+}, [currentPage, itemsPerPage, filter]);
+
+
 
   const getUserVerificationStatus = (user) => {
-  // Check isDocumentVerified field: 0 = PENDING, 1 = VERIFIED, 2 = REJECTED
-  const status = user.isDocumentVerified;
+    const status = user.isDocumentVerified;
+
+    if (status === 1) {
+      return {
+        status: "Verified",
+        color: "green",
+        icon: <FaCheckCircle />,
+        gradient: "from-green-500 to-emerald-600",
+      };
+    } else if (status === 2) {
+      return {
+        status: "Rejected",
+        color: "red",
+        icon: <FaTimesCircle />,
+        gradient: "from-red-500 to-rose-600",
+      };
+    } else {
+      return {
+        status: "Pending",
+        color: "yellow",
+        icon: <FaExclamationTriangle />,
+        gradient: "from-yellow-500 to-amber-600",
+      };
+    }
+  };
+
   
-  console.log(`User ${user.id} - isDocumentVerified:`, status, typeof status); // Debug log
-  
-  if (status === 1) {
-    return { 
-      status: "Verified", 
-      color: "green", 
-      icon: <FaCheckCircle />, 
-      gradient: "from-green-500 to-emerald-600" 
-    };
-  } else if (status === 2) {
-    return { 
-      status: "Rejected", 
-      color: "red", 
-      icon: <FaTimesCircle />, 
-      gradient: "from-red-500 to-rose-600" 
-    };
-  } else { // status === 0 or undefined
-    return { 
-      status: "Pending", 
-      color: "yellow", 
-      icon: <FaExclamationTriangle />, 
-      gradient: "from-yellow-500 to-amber-600" 
-    };
-  }
-};
 
   // ✅ UPDATED: Fetch documents from API when viewing user
   // ✅ FIXED: handleView function with correct field names
@@ -535,17 +597,15 @@ const handleView = async (user) => {
 
 
   const handleRetry = () => {
-    setError("");
-    setSearchQuery("");
-    fetchUsers(currentPage, itemsPerPage);
-  };
+  setError("");
+  setSearchQuery("");
+  setCurrentPage(0);
+};
+
 
   const handlePageChange = (newPage) => {
     if (newPage >= 0 && newPage < totalPages) {
-      setCurrentPage(newPage);
-      if (!searchQuery.trim()) {
-        fetchUsers(newPage, itemsPerPage);
-      }
+      setCurrentPage(newPage); // effect will refetch
     }
   };
 
@@ -837,57 +897,7 @@ const handleView = async (user) => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-  {/* Total Customers */}
-  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-xs font-medium text-blue-600 uppercase">Total Customers</p>
-        <p className="text-2xl font-bold text-blue-900 mt-1">{totalElements}</p>
-      </div>
-      <FaUser className="text-3xl text-blue-400" />
-    </div>
-  </div>
-
-  {/* Verified - Count where isDocumentVerified === 1 */}
-  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-xs font-medium text-green-600 uppercase">Verified</p>
-        <p className="text-2xl font-bold text-green-900 mt-1">
-          {data.filter(u => u.isDocumentVerified === 1).length}
-        </p>
-      </div>
-      <FaCheckCircle className="text-3xl text-green-400" />
-    </div>
-  </div>
-
-  {/* Pending - Count where isDocumentVerified === 0 */}
-  <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-4 border border-yellow-100">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-xs font-medium text-yellow-600 uppercase">Pending</p>
-        <p className="text-2xl font-bold text-yellow-900 mt-1">
-          {data.filter(u => u.isDocumentVerified === 0 || u.isDocumentVerified === undefined).length}
-        </p>
-      </div>
-      <FaExclamationTriangle className="text-3xl text-yellow-400" />
-    </div>
-  </div>
-
-  {/* Rejected - Count where isDocumentVerified === 2 */}
-  <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-4 border border-red-100">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-xs font-medium text-red-600 uppercase">Rejected</p>
-        <p className="text-2xl font-bold text-red-900 mt-1">
-          {data.filter(u => u.isDocumentVerified === 2).length}
-        </p>
-      </div>
-      <FaTimesCircle className="text-3xl text-red-400" />
-    </div>
-  </div>
-</div>
+            
 
             {error && (
               <div className="mb-6 bg-red-50 border-l-4 border-red-500 rounded-xl p-4 flex items-start space-x-3">

@@ -13,6 +13,7 @@
   "dependencies": {
     "@react-google-maps/api": "^2.20.6",
     "axios": "^1.11.0",
+    "browser-image-compression": "^2.0.2",
     "framer-motion": "^12.6.3",
     "google-map-react": "^2.2.1",
     "lucide-react": "^0.488.0",
