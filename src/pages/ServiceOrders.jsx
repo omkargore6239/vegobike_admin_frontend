@@ -1,8 +1,18 @@
+
+
+//****************************************************************************
+
+// src/pages/serviceOrdes.jsx
+
+
+//******************previous 24-11 */
+
+
 import { useState, useEffect } from "react";
 import { FaEdit } from "react-icons/fa";
 import axios from "axios";
 import CreateServiceOrder from "../pages/ServiceOrder/CreateServiceOrder";
-import EditServiceOrder from "../pages/ServiceOrder/EditServiceOrder";
+import EditServiceOrder from "./serviceorder/EditServiceOrder";
 
 // Helper function to get status badge
 const getStatusBadge = (statusId) => {
@@ -15,15 +25,9 @@ const getStatusBadge = (statusId) => {
     6: { name: "Cancelled", color: "bg-gray-500" },
   };
 
-  const status = statusMap[statusId] || {
-    name: "Unknown",
-    color: "bg-gray-500",
-  };
-
+  const status = statusMap[statusId] || { name: "Unknown", color: "bg-gray-500" };
   return (
-    <span
-      className={`${status.color} text-white px-3 py-1 rounded text-xs font-medium`}
-    >
+    <span className={`${status.color} text-white px-3 py-1 rounded text-xs font-medium`}>
       {status.name}
     </span>
   );
@@ -48,23 +52,12 @@ const ServiceOrdersList = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_BASE_URL}/api/service-orders`
-      );
-
+      const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/api/service-orders`);
       if (Array.isArray(response.data)) {
         setOrders(response.data);
-      } else if (
-        response.data &&
-        response.data.content &&
-        Array.isArray(response.data.content)
-      ) {
+      } else if (response.data && response.data.content && Array.isArray(response.data.content)) {
         setOrders(response.data.content);
-      } else if (
-        response.data &&
-        response.data.data &&
-        Array.isArray(response.data.data)
-      ) {
+      } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
         setOrders(response.data.data);
       } else {
         console.error("Unexpected data structure:", response.data);
@@ -81,27 +74,16 @@ const ServiceOrdersList = () => {
 
   const filteredData = orders.filter((item) => {
     if (!item) return false;
-    const customerName = item.customer || item.customerName || "";
-    const matchesSearch = customerName
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === "" || item.orderStatus === statusFilter;
-
+    const customerName = item.customer || item.customerName || '';
+    const matchesSearch = customerName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === "" || item.orderStatus === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentData = filteredData.slice(
-    indexOfFirstItem,
-    indexOfLastItem
-  );
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredData.length / itemsPerPage)
-  );
+  const currentData = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
 
   const goToPage = (page) => {
     if (page < 1) page = 1;
@@ -115,9 +97,7 @@ const ServiceOrdersList = () => {
 
   const handleEditOrder = async (order) => {
     try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_BASE_URL}/api/service-orders/${order.id}`
-      );
+      const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/api/service-orders/${order.id}`);
       setSelectedOrder(response.data);
       setViewMode("edit");
     } catch (error) {
@@ -132,40 +112,16 @@ const ServiceOrdersList = () => {
     fetchOrders();
   };
 
-  // In ServiceOrdersList.jsx
-const handleOrderCreated = async (formData) => {
-  try {
-    const payload = {
-      // adjust to your backend DTO
-      customerName: formData.customerName,
-      customerContact: formData.customerContact,
-      customerAlternate: formData.customerAlternate,
-      serviceDate: formData.serviceDate,
-      slotTime: formData.serviceTime,
-      vehicleNumber: formData.vehicleNumber,
-      kilometer: formData.kilometer,
-      chassisNumber: formData.chassisNumber,
-      engineNumber: formData.engineNumber,
-      storeId: formData.selectStore,   // or convert store1 → 1 etc.
-      paymentMethod: "Cash on Delivery",
-      paymentStatus: "Pending",
-      orderStatus: 1                   // Pending as int, if backend uses int
-    };
-
-    const response = await axios.post(
-      `${import.meta.env.VITE_BASE_URL}/api/service-orders`,
-      payload
-    );
-    setOrders([...orders, response.data]);
-    setViewMode("list");
-  } catch (error) {
-    console.error("Error creating order:", error);
-    setError(
-      error.response?.data?.message || "Failed to create order. Please try again."
-    );
-  }
-};
-
+  const handleOrderCreated = async (newOrder) => {
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/api/service-orders`, newOrder);
+      setOrders([...orders, response.data]);
+      setViewMode("list");
+    } catch (error) {
+      console.error("Error creating order:", error);
+      setError("Failed to create order. Please try again.");
+    }
+  };
 
   const handleOrderUpdated = async (updatedOrder) => {
     try {
@@ -173,10 +129,7 @@ const handleOrderCreated = async (formData) => {
         `${import.meta.env.VITE_BASE_URL}/api/service-orders/update/${updatedOrder.id}`,
         updatedOrder
       );
-
-      setOrders(
-        orders.map((o) => (o.id === response.data.id ? response.data : o))
-      );
+      setOrders(orders.map((o) => (o.id === response.data.id ? response.data : o)));
       setViewMode("list");
       setSelectedOrder(null);
     } catch (error) {
@@ -191,7 +144,7 @@ const handleOrderCreated = async (formData) => {
       <CreateServiceOrder
         onBack={handleBackToList}
         onOrderCreated={handleOrderCreated}
-        nextOrderId={`Order${String(orders.length + 1).padStart(6, "0")}`}
+        nextOrderId={`#Order${String(orders.length + 1).padStart(6, "0")}`}
       />
     );
   }
@@ -223,7 +176,6 @@ const handleOrderCreated = async (formData) => {
             <span className="text-lg">+</span> Add Service Order
           </button>
         </div>
-
         {/* Error Message */}
         {error && (
           <div className="mx-6 mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -236,7 +188,6 @@ const handleOrderCreated = async (formData) => {
             </button>
           </div>
         )}
-
         {/* Search and Filter */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 px-6 py-4 bg-gray-50">
           <input
@@ -249,7 +200,6 @@ const handleOrderCreated = async (formData) => {
               setCurrentPage(1);
             }}
           />
-
           <select
             value={statusFilter}
             onChange={(e) => {
@@ -267,7 +217,6 @@ const handleOrderCreated = async (formData) => {
             <option value="Cancelled">Cancelled</option>
           </select>
         </div>
-
         {/* Loading State */}
         {loading && (
           <div className="text-center py-8">
@@ -275,7 +224,6 @@ const handleOrderCreated = async (formData) => {
             <p className="mt-2 text-gray-600">Loading orders...</p>
           </div>
         )}
-
         {/* Table */}
         {!loading && (
           <div className="overflow-x-auto">
@@ -304,54 +252,35 @@ const handleOrderCreated = async (formData) => {
                   currentData.map((order, index) => (
                     <tr
                       key={order.id || index}
-                      className={`${
-                        index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                      } hover:bg-blue-50 transition-colors`}
+                      className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-blue-50 transition-colors`}
                     >
-                      <td className="px-4 py-3 text-gray-700">
-                        {indexOfFirstItem + index + 1}
-                      </td>
+                      <td className="px-4 py-3 text-gray-700">{indexOfFirstItem + index + 1}</td>
                       <td className="px-4 py-3 text-blue-600 font-medium">
-                        {order.orderId ||
-                          order.orderNumber ||
-                          `#${order.id}`}
+                        {order.orderId || order.orderNumber || `#${order.id}`}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {order.customer ||
-                          order.customerName ||
-                          "N/A"}
+                        {order.customer || order.customerName || 'N/A'}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {order.orderAmount ||
-                          order.amount ||
-                          0}
+                        {/* {order.orderAmount || order.amount || 0} */}
+                        {order.finalAmount || order.amount || 0}
+
                       </td>
                       <td className="px-4 py-3">
-                        {getStatusBadge(
-                          order.orderStatus || 1
-                        )}
+                        {getStatusBadge(order.orderStatus || 1)}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {order.paymentMethod ||
-                          order.payment ||
-                          "N/A"}
+                        {order.paymentMethod || order.payment || 'N/A'}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {order.paymentStatus ||
-                          order.payStatus ||
-                          "N/A"}
+                        {order.paymentStatus || order.payStatus || 'N/A'}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {order.orderDate ||
-                          order.createdAt ||
-                          order.date ||
-                          "N/A"}
+                        {order.orderDate || order.createdAt || order.date || 'N/A'}
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() =>
-                            handleEditOrder(order)
-                          }
+                          onClick={() => handleEditOrder(order)}
                           className="p-2 bg-blue-900 text-white rounded hover:bg-blue-800"
                           title="Edit"
                         >
@@ -365,53 +294,34 @@ const handleOrderCreated = async (formData) => {
             </table>
           </div>
         )}
-
         {/* Pagination */}
         {!loading && filteredData.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-gray-200">
             <p className="text-sm text-gray-600">
-              {indexOfFirstItem + 1} -{" "}
-              {Math.min(
-                indexOfLastItem,
-                filteredData.length
-              )}{" "}
-              of {filteredData.length}
+              {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredData.length)} of {filteredData.length}
             </p>
-
             <div className="flex items-center gap-2">
               <button
                 disabled={currentPage === 1}
-                onClick={() =>
-                  goToPage(currentPage - 1)
-                }
+                onClick={() => goToPage(currentPage - 1)}
                 className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded disabled:opacity-50 hover:bg-gray-300"
               >
                 Previous
               </button>
-
-              {[...Array(Math.min(5, totalPages))].map(
-                (_, i) => (
-                  <button
-                    key={i + 1}
-                    onClick={() =>
-                      goToPage(i + 1)
-                    }
-                    className={`px-3 py-1.5 text-sm rounded ${
-                      currentPage === i + 1
-                        ? "bg-blue-900 text-white"
-                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                )
-              )}
-
+              {[...Array(Math.min(5, totalPages))].map((_, i) => (
+                <button
+                  key={i + 1}
+                  onClick={() => goToPage(i + 1)}
+                  className={`px-3 py-1.5 text-sm rounded ${
+                    currentPage === i + 1 ? "bg-blue-900 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
               <button
                 disabled={currentPage === totalPages}
-                onClick={() =>
-                  goToPage(currentPage + 1)
-                }
+                onClick={() => goToPage(currentPage + 1)}
                 className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded disabled:opacity-50 hover:bg-gray-300"
               >
                 Next
@@ -419,10 +329,12 @@ const handleOrderCreated = async (formData) => {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
 };
 
 export default ServiceOrdersList;
+
+
+

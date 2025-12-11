@@ -17,6 +17,11 @@ import {
   getVehicleDetails,
 } from '../components/allbookings';
 
+import SockJS from "sockjs-client";
+import * as Stomp from "stompjs";
+
+
+
 const AllBookings = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -78,6 +83,48 @@ const AllBookings = () => {
       isFirstRender.current = false;
     }
   }, [setViewMode, setSelectedBooking]);
+
+
+
+  useEffect(() => {
+  const token = localStorage.getItem("token");
+
+const sock = new SockJS(
+  `${import.meta.env.VITE_BASE_URL}/ws?access_token=${token}`
+);
+
+const stomp = Stomp.over(sock);
+stomp.debug = () => {};
+
+stomp.connect(
+  {},   // no headers allowed in SockJS
+  () => {
+    console.log("🟢 WS Connected");
+
+    stomp.subscribe("/topic/dashboard", (msg) => {
+      if (!msg.body) return;
+      const payload = JSON.parse(msg.body);
+
+      console.log("📩 Dashboard Event:", payload);
+
+      if (payload.status === "BOOKING_CREATED") {
+        toast.success(`New Booking Created: ${payload.data.bookingId}`);
+        handleRefresh();
+      }
+    });
+  },
+  (error) => {
+    console.error("❌ WS Error:", error);
+  }
+);
+
+
+  return () => stomp.disconnect();
+}, []);
+
+
+
+
 
   /**
    * Handle navigation filters from other pages (e.g., Dashboard)

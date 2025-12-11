@@ -372,8 +372,8 @@ export const authAPI = {
   updateUser: (id, userData) => apiClient.put(`/api/auth/users/${id}`, userData),
   deleteUser: (id) => apiClient.delete(`/api/auth/users/${id}`),
 };
-// ✅ DOCUMENT API
-// ✅ DOCUMENT API - FIXED TO MATCH BACKEND EXACTLY
+
+
 export const documentAPI = {
   // Get user documents
   getUserDocuments: (userId) => apiClient.get(`/api/documents/${userId}`),
@@ -401,6 +401,18 @@ export const documentAPI = {
     });
   },
 };
+
+// ✅ LIVE TRACKING API — Matches your backend AdminDeviceController
+export const trackingAPI = {
+  // Fetch live GPS location + save history entry
+  getLiveLocation: (bookingId) =>
+    apiClient.get(`/admin/device/${bookingId}/location`),
+
+  // End Trip → Turns Engine OFF (Relay OFF)
+  finalizeTrip: (bookingId) =>
+    apiClient.post(`/admin/device/${bookingId}/finalize`)
+};
+
 
 // ✅ BOOKING API
 export const bookingAPI = {

@@ -15,6 +15,12 @@ import ExtendTripModal from './ExtendTripModal';
 import ImagePreviewModal from './ImagePreviewModal';
 import { toDateTimeLocal } from './utils/bookingHelpers';
 import ExchangeBatteryModal from './ExchangeBatteryModal';
+import TrackVehicleButton from './gpstracking/TrackVehicleButton';
+import RelayControlButtons from "./gpstracking/RelayControlButtons";
+import useLiveTracking from './hooks/useLiveTracking';
+import MapModal from './gpstracking/MapModal';
+import ExchangeBikeButton from './exchangebike/ExchangeBikeButton';
+
 
 const BookingDetailView = ({
   booking,
@@ -50,6 +56,13 @@ const BookingDetailView = ({
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [documentUpdating, setDocumentUpdating] = useState({});
+  const { location, fetchLocation } = useLiveTracking(booking.bookingId);
+const [showMapModal, setShowMapModal] = useState(false);
+
+const handleOpenLiveMap = async () => {
+  await fetchLocation();
+  setShowMapModal(true);
+};
 
   const handleBatteryExchanged = () => {
     if (refreshBookings) {
@@ -539,30 +552,47 @@ const BookingDetailView = ({
     <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
       <div className="bg-white rounded-lg shadow-sm border">
         {/* Header - Mobile Responsive */}
-        <div className="bg-white border-b px-3 sm:px-4 py-2 sm:py-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              <button
-                onClick={onBack}
-                className="flex items-center px-2 sm:px-3 py-1.5 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-xs sm:text-sm font-medium"
-              >
-                <FaArrowLeft className="mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Back to List</span>
-                <span className="sm:hidden">Back</span>
-              </button>
-              <h1 className="text-sm sm:text-base font-medium text-gray-900">View Booking Details</h1>
-            </div>
-            {(booking.status === 'Completed' || booking.bookingStatus === 5) && (
-              <button
-                onClick={handleViewInvoice}
-                className="flex items-center justify-center px-3 sm:px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all shadow-md text-xs sm:text-sm font-semibold w-full sm:w-auto"
-              >
-                <FaFileInvoice className="mr-1 sm:mr-2" />
-                View Invoice
-              </button>
-            )}
-          </div>
-        </div>
+        {/* Header - Updated with Exchange Bike button */}
+<div className="bg-white border-b px-3 sm:px-4 py-2 sm:py-3">
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div className="flex items-center space-x-2 sm:space-x-3">
+      <button
+        onClick={onBack}
+        className="flex items-center px-2 sm:px-3 py-1.5 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-xs sm:text-sm font-medium"
+      >
+        <FaArrowLeft className="mr-1 sm:mr-2" />
+        <span className="hidden sm:inline">Back to List</span>
+        <span className="sm:hidden">Back</span>
+      </button>
+      <h1 className="text-sm sm:text-base font-medium text-gray-900">View Booking Details</h1>
+    </div>
+    
+    <div className="flex gap-2">
+      {/* Exchange Bike Button */}
+      <ExchangeBikeButton 
+        booking={booking}
+        onBikeExchanged={() => {
+          if (refreshBookings) {
+            refreshBookings();
+          }
+          toast.success('Vehicle exchanged successfully!');
+        }}
+      />
+      
+      {/* View Invoice Button */}
+      {(booking.status === 'Completed' || booking.bookingStatus === 5) && (
+        <button
+          onClick={handleViewInvoice}
+          className="flex items-center justify-center px-3 sm:px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all shadow-md text-xs sm:text-sm font-semibold"
+        >
+          <FaFileInvoice className="mr-1 sm:mr-2" />
+          View Invoice
+        </button>
+      )}
+    </div>
+  </div>
+</div>
+
 
         <div className="p-3 sm:p-4 lg:p-6">
           {/* Vehicle Image - Mobile Responsive */}
@@ -618,6 +648,29 @@ const BookingDetailView = ({
     );
   })()}
 </div>
+
+<button
+  className="px-3 py-2 bg-blue-600 text-white rounded"
+  onClick={() => handleOpenLiveMap()}
+>
+  View Live Location
+</button>
+
+<MapModal
+  show={showMapModal}
+  onClose={() => setShowMapModal(false)}
+  location={location}
+/>
+
+{['Accepted', 'Start Trip', 'End Trip', 'Entend Trip'].includes(booking.status) && (
+  <RelayControlButtons 
+    bookingId={booking.bookingId}
+    currentStatus={booking.bikeDetails?.engineStatus === 1 ? 'on' : 'off'}
+  />
+)}
+
+
+
 
 
           {/* Form Grid - Mobile Responsive */}

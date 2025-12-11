@@ -616,7 +616,7 @@ export const bookingAPI = {
   cancel: async (bookingId) => {
     try {
       console.log(`❌ [Booking API] Cancelling booking: ${bookingId}`);
-      const response = await api.post(`/api/booking-bikes/${bookingId}/cancelled`);
+      const response = await api.post(`/api/booking-bikes/${bookingId}/cancel`);
       console.log(`✅ [Booking API] Booking cancelled:`, response.data);
       return { data: response.data };
     } catch (error) {
