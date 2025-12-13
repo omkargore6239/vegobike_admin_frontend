@@ -596,7 +596,7 @@ const handleOpenLiveMap = async () => {
 
         <div className="p-3 sm:p-4 lg:p-6">
           {/* Vehicle Image - Mobile Responsive */}
-          {/* Vehicle Image - FIXED */}
+         {/* Vehicle Image Section */}
 <div className="mb-4 sm:mb-6">
   <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
     <FaMotorcycle className="inline mr-2" />
@@ -649,28 +649,69 @@ const handleOpenLiveMap = async () => {
   })()}
 </div>
 
-<button
-  className="px-3 py-2 bg-blue-600 text-white rounded"
-  onClick={() => handleOpenLiveMap()}
->
-  View Live Location
-</button>
+{/* ✅ GPS Tracking Controls - Conditional Rendering Based on IMEI */}
+{booking.bikeDetails?.imeiNumber && booking.bikeDetails.imeiNumber.trim() !== '' ? (
+  <>
+    {/* Show GPS controls for active trip statuses - INCLUDING "Trip Extend" */}
+    {['Accepted', 'Start Trip', 'End Trip', 'Trip Extend'].includes(booking.status) && (
+      <>
+        {/* View Live Location Button */}
+        <div className="mb-4">
+          <button
+            className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 font-semibold text-sm"
+            onClick={handleOpenLiveMap}
+          >
+            <FaEye className="text-lg" />
+            View Live Location
+          </button>
+          
+          <MapModal
+            show={showMapModal}
+            onClose={() => setShowMapModal(false)}
+            location={location}
+          />
+        </div>
 
-<MapModal
-  show={showMapModal}
-  onClose={() => setShowMapModal(false)}
-  location={location}
-/>
-
-{['Accepted', 'Start Trip', 'End Trip', 'Entend Trip'].includes(booking.status) && (
-  <RelayControlButtons 
-    bookingId={booking.bookingId}
-    currentStatus={booking.bikeDetails?.engineStatus === 1 ? 'on' : 'off'}
-  />
+        {/* Engine Control Buttons */}
+        <RelayControlButtons 
+          bookingId={booking.bookingId}  
+          initialEngineStatus={booking.bikeDetails?.engineStatus ?? 0}
+          bookingStatus={booking.status}
+          onStatusChange={(newStatus) => {
+            console.log('🔄 Engine status changed to:', newStatus);
+            if (refreshBookings) {
+              setTimeout(() => {
+                refreshBookings();
+              }, 2000);
+            }
+          }}
+        />
+      </>
+    )}
+  </>
+) : (
+  <>
+    {/* Warning message if IMEI is not available for active trips */}
+    {['Accepted', 'Start Trip', 'End Trip', 'Trip Extend'].includes(booking.status) && (
+      <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 shadow-sm">
+        <div className="flex items-start">
+          <div className="flex-shrink-0">
+            <FaExclamationTriangle className="text-yellow-600 text-xl" />
+          </div>
+          <div className="ml-3">
+            <h4 className="text-sm font-semibold text-yellow-800 mb-1">
+              GPS Tracking Not Available
+            </h4>
+            <p className="text-xs text-yellow-700 leading-relaxed">
+              This vehicle does not have a GPS tracker (IMEI number not available). 
+              Live location tracking and remote engine controls are not available for this booking.
+            </p>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
 )}
-
-
-
 
 
           {/* Form Grid - Mobile Responsive */}

@@ -1,10 +1,4 @@
 
-
-//****************************************************************************
-
-// src/pages/serviceOrdes.jsx
-
-
 //******************previous 24-11 */
 
 
@@ -106,6 +100,11 @@ const ServiceOrdersList = () => {
     }
   };
 
+  // ✅ NEW: Handle View Invoice
+  const handleViewInvoice = (orderId) => {
+    console.log('📄 Viewing invoice for order:', orderId);
+  };
+
   const handleBackToList = () => {
     setViewMode("list");
     setSelectedOrder(null);
@@ -156,6 +155,8 @@ const ServiceOrdersList = () => {
         order={selectedOrder}
         onBack={handleBackToList}
         onOrderUpdated={handleOrderUpdated}
+        onViewInvoice={handleViewInvoice} // ✅ Pass the invoice handler
+
       />
     );
   }
@@ -169,12 +170,12 @@ const ServiceOrdersList = () => {
           <h3 className="text-xl font-semibold text-gray-800">
             Service Orders ({orders.length} total)
           </h3>
-          <button
+          {/* <button
             onClick={handleCreateNew}
             className="px-4 py-2 bg-blue-900 text-white rounded hover:bg-blue-800 text-sm font-medium flex items-center gap-2"
           >
             <span className="text-lg">+</span> Add Service Order
-          </button>
+          </button> */}
         </div>
         {/* Error Message */}
         {error && (
@@ -335,6 +336,4 @@ const ServiceOrdersList = () => {
 };
 
 export default ServiceOrdersList;
-
-
 

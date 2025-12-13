@@ -15,12 +15,15 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
     }
   }, [initialEngineStatus]);
 
-  // ✅ Determine if buttons should be disabled based on booking status
-  const isButtonDisabled = !['Accepted', 'Start Trip', 'End Trip', 'Extend Trip'].includes(bookingStatus);
+  // ✅ Enable buttons for these statuses (INCLUDING "Trip Extend")
+  const isButtonDisabled = !['Accepted', 'Start Trip', 'End Trip', 'Trip Extend'].includes(bookingStatus);
 
   const handleRelayOn = async () => {
     if (!bookingId) {
-      toast.error('Booking ID not found');
+      toast.error('Booking ID not found', {
+        position: 'top-center',
+        theme: 'colored'
+      });
       return;
     }
 
@@ -40,7 +43,7 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
         onStatusChange(1);
       }
       
-      toast.success('🚀 Engine started successfully!', {
+      toast.success(response.data?.message || '🚀 Engine started successfully!', {
         position: 'top-center',
         autoClose: 3000,
         theme: 'colored'
@@ -52,7 +55,11 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
       // ✅ 401 errors are handled by axios interceptor - just show message
       if (error.response?.status === 401) {
         console.log('🔐 Token expired - interceptor will handle redirect');
-        return; // Don't show additional error
+        toast.error('Session expired. Please login again.', {
+          position: 'top-center',
+          theme: 'colored'
+        });
+        return;
       }
       
       // ✅ Handle other errors
@@ -67,7 +74,7 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
         theme: 'colored'
       });
       
-      // ✅ Revert status on error
+      // ✅ Revert status on error (keep it OFF)
       setEngineStatus(0);
       
     } finally {
@@ -77,7 +84,10 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
 
   const handleRelayOff = async () => {
     if (!bookingId) {
-      toast.error('Booking ID not found');
+      toast.error('Booking ID not found', {
+        position: 'top-center',
+        theme: 'colored'
+      });
       return;
     }
 
@@ -104,7 +114,7 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
         onStatusChange(0);
       }
       
-      toast.success('🛑 Engine stopped successfully!', {
+      toast.success(response.data?.message || '🛑 Engine stopped successfully!', {
         position: 'top-center',
         autoClose: 3000,
         theme: 'colored'
@@ -116,6 +126,10 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
       // ✅ 401 handled by interceptor
       if (error.response?.status === 401) {
         console.log('🔐 Token expired - interceptor will handle redirect');
+        toast.error('Session expired. Please login again.', {
+          position: 'top-center',
+          theme: 'colored'
+        });
         return;
       }
       
@@ -130,7 +144,7 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
         theme: 'colored'
       });
       
-      // ✅ Revert status on error
+      // ✅ Revert status on error (keep it ON)
       setEngineStatus(1);
       
     } finally {
@@ -141,7 +155,7 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
   return (
     <div className="bg-gradient-to-r from-slate-50 to-gray-100 rounded-xl shadow-md border border-gray-200 p-4 mb-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h3 className="text-sm sm:text-base font-bold text-gray-900 flex items-center">
             <FaPowerOff className="mr-2 text-indigo-600" />
@@ -182,15 +196,17 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
             }
           `}
         >
-          {loading ? (
+          {loading && engineStatus === 0 ? (
             <>
               <FaSpinner className="animate-spin" />
-              <span>Processing...</span>
+              <span className="hidden sm:inline">Starting...</span>
+              <span className="sm:hidden">...</span>
             </>
           ) : (
             <>
               <FaPlay />
-              <span>Start Engine</span>
+              <span className="hidden sm:inline">Start Engine</span>
+              <span className="sm:hidden">Start</span>
             </>
           )}
         </button>
@@ -208,15 +224,17 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
             }
           `}
         >
-          {loading ? (
+          {loading && engineStatus === 1 ? (
             <>
               <FaSpinner className="animate-spin" />
-              <span>Processing...</span>
+              <span className="hidden sm:inline">Stopping...</span>
+              <span className="sm:hidden">...</span>
             </>
           ) : (
             <>
               <FaPowerOff />
-              <span>Stop Engine</span>
+              <span className="hidden sm:inline">Stop Engine</span>
+              <span className="sm:hidden">Stop</span>
             </>
           )}
         </button>
@@ -228,7 +246,7 @@ const RelayControlButtons = ({ bookingId, initialEngineStatus, bookingStatus, on
           <p className="text-xs text-orange-800 flex items-start">
             <span className="text-orange-500 mr-2 flex-shrink-0">🔒</span>
             <span>
-              <strong>Trip Not Active:</strong> Engine controls are only available for active bookings (Accepted, Start Trip, End Trip, Extend Trip).
+              <strong>Trip Not Active:</strong> Engine controls are only available for active bookings (Accepted, Start Trip, End Trip, Trip Extend).
             </span>
           </p>
         </div>

@@ -37,6 +37,7 @@ import CreateBooking from "./pages/AdminBooking/CreateBooking";
 //All battery page
 import BatteryList from "./components/battery/BatteryList";
 import BatteryForm from "./components/battery/BatteryForm";
+import ViewInvoice from "./pages/serviceorder/ViewInvoice";
 
 
 // ✅ UPDATED: Store Manager now has more permissions
@@ -452,7 +453,7 @@ function App() {
             />
           </Route>
           {/* ✅ ALL BATTERY - Admin & Store Manager */}
-          
+          <Route path="/invoice/:orderId" element={<ViewInvoice />} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

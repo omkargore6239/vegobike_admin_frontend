@@ -1,5 +1,11 @@
+
+// *********************************************************************
+
 import { useState, useEffect } from "react";
-import { FaTimes, FaTrash } from "react-icons/fa";
+import { FaTimes, FaTrash, FaFileInvoice } from "react-icons/fa"; // ✅ Added FaFileInvoice
+import { useNavigate } from 'react-router-dom'; // ✅ ADD THIS IMPORT
+
+// import { FaTimes, FaTrash } from "react-icons/fa";
 import axios from "axios";
 
 // ✅ ADD MASTER SERVICE MODAL (INTEGRATED)
@@ -319,6 +325,33 @@ const AddServiceDropdownModal = ({
 };
 
 const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
+    const navigate = useNavigate(); // ✅ ADD THIS HOOK
+
+    // ✅ ADD NEW STATE TO TRACK IF ORDER WAS UPDATED
+  const [isOrderUpdated, setIsOrderUpdated] = useState(false);
+
+  // ✅ ADD THIS HANDLER FUNCTION
+  const handleViewInvoice = () => {
+    if (!order?.id) {
+      alert('Order ID not found');
+      return;
+    }
+    // Open invoice in new tab
+    const invoiceUrl = `${import.meta.env.VITE_BASE_URL}/api/service-orders/invoice/${order.id}`;
+    window.open(invoiceUrl, '_blank');
+     navigate(`/invoice/${order.id}`);
+  };
+
+  // ✅ CHECK IF INVOICE BUTTON SHOULD BE SHOWN
+ const shouldShowInvoiceButton = () => {
+    // Use the original order data (from database), not the form data
+    const orderStatus = parseInt(order?.orderStatus);
+    const paymentStatus = order?.paymentStatus?.toUpperCase();
+    
+    // Show button only if Order Status = 5 (Completed) AND Payment Status = PAID
+    return orderStatus === 5 && paymentStatus === 'PAID';
+  };
+
   const statusOptions = [
     { value: "1", label: "Pending" },
     { value: "2", label: "Accepted" },
@@ -584,6 +617,10 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
 
   const afterServiceDiscount = subtotal - totalServiceDiscount;
 
+  // ✅ Add doorstep charge if service type is doorstep
+  const doorstepCharge = order?.serviceAddressType === 'DOORSTEP' ? 100 : 0;
+  const afterDoorstepCharge = afterServiceDiscount + doorstepCharge;
+
   const orderDiscountType = order?.discountType ?? 0;   // 0=percent,1=amount
   const orderPercent = order?.percent ?? 0;
   const orderAmount = order?.amount ?? 0;
@@ -592,7 +629,7 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
   const rawAdditional = parseFloat(additionalDiscount.value) || 0;
 
   if (additionalDiscount.type === 'percent') {
-    additionalDiscountAmount = afterServiceDiscount * rawAdditional / 100;
+additionalDiscountAmount = afterDoorstepCharge * rawAdditional / 100;
   } else if (additionalDiscount.type === 'amount') {
     additionalDiscountAmount = rawAdditional;
   }
@@ -603,12 +640,13 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
   //   additionalDiscountAmount = orderAmount;
   // }
 
-  const finalAmount = Math.max(0, afterServiceDiscount - additionalDiscountAmount);
-
+// ✅ FIX: Use afterDoorstepCharge instead of afterServiceDiscount
+  const finalAmount = Math.max(0, afterDoorstepCharge - additionalDiscountAmount);
   return {
     subtotal: Number(subtotal),
     totalServiceDiscount: Number(totalServiceDiscount),
     afterServiceDiscount: Number(afterServiceDiscount),
+    doorstepCharge: Number(doorstepCharge), // ✅ Added
     additionalDiscountAmount: Number(additionalDiscountAmount),
     finalAmount: Number(finalAmount),
   };
@@ -620,6 +658,10 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // ✅ Reset isOrderUpdated when status fields change
+    if (name === 'orderStatus' || name === 'paymentStatus') {
+      setIsOrderUpdated(false);
+    }
   };
 
   const handleAdditionalDiscountChange = (field, value) => {
@@ -658,7 +700,9 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
       };
 
       const response = await axios.post(
-        `${import.meta.env.VITE_BASE_URL}/api/service-order-item/add`,
+        // `${import.meta.env.VITE_BASE_URL}/api/service-order-item/add`,
+          `${import.meta.env.VITE_BASE_URL}/api/service-order-item/add/${order.id}`,
+
         serviceOrderItem
       );
 
@@ -863,12 +907,22 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
         orderItems: orderItems,
       };
 
+      // const response = await axios.put(
+      //   `${import.meta.env.VITE_BASE_URL}/api/service-orders/update/${order.id}`,
+      //   updatedOrder
+      // );
+
+      // ✅ AFTER SUCCESSFUL UPDATE, SET isOrderUpdated TO TRUE
       const response = await axios.put(
         `${import.meta.env.VITE_BASE_URL}/api/service-orders/update/${order.id}`,
         updatedOrder
       );
 
+
       onOrderUpdated(response.data);
+      // ✅ SET FLAG TO TRUE AFTER SUCCESSFUL UPDATE
+      setIsOrderUpdated(true);
+
       alert("Order updated successfully!");
     } catch (error) {
       console.error(
@@ -902,7 +956,7 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
         onAdd={handleAddServiceFromDropdown}
         loading={loadingServices}
       />
-      <div className="p-2 sm:p-4 w-full">
+      {/* <div className="p-2 sm:p-4 w-full">
         <div className="flex flex-col xl:flex-row gap-3 w-full max-w-[1400px] mx-auto">
           <div className="flex-1 bg-white p-3 rounded-lg shadow-sm">
             <div className="flex items-center gap-3 mb-3">
@@ -915,7 +969,52 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
               <h2 className="text-base font-semibold text-gray-800">
                 Edit Order Details
               </h2>
+            </div> */}
+
+            <div className="p-2 sm:p-4 w-full">
+        <div className="flex flex-col xl:flex-row gap-3 w-full max-w-[1400px] mx-auto">
+          <div className="flex-1 bg-white p-3 rounded-lg shadow-sm">
+            {/* ✅ UPDATED HEADER WITH VIEW INVOICE BUTTON */}
+          <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={onBack}
+                  className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs"
+                >
+                  ← Back
+                </button>
+                <h2 className="text-base font-semibold text-gray-800">
+                  Edit Order Details
+                </h2>
+              </div>
+
+            {/* ✅ VIEW INVOICE BUTTON - TOP RIGHT CORNER */}
+              {/* <button
+                type="button"
+                onClick={handleViewInvoice}
+                className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-xs font-medium flex items-center gap-2"
+              >
+                <FaFileInvoice size={12} />
+                View Invoice
+              </button>
+            </div> */}
+
+             {/* ✅ CONDITIONAL VIEW INVOICE BUTTON */}
+              {shouldShowInvoiceButton() && (
+                <button
+                  type="button"
+                  onClick={handleViewInvoice}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-xs font-medium flex items-center gap-2"
+                >
+                  <FaFileInvoice size={12} />
+                  View Invoice
+                </button>
+              )}
             </div>
+
+
+
+
             <form onSubmit={handleSubmit}>
               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5 mb-3">
                 <div className="col-span-2">
@@ -1063,8 +1162,8 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
                     onChange={handleInputChange}
                     className="w-full border border-gray-300 px-1.5 py-0.5 rounded text-[10px]"
                   >
-                    <option value="Pending">Pending</option>
-                    <option value="Paid">Paid</option>
+                    <option value="PENDING">PENDING</option>
+                    <option value="PAID">PAID</option>
                     
                   </select>
                 </div>
@@ -1318,6 +1417,17 @@ const EditServiceOrder = ({ order, onBack, onOrderUpdated }) => {
                       ₹{totals.afterServiceDiscount.toFixed(2)}
                     </span>
                   </div>
+
+                  {order?.serviceAddressType === 'DOORSTEP' && (
+  <div className="flex justify-between items-center text-[10px] border-t pt-1">
+    <span className="text-gray-700">
+      Doorstep Service Charges:
+    </span>
+    <span className="text-green-600 font-semibold">
+      +₹100.00
+    </span>
+  </div>
+)}
 
                   <div className="border-t pt-2 mt-2">
                     <p className="text-[9px] text-gray-600 mb-1">
